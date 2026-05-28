@@ -1,0 +1,37 @@
+/* App-specific styles */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Focus mode styles */
+.focus-mode .sidebar,
+.focus-mode .toolbar,
+.focus-mode .status-bar,
+.focus-mode .character-bar {
+  display: none !important;
+}
+
+.focus-mode .right-panel {
+  display: none !important;
+}
+
+.focus-mode .main-area {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+/* Print styles */
+@media print {
+  .sidebar,
+  .toolbar,
+  .status-bar,
+  .character-bar,
+  .right-panel {
+    display: none !important;
+  }
+}

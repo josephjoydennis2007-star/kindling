@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls node_modules)",
+      "Bash(npm -v)",
+      "PowerShell(node -v)",
+      "PowerShell(npm -v)",
+      "PowerShell($paths = @\\(\"$env:ProgramFiles\\\\nodejs\\\\node.exe\",\"${env:ProgramFiles\\(x86\\)}\\\\nodejs\\\\node.exe\",\"$env:LOCALAPPDATA\\\\Programs\\\\nodejs\\\\node.exe\",\"$env:APPDATA\\\\npm\\\\node.exe\",\"$env:LOCALAPPDATA\\\\fnm\\\\node.exe\"\\); foreach\\($p in $paths\\){ if\\(Test-Path $p\\){ Write-Output \"FOUND: $p\" } }; Get-Command nvm -ErrorAction SilentlyContinue | Select-Object Source; where.exe node 2>$null)",
+      "PowerShell($nodeDir = \"$env:ProgramFiles\\\\nodejs\"; $env:Path = \"$nodeDir;$env:Path\"; & \"$nodeDir\\\\node.exe\" -v; & \"$nodeDir\\\\npm.cmd\" -v)",
+      "PowerShell($env:Path = \"$env:ProgramFiles\\\\nodejs;$env:Path\"; Set-Location \"C:\\\\Users\\\\josep\\\\Downloads\\\\Kimi_Agent_Screenwriter Pro Theme \\(1\\)\\\\app\"; npm install)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\josep\\\\Downloads\\\\Kimi_Agent_Screenwriter Pro Theme \\(1\\)\\\\app\\\\.claude\")",
+      "mcp__Claude_Preview__preview_start",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { try { Stop-Process -Id $_ -Force -ErrorAction Stop; Write-Output \"Killed PID $_\" } catch {} })",
+      "Read(//c/Users/josep/.claude/projects/C--Users-josep-Downloads-Kimi-Agent-Screenwriter-Pro-Theme--1-/memory//**)",
+      "Read(//c/Users/josep/.claude/projects//**)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

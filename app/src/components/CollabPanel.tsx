@@ -1,0 +1,719 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  X,
+  Users2,
+  Phone,
+  Video as VideoIcon,
+  Send,
+  Paperclip,
+  Image as ImageIcon,
+  Mic,
+  Link as LinkIcon,
+  Smile,
+  Share2,
+  UserPlus,
+  Circle,
+  Crown,
+  PenLine,
+  Clapperboard,
+  Eye,
+  Copy,
+  Check,
+  CircleAlert,
+  Trash2,
+  Bell,
+  MoreVertical,
+  ClipboardList,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { useAppStore } from '@/store/useAppStore';
+import type { CoworkerInfo, AccessRequest } from '@/types';
+import {
+  isFirebaseConfigured,
+  ensureRoom,
+  watchChat,
+  watchPresence,
+  setPresence,
+  leavePresence,
+  watchAccessRequests,
+  approveAccessRequest,
+  denyAccessRequest,
+} from '@/firebase';
+
+interface Props {
+  onClose: () => void;
+}
+
+const EMOJI = ['😀', '😂', '😍', '🔥', '🎬', '✍️', '🎵', '🎙️', '🎥', '💡', '✅', '🙏', '👏', '🎉', '👀', '🤝', '💯', '🚀', '🌟', '❤️'];
+
+const ROLES: { id: CoworkerInfo['role']; label: string; icon: any; color: string }[] = [
+  { id: 'admin',    label: 'Admin',    icon: Crown,        color: 'text-amber-400' },
+  { id: 'writer',   label: 'Writer',   icon: PenLine,      color: 'text-blue-400' },
+  { id: 'director', label: 'Director', icon: Clapperboard, color: 'text-purple-400' },
+  { id: 'viewer',   label: 'Viewer',   icon: Eye,          color: 'text-zinc-400' },
+];
+
+export default function CollabPanel({ onClose }: Props) {
+  const coworkers = useAppStore((s) => s.coworkers);
+  const localChat = useAppStore((s) => s.chat);
+  const settings = useAppStore((s) => s.settings);
+  const sendChatMessage = useAppStore((s) => s.sendChatMessage);
+  const addCoworker = useAppStore((s) => s.addCoworker);
+  const removeCoworker = useAppStore((s) => s.removeCoworker);
+  const updateCoworker = useAppStore((s) => s.updateCoworker);
+  const activeStoryId = useAppStore((s) => s.activeStoryId);
+
+  const userId = settings.userId || 'me';
+  const userName = settings.userDisplayName || 'You';
+  const isAdmin = settings.userRole === 'admin';
+
+  const [tab, setTab] = useState<'chat' | 'people' | 'invite' | 'requests'>('chat');
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [cloudChat, setCloudChat] = useState<any[] | null>(null);
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
+
+  // Online mode? requires Firebase + a logged-in user + a story
+  const online = isFirebaseConfigured && activeStoryId && userId !== 'me';
+
+  // Ensure room & subscribe
+  useEffect(() => {
+    if (!online || !activeStoryId) return;
+    let unsubChat = () => {};
+    let unsubPresence = () => {};
+    let unsubRequests = () => {};
+    (async () => {
+      const id = await ensureRoom(activeStoryId, userId);
+      if (!id) return;
+      setRoomId(id);
+      await setPresence(id, userId, { name: userName, role: settings.userRole, status: 'online' });
+      unsubChat = watchChat(id, (msgs) => setCloudChat(msgs));
+      unsubPresence = watchPresence(id, () => {});
+      if (isAdmin) {
+        unsubRequests = watchAccessRequests(id, (reqs) => setAccessRequests(reqs));
+      }
+    })();
+    const heartbeat = setInterval(() => {
+      if (roomId) setPresence(roomId, userId, { name: userName, role: settings.userRole, status: 'online' });
+    }, 25000);
+    return () => {
+      unsubChat();
+      unsubPresence();
+      unsubRequests();
+      clearInterval(heartbeat);
+      if (roomId) leavePresence(roomId, userId).catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoryId, userId, online, isAdmin]);
+
+  const chat = cloudChat ?? localChat;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className="h-full flex flex-col bg-gradient-to-b from-[var(--panel)] via-[var(--panel)] to-[var(--sidebar)]"
+    >
+      {/* Header — custom design */}
+      <div className="relative px-4 py-3 border-b border-[var(--border)] overflow-hidden">
+        <div className="absolute inset-0 opacity-30 pointer-events-none bg-[radial-gradient(circle_at_top_right,_var(--accent)_0%,_transparent_60%)]" />
+        <div className="relative flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 flex items-center justify-center shadow-lg">
+                <Users2 className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-[var(--text)]">Studio Room</div>
+                <div className="text-[10px] text-[var(--text-muted)]">
+                  {coworkers.filter((c) => c.status === 'online').length} online · {coworkers.length} collaborators
+                </div>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Call action row */}
+        <div className="relative mt-3 flex gap-2">
+          <CallButton icon={VideoIcon} label="Video" color="bg-gradient-to-br from-blue-500 to-indigo-600" onClick={() => toast.info('Video call needs a signaling backend (Firebase/WebRTC) — UI ready.')} />
+          <CallButton icon={Phone}     label="Voice" color="bg-gradient-to-br from-emerald-500 to-teal-600" onClick={() => toast.info('Voice call needs a signaling backend — UI ready.')} />
+          <CallButton icon={Share2}    label="Share Link" color="bg-gradient-to-br from-amber-500 to-orange-600" onClick={() => copyInviteLink()} />
+          <CallButton icon={Bell}      label="Ping" color="bg-gradient-to-br from-rose-500 to-pink-600" onClick={() => toast.success('Ping sent to active coworkers')} />
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-[var(--border)] bg-[var(--sidebar)]">
+        {[
+          { id: 'chat' as const,   label: 'Chat',   icon: Send },
+          { id: 'people' as const, label: 'People', icon: Users2 },
+          ...(isAdmin ? [{ id: 'requests' as const, label: 'Requests', icon: ClipboardList }] : []),
+          { id: 'invite' as const, label: 'Invite', icon: UserPlus },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id as any)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[11px] font-semibold transition-all ${
+              tab === t.id ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+            }`}
+          >
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
+            {t.id === 'requests' && accessRequests.filter((r) => r.status === 'pending').length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/30 text-red-300">
+                {accessRequests.filter((r) => r.status === 'pending').length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'chat' && (
+        <ChatTab
+          chat={chat}
+          authorName={settings.userDisplayName}
+          authorId={settings.userId || 'me'}
+          onSend={(text, atts) => sendChatMessage({ text, authorId: settings.userId || 'me', authorName: settings.userDisplayName, attachments: atts })}
+        />
+      )}
+
+      {tab === 'people' && (
+        <PeopleTab
+          coworkers={coworkers}
+          onUpdate={updateCoworker}
+          onRemove={removeCoworker}
+        />
+      )}
+
+      {tab === 'requests' && isAdmin && roomId && (
+        <RequestsTab
+          requests={accessRequests}
+          onApprove={(id) => approveAccessRequest(roomId, id)}
+          onDeny={(id) => denyAccessRequest(roomId, id)}
+        />
+      )}
+
+      {tab === 'invite' && (
+        <InviteTab onAdd={(info) => { addCoworker(info); setTab('people'); }} />
+      )}
+    </motion.div>
+  );
+}
+
+// ----- CHAT TAB -----
+
+function ChatTab({ chat, authorId, onSend }: {
+  chat: any[];
+  authorName: string;
+  authorId: string;
+  onSend: (text: string, atts?: any[]) => void;
+}) {
+  const [text, setText] = useState('');
+  const [showEmoji, setShowEmoji] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const audioInput = useRef<HTMLInputElement>(null);
+  const imgInput = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [chat.length]);
+
+  const send = () => {
+    if (!text.trim()) return;
+    onSend(text.trim());
+    setText('');
+    setShowEmoji(false);
+  };
+
+  const handleFileChange = (kind: 'image' | 'audio' | 'file') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      onSend(text.trim() || `📎 ${file.name}`, [{ kind, url: ev.target?.result as string, name: file.name }]);
+      setText('');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
+        {chat.length === 0 && (
+          <div className="text-center py-10 text-[var(--text-muted)] text-xs">
+            <Send className="w-7 h-7 mx-auto opacity-50 mb-2" />
+            <p>No messages yet</p>
+            <p className="text-[10px] mt-1">Say hi to your collaborators 👋</p>
+          </div>
+        )}
+        {chat.map((m) => {
+          const mine = m.authorId === authorId;
+          return (
+            <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${
+                mine
+                  ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-br-sm'
+                  : 'bg-[var(--card)] border border-[var(--border)] text-[var(--text)] rounded-bl-sm'
+              }`}>
+                {!mine && <div className="text-[10px] font-bold text-[var(--accent)] mb-0.5">{m.authorName}</div>}
+                <div className="text-xs whitespace-pre-wrap break-words leading-snug">{m.text}</div>
+                {m.attachments?.map((a: any, i: number) => (
+                  <Attachment key={i} att={a} />
+                ))}
+                <div className={`text-[9px] mt-1 ${mine ? 'text-blue-100/70' : 'text-[var(--text-muted)]'} text-right`}>
+                  {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="border-t border-[var(--border)] bg-[var(--sidebar)] p-2 relative">
+        <AnimatePresence>
+          {showEmoji && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              className="absolute bottom-full left-2 right-2 mb-1 p-2 bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl grid grid-cols-10 gap-1"
+            >
+              {EMOJI.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => { setText((t) => t + e); setShowEmoji(false); }}
+                  className="text-xl hover:scale-125 transition-transform"
+                >
+                  {e}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="flex items-center gap-1">
+          <button onClick={() => imgInput.current?.click()} title="Image" className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover)]">
+            <ImageIcon className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => audioInput.current?.click()} title="Audio" className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover)]">
+            <Mic className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => fileInput.current?.click()} title="File" className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover)]">
+            <Paperclip className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => {
+            const url = prompt('Paste a link:');
+            if (url) onSend(text.trim() || url, [{ kind: 'link', url }]);
+          }} title="Link" className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover)]">
+            <LinkIcon className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => setShowEmoji((v) => !v)} title="Emoji" className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover)]">
+            <Smile className="w-3.5 h-3.5" />
+          </button>
+
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder="Write a message…"
+            className="flex-1 mx-1 px-3 py-2 rounded-full bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+          />
+
+          <button
+            onClick={send}
+            disabled={!text.trim()}
+            className="p-2 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow disabled:opacity-50"
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Hidden file inputs */}
+        <input ref={imgInput} type="file" accept="image/*" hidden onChange={handleFileChange('image')} />
+        <input ref={audioInput} type="file" accept="audio/*" hidden onChange={handleFileChange('audio')} />
+        <input ref={fileInput} type="file" hidden onChange={handleFileChange('file')} />
+      </div>
+    </div>
+  );
+}
+
+function Attachment({ att }: { att: any }) {
+  if (att.kind === 'image') return <img src={att.url} alt="" className="mt-1 rounded-md max-h-48 object-cover" />;
+  if (att.kind === 'audio') return <audio controls src={att.url} className="mt-1 w-full h-7" />;
+  if (att.kind === 'link') return <a href={att.url} target="_blank" rel="noreferrer" className="mt-1 underline text-[11px] truncate block">{att.url}</a>;
+  return (
+    <a href={att.url} download={att.name} className="mt-1 flex items-center gap-1 text-[11px] underline">
+      <Paperclip className="w-3 h-3" /> {att.name || 'file'}
+    </a>
+  );
+}
+
+// ----- PEOPLE TAB -----
+
+function PeopleTab({ coworkers, onUpdate, onRemove }: {
+  coworkers: CoworkerInfo[];
+  onUpdate: (id: string, u: Partial<CoworkerInfo>) => void;
+  onRemove: (id: string) => void;
+}) {
+  if (coworkers.length === 0) {
+    return (
+      <div className="flex-1 overflow-y-auto p-6 text-center text-[var(--text-muted)] text-xs">
+        <Users2 className="w-7 h-7 mx-auto opacity-50 mb-2" />
+        <p>No collaborators yet</p>
+        <p className="text-[10px] mt-1">Use the <strong>Invite</strong> tab above to add someone.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      {coworkers.map((c) => (
+        <CoworkerCard key={c.id} coworker={c} onUpdate={(u) => onUpdate(c.id, u)} onRemove={() => onRemove(c.id)} />
+      ))}
+    </div>
+  );
+}
+
+function CoworkerCard({ coworker, onUpdate, onRemove }: {
+  coworker: CoworkerInfo;
+  onUpdate: (u: Partial<CoworkerInfo>) => void;
+  onRemove: () => void;
+}) {
+  const [menu, setMenu] = useState(false);
+  const role = ROLES.find((r) => r.id === coworker.role) || ROLES[3];
+  const statusColor = {
+    online: 'text-emerald-400 fill-emerald-400',
+    typing: 'text-blue-400 fill-blue-400',
+    away: 'text-yellow-400 fill-yellow-400',
+    offline: 'text-zinc-500 fill-zinc-500',
+  }[coworker.status];
+
+  return (
+    <div className="relative p-3 bg-[var(--card)] border border-[var(--border)] rounded-xl">
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden">
+            {coworker.avatar ? <img src={coworker.avatar} className="w-full h-full object-cover" /> : coworker.name.charAt(0).toUpperCase()}
+          </div>
+          <Circle className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 ${statusColor}`} strokeWidth={3} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <div className="text-xs font-bold text-[var(--text)] truncate">{coworker.name}</div>
+            <role.icon className={`w-3 h-3 ${role.color}`} />
+          </div>
+          <div className="text-[10px] text-[var(--text-muted)] truncate">
+            {coworker.status}{coworker.currentSection ? ` · in ${coworker.currentSection}` : ''}
+          </div>
+        </div>
+        <button
+          onClick={() => setMenu((v) => !v)}
+          className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]"
+        >
+          <MoreVertical className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {menu && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className="mt-2 p-2 bg-[var(--panel)] border border-[var(--border)] rounded-lg space-y-1.5"
+          >
+            <div className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mb-1">Role</div>
+            <div className="flex flex-wrap gap-1">
+              {ROLES.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => onUpdate({ role: r.id })}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] border ${
+                    coworker.role === r.id ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] text-[var(--text-secondary)]'
+                  }`}
+                >
+                  <r.icon className="w-3 h-3" /> {r.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider mt-2 mb-1">Permissions</div>
+            <label className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={coworker.socialAllowed ?? true}
+                onChange={(e) => onUpdate({ socialAllowed: e.target.checked })}
+                className="accent-[var(--accent)]"
+              />
+              Allow social media bar
+            </label>
+
+            <button
+              onClick={onRemove}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] text-red-400 bg-red-500/10 hover:bg-red-500/20"
+            >
+              <Trash2 className="w-3 h-3" />
+              Remove
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ----- INVITE TAB -----
+
+function InviteTab({ onAdd }: { onAdd: (info: Partial<CoworkerInfo>) => void }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<CoworkerInfo['role']>('writer');
+  const [copied, setCopied] = useState(false);
+
+  const link = useMemo(() => buildInviteLink(role), [role]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      toast.success('Invite link copied');
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('Could not copy');
+    }
+  };
+
+  const shareNative = async () => {
+    if ((navigator as any).share) {
+      try {
+        await (navigator as any).share({ title: 'Join my Kindling studio', url: link });
+      } catch { /* user cancelled */ }
+    } else {
+      copy();
+    }
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="p-4 rounded-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 border border-[var(--border)]">
+        <div className="flex items-center gap-2 mb-2 text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">
+          <Share2 className="w-3 h-3" /> Private invite link
+        </div>
+        <div className="flex items-center gap-1.5 bg-[var(--card)] border border-[var(--border)] rounded-lg overflow-hidden">
+          <div className="flex-1 px-3 py-2 text-[11px] text-[var(--text-secondary)] truncate font-mono">
+            {link}
+          </div>
+          <button onClick={copy} className="p-2 text-[var(--text-muted)] hover:text-[var(--accent)]" title="Copy">
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        <button
+          onClick={shareNative}
+          className="mt-2 w-full px-3 py-2 rounded-lg bg-[var(--accent)] text-[var(--bg)] text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110"
+        >
+          <Share2 className="w-3.5 h-3.5" />
+          Share via Messages, Email, Slack…
+        </button>
+        <p className="mt-2 text-[10px] text-[var(--text-muted)] flex items-start gap-1">
+          <CircleAlert className="w-3 h-3 mt-0.5 flex-shrink-0" />
+          For real cross-internet sessions, deploy this app and enable Cloud Sync.
+        </p>
+      </div>
+
+      <div className="p-4 bg-[var(--card)] border border-[var(--border)] rounded-xl space-y-2">
+        <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">
+          Add coworker manually
+        </div>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name"
+          className="w-full px-3 py-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs outline-none focus:border-[var(--accent)]"
+        />
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email (optional)"
+          className="w-full px-3 py-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs outline-none focus:border-[var(--accent)]"
+        />
+        <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Role</div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {ROLES.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => setRole(r.id)}
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-md border text-[11px] transition-all ${
+                role === r.id
+                  ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                  : 'border-[var(--border)] text-[var(--text-secondary)]'
+              }`}
+            >
+              <r.icon className={`w-3.5 h-3.5 ${role === r.id ? '' : r.color}`} />
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <button
+          disabled={!name.trim()}
+          onClick={() => {
+            onAdd({ name: name.trim(), email: email.trim() || undefined, role });
+            setName(''); setEmail('');
+            toast.success('Coworker added — they will appear online when they connect.');
+          }}
+          className="mt-2 w-full px-3 py-2 rounded-md bg-[var(--accent)] text-[var(--bg)] text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+        >
+          <UserPlus className="w-3.5 h-3.5" />
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ----- REQUESTS TAB (admin only) -----
+
+function RequestsTab({ requests, onApprove, onDeny }: {
+  requests: AccessRequest[];
+  onApprove: (id: string) => Promise<void>;
+  onDeny: (id: string) => Promise<void>;
+}) {
+  const [processing, setProcessing] = useState<string | null>(null);
+
+  const pending = requests.filter((r) => r.status === 'pending');
+  const handled = requests.filter((r) => r.status !== 'pending');
+
+  const handleApprove = async (id: string) => {
+    setProcessing(id);
+    try {
+      await onApprove(id);
+      toast.success('Access granted');
+    } catch (err: any) {
+      toast.error(`Error: ${err?.message || 'Failed to approve'}`);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleDeny = async (id: string) => {
+    setProcessing(id);
+    try {
+      await onDeny(id);
+      toast.info('Request denied');
+    } catch (err: any) {
+      toast.error(`Error: ${err?.message || 'Failed to deny'}`);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      {pending.length === 0 && handled.length === 0 && (
+        <div className="text-center py-10 text-[var(--text-muted)] text-xs">
+          <ClipboardList className="w-7 h-7 mx-auto opacity-50 mb-2" />
+          <p>No access requests yet</p>
+          <p className="text-[10px] mt-1">Blocked collaborators can request access here</p>
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <>
+          <div className="text-[10px] uppercase font-bold text-[var(--accent)] tracking-wider">
+            Pending Requests ({pending.length})
+          </div>
+          {pending.map((req) => (
+            <div key={req.id} className="p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white">
+                  {req.requesterName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-[var(--text)]">{req.requesterName}</div>
+                  {req.requesterEmail && <div className="text-[10px] text-[var(--text-muted)]">{req.requesterEmail}</div>}
+                  <div className="text-[10px] text-[var(--text-muted)] mt-1">
+                    Requested {new Date(req.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 flex gap-1.5">
+                <button
+                  onClick={() => handleApprove(req.id)}
+                  disabled={processing === req.id}
+                  className="flex-1 px-2.5 py-1.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-500/30 disabled:opacity-50"
+                >
+                  <Check className="w-3 h-3 inline mr-1" /> Approve
+                </button>
+                <button
+                  onClick={() => handleDeny(req.id)}
+                  disabled={processing === req.id}
+                  className="flex-1 px-2.5 py-1.5 rounded-md bg-red-500/20 text-red-300 text-[11px] font-semibold hover:bg-red-500/30 disabled:opacity-50"
+                >
+                  <X className="w-3 h-3 inline mr-1" /> Deny
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {handled.length > 0 && (
+        <>
+          <div className="mt-4 text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">
+            Previous Decisions
+          </div>
+          {handled.map((req) => (
+            <div key={req.id} className="p-2 bg-[var(--panel)] border border-[var(--border)]/50 rounded-lg opacity-60">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-[var(--text-secondary)]">{req.requesterName}</div>
+                <span className={`text-[10px] font-bold ${req.status === 'approved' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {req.status === 'approved' ? '✓ Approved' : '✕ Denied'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ----- helpers -----
+
+function CallButton({ icon: Icon, label, color, onClick }: { icon: any; label: string; color: string; onClick: () => void }) {
+  return (
+    <motion.button
+      whileTap={{ scale: 0.95 }}
+      whileHover={{ y: -1 }}
+      onClick={onClick}
+      className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-lg ${color} text-white shadow-md`}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      <span className="text-[9px] font-bold tracking-wider">{label.toUpperCase()}</span>
+    </motion.button>
+  );
+}
+
+function buildInviteLink(role: string): string {
+  const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
+  const token = Math.random().toString(36).slice(2, 10);
+  return `${base}?invite=${token}&role=${role}`;
+}
+
+async function copyInviteLink() {
+  const link = buildInviteLink('writer');
+  try {
+    await navigator.clipboard.writeText(link);
+    toast.success('Invite link copied to clipboard');
+  } catch {
+    toast.error('Could not copy');
+  }
+}

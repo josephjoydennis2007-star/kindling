@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "screenwriter-dev",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["-e", "process.chdir('app');import(require('url').pathToFileURL(require('path').resolve('node_modules/vite/bin/vite.js')).href)"],
+      "port": 3000
+    }
+  ]
+}
