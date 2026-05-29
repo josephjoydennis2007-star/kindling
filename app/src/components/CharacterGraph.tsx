@@ -48,6 +48,8 @@ const MAX_R = 26;    // largest node radius
 export default function CharacterGraph() {
   const screenplay = useAppStore((s) => s.screenplay);
   const scenes = useAppStore((s) => s.scenes);
+  const setActiveScene = useAppStore((s) => s.setActiveScene);
+  const setTab = useAppStore((s) => s.setTab);
 
   const [hoverEdge, setHoverEdge] = useState<Edge | null>(null);
   const [hoverNode, setHoverNode] = useState<Node | null>(null);
@@ -151,6 +153,21 @@ export default function CharacterGraph() {
   const maxWeight = Math.max(...edges.map((e) => e.weight), 1);
   const sceneNameById = new Map(scenes.map((s) => [s.id, s.heading || s.name || 'Scene']));
 
+  /** Find the first scene (by `order`) in `sceneIds` and jump the writer to it. */
+  const jumpToFirstScene = (sceneIds: Iterable<string>) => {
+    const ids = [...sceneIds];
+    if (!ids.length) return;
+    // scenes are stored unordered; pick the earliest by `order`.
+    const ordered = ids
+      .map((id) => scenes.find((s) => s.id === id))
+      .filter(Boolean)
+      .sort((a, b) => (a!.order ?? 0) - (b!.order ?? 0));
+    const target = ordered[0];
+    if (!target) return;
+    setActiveScene(target.id);
+    setTab('writer');
+  };
+
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between">
@@ -174,18 +191,30 @@ export default function CharacterGraph() {
             const stroke = isHover || isAdjacentToHoveredNode ? '#60a5fa' : 'rgba(120, 130, 145, 0.4)';
             const sw = 0.8 + (e.weight / maxWeight) * 3.5;
             return (
-              <line
-                key={`${e.a}-${e.b}`}
-                x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                stroke={stroke}
-                strokeWidth={sw}
-                strokeLinecap="round"
-                onMouseEnter={() => setHoverEdge(e)}
-                onMouseLeave={() => setHoverEdge(null)}
-                className="cursor-pointer transition-all"
-              >
-                <title>{`${e.a} ↔ ${e.b} — share ${e.weight} scene${e.weight === 1 ? '' : 's'}`}</title>
-              </line>
+              <g key={`${e.a}-${e.b}`}>
+                {/* Wider invisible hit area so thin edges are clickable. */}
+                <line
+                  x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                  stroke={stroke}
+                  strokeWidth={Math.max(sw, 8)}
+                  strokeOpacity={0}
+                  strokeLinecap="round"
+                  onMouseEnter={() => setHoverEdge(e)}
+                  onMouseLeave={() => setHoverEdge(null)}
+                  onClick={() => jumpToFirstScene(e.scenes)}
+                  className="cursor-pointer"
+                />
+                {/* The visible stroke. pointer-events: none so hover/click
+                    always hit the wider transparent line above. */}
+                <line
+                  x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                  stroke={stroke}
+                  strokeWidth={sw}
+                  strokeLinecap="round"
+                  style={{ pointerEvents: 'none' }}
+                  className="transition-all"
+                ><title>{`${e.a} ↔ ${e.b} — share ${e.weight} scene${e.weight === 1 ? '' : 's'} — click to jump`}</title></line>
+              </g>
             );
           })}
 
@@ -199,6 +228,7 @@ export default function CharacterGraph() {
                 transform={`translate(${n.x}, ${n.y})`}
                 onMouseEnter={() => setHoverNode(n)}
                 onMouseLeave={() => setHoverNode(null)}
+                onClick={() => jumpToFirstScene(n.scenes)}
                 className="cursor-pointer"
               >
                 <circle
@@ -219,7 +249,7 @@ export default function CharacterGraph() {
                 >
                   {n.id}
                 </text>
-                <title>{`${n.id} — ${n.lines} line${n.lines === 1 ? '' : 's'} in ${n.scenes.size} scene${n.scenes.size === 1 ? '' : 's'}`}</title>
+                <title>{`${n.id} — ${n.lines} line${n.lines === 1 ? '' : 's'} in ${n.scenes.size} scene${n.scenes.size === 1 ? '' : 's'} — click to jump`}</title>
               </g>
             );
           })}

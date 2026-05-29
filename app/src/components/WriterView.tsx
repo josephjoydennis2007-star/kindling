@@ -38,6 +38,7 @@ import ScreenplayParagraph from '@/components/tiptap/ScreenplayParagraph';
 import SectionsBar from '@/components/SectionsBar';
 import CharacterWorkspacePanel from '@/components/CharacterWorkspacePanel';
 import SceneHeatMap from '@/components/SceneHeatMap';
+import DialogueGutter from '@/components/DialogueGutter';
 import { useAppStore } from '@/store/useAppStore';
 import type { Character, Screenplay } from '@/types';
 
@@ -273,33 +274,55 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
 
       // Walk the document looking for a paragraph whose collapsed text
       // matches the needle exactly. ProseMirror gives us (node, pos) pairs.
-      let found: { from: number; to: number; cls: string | null } | null = null;
+      // We wrap the result in an array so TS doesn't narrow `found` to
+      // `never` across the closure assignment.
+      type Range = { from: number; to: number; cls: string | null };
+      const hits: Range[] = [];
       editor.state.doc.descendants((node, pos) => {
-        if (found) return false;
+        if (hits.length) return false;
         if (node.type.name !== 'paragraph') return true;
         const text = (node.textContent || '').trim().replace(/\s+/g, ' ');
         if (text === needle) {
-          found = {
+          hits.push({
             from: pos + 1, // skip opening tag
             to: pos + 1 + node.content.size,
             cls: (node.attrs && (node.attrs as any).class) || null,
-          };
+          });
           return false;
         }
         return true;
       });
 
-      if (!found) {
+      const range = hits[0];
+      if (!range) {
         import('sonner').then(({ toast }) => toast.error('Could not find that exact line in the script.'));
         return;
       }
+      // Capture the verbatim original BEFORE replacing — we need the exact
+      // visible text the user saw, not our normalized needle, so undo
+      // restores fidelity.
+      const originalText = editor.state.doc.textBetween(range.from, range.to, '\n');
       // Replace the matched range with the new text, keep the paragraph class.
       editor
         .chain()
         .focus()
-        .insertContentAt(found, replacement)
+        .insertContentAt(range, replacement)
         .run();
-      import('sonner').then(({ toast }) => toast.success('Rewrite applied'));
+      import('sonner').then(({ toast }) => {
+        toast.success('Rewrite applied', {
+          // Sonner toast actions render as a button on the toast itself.
+          // Dispatching the same event in reverse triggers this same handler
+          // and swaps the rewrite back to the original text.
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              document.dispatchEvent(new CustomEvent('writer:replaceText', {
+                detail: { find: replacement, replace: originalText },
+              }));
+            },
+          },
+        });
+      });
     };
     document.addEventListener('writer:replaceText', onReplaceText as EventListener);
 
@@ -684,7 +707,14 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
 
         {/* Editor surface + Character workspace */}
         <div className="flex-1 overflow-hidden flex relative">
-          <div className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}>
+          <div className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center gap-2 relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}>
+            {/* Dialogue density gutter — minimap-style strip on the left.
+                Hidden on small screens where it would crowd the paper. */}
+            {!readingMode && !focusTyping && (
+              <div className="hidden sm:flex flex-col pt-12 sticky top-0 self-start max-h-[calc(100vh-9rem)] pb-2">
+                <DialogueGutter />
+              </div>
+            )}
             <div className="relative w-full max-w-[8.5in]">
               {/* Compact scene heat map — pacing glance above the paper.
                   Hidden in reading/focus modes so it doesn't distract. */}
