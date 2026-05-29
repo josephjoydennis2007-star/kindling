@@ -29,11 +29,14 @@ import {
   FilePlus2,
   PanelLeftOpen,
   PanelLeftClose,
+  BookOpen,
+  Eye,
 } from 'lucide-react';
 import Mention from '@/components/tiptap/Mention';
 import MentionList from '@/components/tiptap/MentionList';
 import ScreenplayParagraph from '@/components/tiptap/ScreenplayParagraph';
 import SectionsBar from '@/components/SectionsBar';
+import CharacterWorkspacePanel from '@/components/CharacterWorkspacePanel';
 import { useAppStore } from '@/store/useAppStore';
 import type { Character, Screenplay } from '@/types';
 
@@ -56,7 +59,13 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
   const [showColor, setShowColor] = useState(false);
   const [showHighlight, setShowHighlight] = useState(false);
   const [pagesOpen, setPagesOpen] = useState(false);
+  const [readingMode, setReadingMode] = useState(false);
+  const [focusTyping, setFocusTyping] = useState(false);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
+  // Get focusCharacterId and methods from store
+  const focusCharacterId = useAppStore((s) => s.focusCharacterId);
+  const updateCharacter = useAppStore((s) => s.updateCharacter);
 
   // Hooks lifted to top so they run unconditionally
   const addSection = useAppStore((s) => s.addSection);
@@ -153,12 +162,14 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
       const node = editor.state.doc.resolve(from).parent;
       const formatClass = node.attrs.class || 'action';
       setCurrentFormat(formatClass.replace('-', ' '));
+      document.dispatchEvent(new CustomEvent('writer:formatchanged', { detail: { format: formatClass } }));
     },
     onSelectionUpdate: ({ editor }) => {
       const { from } = editor.state.selection;
       const node = editor.state.doc.resolve(from).parent;
       const formatClass = node.attrs.class || 'action';
       setCurrentFormat(formatClass.replace('-', ' '));
+      document.dispatchEvent(new CustomEvent('writer:formatchanged', { detail: { format: formatClass } }));
     },
     editorProps: {
       handleKeyDown: (_view, event) => {
@@ -170,6 +181,7 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
           const next = formats[(current + 1) % formats.length];
           applyFormatToCurrentLine(editor!, next);
           setCurrentFormat(next.replace('-', ' '));
+          document.dispatchEvent(new CustomEvent('writer:formatchanged', { detail: { format: next } }));
           return true;
         }
         if (event.key === 'Enter' && !event.shiftKey) {
@@ -187,6 +199,7 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
           setTimeout(() => {
             applyFormatToCurrentLine(editor!, next);
             setCurrentFormat(next.replace('-', ' '));
+            document.dispatchEvent(new CustomEvent('writer:formatchanged', { detail: { format: next } }));
           }, 0);
         }
         return false;
@@ -202,13 +215,56 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
       const format = custom.detail.format;
       applyFormatToCurrentLine(editor, format);
       setCurrentFormat(format.replace('-', ' '));
+      document.dispatchEvent(new CustomEvent('writer:formatchanged', { detail: { format } }));
     };
     const editorEl = document.querySelector('.ProseMirror');
     editorEl?.addEventListener('applyformat', handler);
     document.addEventListener('writer:applyformat', handler as EventListener);
+
+    // AI Insert: drop a chunk of text into the editor as a series of action paragraphs.
+    const onInsertText = (ev: Event) => {
+      const text = ((ev as CustomEvent).detail?.text || '').toString();
+      if (!editor || !text) return;
+      const blocks = text.split(/\n{2,}/).map((b: string) => b.trim()).filter(Boolean);
+      const html = blocks.map((b: string) => `<p class="action">${b.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</p>`).join('');
+      editor.chain().focus('end').insertContent(html).run();
+    };
+    document.addEventListener('writer:insertText', onInsertText as EventListener);
+
+    // Inline streaming: AI fills the current selection with streamed text.
+    // streamStart captures the selection bounds; streamChunk re-replaces from
+    // the start anchor with the accumulating text; streamEnd clears state.
+    let streamStart = -1;
+    let streamEnd = -1;
+    const onStreamStart = () => {
+      if (!editor) return;
+      const { from, to } = editor.state.selection;
+      streamStart = from;
+      streamEnd = to;
+      editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, '⌛').run();
+      streamEnd = streamStart + 1;
+    };
+    const onStreamChunk = (ev: Event) => {
+      const text = ((ev as CustomEvent).detail?.text || '').toString();
+      if (!editor || streamStart < 0) return;
+      const safe = text.replace(/</g, '&lt;');
+      editor.chain().focus().deleteRange({ from: streamStart, to: streamEnd }).insertContentAt(streamStart, safe).run();
+      streamEnd = streamStart + safe.length;
+    };
+    const onStreamEnd = () => {
+      streamStart = -1; streamEnd = -1;
+    };
+    document.addEventListener('writer:streamStart', onStreamStart);
+    document.addEventListener('writer:streamChunk', onStreamChunk as EventListener);
+    document.addEventListener('writer:streamEnd', onStreamEnd);
+
     return () => {
       editorEl?.removeEventListener('applyformat', handler);
       document.removeEventListener('writer:applyformat', handler as EventListener);
+      document.removeEventListener('writer:insertText', onInsertText as EventListener);
+      document.removeEventListener('writer:streamStart', onStreamStart);
+      document.removeEventListener('writer:streamChunk', onStreamChunk as EventListener);
+      document.removeEventListener('writer:streamEnd', onStreamEnd);
     };
   }, [editor, applyFormatToCurrentLine]);
 
@@ -238,25 +294,115 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
     }
   }, [editor, screenplay.started]);
 
+  // Suggest adding new characters: when the writer types a CHARACTER cue that
+  // doesn't match anyone in the cast, surface a toast with one-tap add.
+  const suggestedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const knownNames = new Set(characters.map((c) => c.name.toUpperCase()));
+    const stripTags = (h: string) => h.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
+    const cueNames = new Set<string>();
+    for (const el of screenplay.elements || []) {
+      if (el.type !== 'character') continue;
+      const name = stripTags(el.content || '').trim().replace(/\s*\(.*$/, '').toUpperCase();
+      if (name && /^[A-Z][A-Z0-9 .'-]{0,40}$/.test(name) && name.length <= 30) cueNames.add(name);
+    }
+    cueNames.forEach((name) => {
+      if (knownNames.has(name)) return;
+      if (suggestedRef.current.has(name)) return;
+      suggestedRef.current.add(name);
+      // Lazy-import sonner so we don't ship the dep into a tight require chain.
+      import('sonner').then(({ toast }) => {
+        toast(
+          `Add "${name}" to your cast?`,
+          {
+            action: {
+              label: 'Add',
+              onClick: () => {
+                useAppStore.getState().addCharacter({
+                  name,
+                  displayName: name,
+                  description: '',
+                  color: '#3b82f6',
+                  image: null,
+                  backstory: '', goals: '', personality: '', age: '', occupation: '',
+                  motivation: '', conflict: '', relationships: '', notes: '',
+                  voiceAudio: null, tags: [], createdAt: Date.now(),
+                });
+              },
+            },
+            duration: 6000,
+          },
+        );
+      });
+    });
+  }, [screenplay.elements, characters]);
+
+  // Apply reading-mode (read-only)
+  useEffect(() => {
+    editor?.setEditable(!readingMode);
+  }, [editor, readingMode]);
+
+  // Focus-typing: keep .is-active-paragraph on the paragraph the cursor is in,
+  // strip it from siblings. We run this whenever the cursor moves.
+  useEffect(() => {
+    if (!editor || !focusTyping) return;
+    const pm = document.querySelector('.ProseMirror');
+    if (!pm) return;
+    const updateActive = () => {
+      const sel = window.getSelection?.();
+      if (!sel || sel.rangeCount === 0) return;
+      let node: Node | null = sel.getRangeAt(0).startContainer;
+      while (node && node.nodeType === 3) node = (node as any).parentNode;
+      let active: Element | null = null;
+      while (node && node !== pm) {
+        if ((node as Element).parentElement === pm) { active = node as Element; break; }
+        node = (node as any).parentNode;
+      }
+      pm.querySelectorAll('.is-active-paragraph').forEach((el) => el.classList.remove('is-active-paragraph'));
+      if (active) active.classList.add('is-active-paragraph');
+    };
+    updateActive();
+    document.addEventListener('selectionchange', updateActive);
+    return () => document.removeEventListener('selectionchange', updateActive);
+  }, [editor, focusTyping]);
+
   const handleSelectCharacter = useCallback((_char: Character) => {
     setShowMention(false);
   }, []);
 
-  // Compute "pages" by counting blocks; show simple page numbers for preview
+  // Build a "Pages" list. If the writer has named sections, those become the
+  // pages (one section = one page in the user's mental model). Otherwise we
+  // fall back to chunking elements 30 at a time.
   const pages = useMemo(() => {
     const els = screenplay.elements || [];
+    const namedSections = (screenplay.sections || []).slice().sort((a, b) => a.order - b.order);
+    if (namedSections.length > 0) {
+      return namedSections.map((s, i) => {
+        const inSection = els.filter((e) => (e as any).sectionId === s.id);
+        return {
+          index: i + 1,
+          title: s.name,
+          color: s.color,
+          sectionId: s.id,
+          preview: inSection.map((e) => stripTags(e.content)).filter(Boolean).slice(0, 3).join(' · ') || '(empty)',
+        };
+      });
+    }
     const PER_PAGE = 30;
     const pageCount = Math.max(1, Math.ceil(els.length / PER_PAGE));
     return new Array(pageCount).fill(0).map((_, i) => ({
       index: i + 1,
+      title: `Page ${i + 1}`,
+      color: undefined as string | undefined,
+      sectionId: null as string | null,
       preview: els
         .slice(i * PER_PAGE, (i + 1) * PER_PAGE)
         .map((e) => stripTags(e.content))
         .filter(Boolean)
         .slice(0, 3)
-        .join(' · '),
+        .join(' · ') || '(empty)',
     }));
-  }, [screenplay.elements]);
+  }, [screenplay.elements, screenplay.sections]);
 
   const jumpToPage = useCallback((pageIndex: number) => {
     const el = pageRefs.current[pageIndex];
@@ -378,10 +524,23 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
         <div className="w-px h-5 bg-[var(--border)] mx-1" />
         <button
           onClick={() => {
-            editor?.chain().focus('end').insertContent('<p class="scene-heading"></p>').run();
-            setTimeout(() => editor && applyFormatToCurrentLine(editor, 'scene-heading'), 0);
+            // Add a real, named section. Each section acts like a page —
+            // selecting it scrolls / filters the editor to its content.
+            const id = addSection();
+            setActiveSection(id);
+            // Auto-open pages pane so user can see the new page
+            setPagesOpen(true);
+            // Drop an empty action paragraph at the end so the cursor lands
+            // in a fresh block right away.
+            editor
+              ?.chain()
+              .focus('end')
+              .insertContent('<p class="action"></p>')
+              .run();
+            // Announce the new page creation
+            import('sonner').then(({ toast }) => toast.success('New page created!'));
           }}
-          title="Add a new page (new scene heading)"
+          title="Add a new page / named section"
           className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--card)] border border-[var(--border)] rounded-md text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all"
         >
           <FilePlus2 className="w-3.5 h-3.5" />
@@ -394,6 +553,32 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
         >
           {pagesOpen ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeftOpen className="w-3.5 h-3.5" />}
           Pages
+        </button>
+
+        <button
+          onClick={() => setReadingMode((v) => !v)}
+          title={readingMode ? 'Exit reading mode' : 'Reading mode (read-only)'}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-all border ${
+            readingMode
+              ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)]'
+              : 'bg-[var(--card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
+          }`}
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          Read
+        </button>
+
+        <button
+          onClick={() => setFocusTyping((v) => !v)}
+          title={focusTyping ? 'Exit focus typing' : 'Focus typing (dim other paragraphs)'}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-all border ${
+            focusTyping
+              ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)]'
+              : 'bg-[var(--card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
+          }`}
+        >
+          <Eye className="w-3.5 h-3.5" />
+          Focus
         </button>
 
         <div className="flex-1" />
@@ -409,52 +594,84 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -200, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 220, damping: 24 }}
-              className="w-44 bg-[var(--sidebar)] border-r border-[var(--border)] overflow-y-auto p-2 flex-shrink-0"
+              className="w-52 bg-[var(--sidebar)] border-r border-[var(--border)] overflow-y-auto p-3 flex-shrink-0"
             >
-              <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold px-2 mb-2">
-                Pages
+              <div className="flex items-center justify-between mb-3 px-1">
+                <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+                  Outline
+                </div>
+                <span className="text-[10px] text-[var(--text-muted)]">{pages.length}</span>
               </div>
-              {pages.map((p) => (
-                <button
-                  key={p.index}
-                  onClick={() => jumpToPage(p.index)}
-                  className="w-full mb-2 p-2 bg-[var(--card)] border border-[var(--border)] rounded-md hover:border-[var(--accent)] text-left transition-all group"
-                >
-                  <div className="aspect-[8.5/11] bg-white text-[5px] text-zinc-700 p-1.5 rounded overflow-hidden font-mono leading-snug">
-                    {p.preview || '(empty)'}
-                  </div>
-                  <div className="text-[10px] mt-1 text-[var(--text-muted)] group-hover:text-[var(--accent)]">
-                    Page {p.index}
-                  </div>
-                </button>
-              ))}
+              {pages.map((p) => {
+                const isActive = (p as any).sectionId && (p as any).sectionId === activeSectionId;
+                return (
+                  <button
+                    key={p.index}
+                    onClick={() => {
+                      if ((p as any).sectionId) setActiveSection((p as any).sectionId);
+                      jumpToPage(p.index);
+                    }}
+                    className={`w-full mb-2 p-2 rounded-lg border text-left transition-all group ${
+                      isActive
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+                        : 'border-[var(--border)] bg-[var(--card)] hover:border-[var(--accent)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span
+                        className="w-1.5 h-3 rounded-sm flex-shrink-0"
+                        style={{ background: (p as any).color || 'var(--text-muted)' }}
+                      />
+                      <span className={`text-[11px] font-semibold truncate ${isActive ? 'text-[var(--accent)]' : 'text-[var(--text)]'}`}>
+                        {(p as any).title}
+                      </span>
+                    </div>
+                    <div className="aspect-[8.5/11] bg-white text-[5px] text-zinc-700 p-1.5 rounded overflow-hidden font-mono leading-snug border border-zinc-200">
+                      {p.preview}
+                    </div>
+                  </button>
+                );
+              })}
             </motion.aside>
           )}
         </AnimatePresence>
 
-        {/* Editor surface */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center relative">
-          <div className="relative w-full max-w-[8.5in]">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              onMouseDown={(e) => {
-                if (e.target === e.currentTarget && editor) editor.commands.focus('end');
-              }}
-              className="w-full min-h-[11in] bg-white text-black p-[0.6in] sm:p-[1in] shadow-2xl rounded-sm relative cursor-text"
-            >
-              <EditorContent editor={editor} className="min-h-[9in] outline-none" />
-            </motion.div>
+        {/* Editor surface + Character workspace */}
+        <div className="flex-1 overflow-hidden flex relative">
+          <div className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}>
+            <div className="relative w-full max-w-[8.5in]">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                onMouseDown={(e) => {
+                  if (e.target === e.currentTarget && editor) editor.commands.focus('end');
+                }}
+                className={`w-full min-h-[11in] bg-white text-black p-[0.6in] sm:p-[1in] shadow-2xl rounded-sm relative ${readingMode ? 'cursor-default' : 'cursor-text'}`}
+              >
+                <EditorContent editor={editor} className="min-h-[9in] outline-none" />
+              </motion.div>
 
-            {showMention && filteredChars.length > 0 && (
-              <MentionList
-                characters={filteredChars}
-                onSelect={handleSelectCharacter}
-                command={mentionCommand}
-                rect={mentionRect}
+              {showMention && filteredChars.length > 0 && (
+                <MentionList
+                  characters={filteredChars}
+                  onSelect={handleSelectCharacter}
+                  command={mentionCommand}
+                  rect={mentionRect}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Character workspace panel on the right */}
+          <AnimatePresence>
+            {focusCharacterId && characters.find(c => c.id === focusCharacterId) && (
+              <CharacterWorkspacePanel
+                character={characters.find(c => c.id === focusCharacterId) || null}
+                onClose={() => useAppStore.setState({ focusCharacterId: null })}
+                onUpdate={updateCharacter}
               />
             )}
-          </div>
+          </AnimatePresence>
         </div>
       </div>
     </div>

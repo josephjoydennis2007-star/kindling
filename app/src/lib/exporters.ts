@@ -24,7 +24,7 @@ import type {
   ScreenplayElement,
 } from '@/types';
 
-export type ExportFormat = 'pdf' | 'docx' | 'html' | 'md' | 'txt' | 'json';
+export type ExportFormat = 'pdf' | 'docx' | 'html' | 'md' | 'txt' | 'json' | 'fountain' | 'fdx';
 export type ExportTarget = 'writer' | 'director' | 'both';
 
 export interface ExportSelection {
@@ -304,6 +304,91 @@ function blocksToText(blocks: Block[]): string {
   return out.join('\n');
 }
 
+/**
+ * Plain Fountain format — the de facto markdown-for-screenwriters spec.
+ * Other apps (Highland, Final Draft, WriterDuet, KIT Scenarist…) read it.
+ * https://fountain.io/syntax
+ */
+function blocksToFountain(blocks: Block[], title: string): string {
+  const out: string[] = [];
+  // Fountain title page is a key-value block separated from the body by a blank line.
+  if (title) {
+    out.push(`Title: ${title}`);
+    out.push('Credit: written by');
+    out.push('');
+  }
+  for (const b of blocks) {
+    if (b.kind === 'pageBreak') { out.push('', '===', ''); continue; }
+    if (b.kind === 'rule')       { out.push(''); continue; }
+    if (b.kind === 'spacer')     { out.push(''); continue; }
+    if (b.kind === 'list')       { (b.items || []).forEach((i) => out.push('* ' + i)); continue; }
+    if (b.kind === 'h1')         { out.push('', `# ${(b.text || '').toUpperCase()}`); continue; }
+    if (b.kind === 'h2')         { out.push('', `## ${(b.text || '').toUpperCase()}`); continue; }
+    if (b.kind === 'h3' || b.kind === 'h4') { out.push('', (b.text || '').toUpperCase()); continue; }
+
+    const t = (b.text || '').trim();
+    if (!t) { out.push(''); continue; }
+    switch (b.scrFormat) {
+      case 'scene-heading':
+        out.push('', t.toUpperCase());
+        break;
+      case 'character':
+        out.push('', t.toUpperCase());
+        break;
+      case 'parenthetical':
+        out.push(`(${t.replace(/^\(|\)$/g, '')})`);
+        break;
+      case 'dialogue':
+        out.push(t);
+        break;
+      case 'transition':
+        // Fountain transitions start with > or end with TO:
+        out.push('', `> ${t.toUpperCase()}`);
+        break;
+      default:
+        out.push(t);
+    }
+  }
+  return out.join('\n') + '\n';
+}
+
+/**
+ * Final Draft .fdx — XML the FinalDraft.app reads natively. We emit a minimal
+ * but valid FinalDraft 5 document with one <Paragraph Type="..."> per element.
+ */
+function blocksToFdx(blocks: Block[], title: string): string {
+  const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const typeMap: Record<string, string> = {
+    'scene-heading': 'Scene Heading',
+    'action': 'Action',
+    'character': 'Character',
+    'parenthetical': 'Parenthetical',
+    'dialogue': 'Dialogue',
+    'transition': 'Transition',
+  };
+  const paragraphs: string[] = [];
+  for (const b of blocks) {
+    const t = (b.text || '').trim();
+    if (!t && !b.scrFormat) continue;
+    const fdxType = b.scrFormat ? (typeMap[b.scrFormat] || 'Action') : 'Action';
+    paragraphs.push(
+      `    <Paragraph Type="${fdxType}">\n      <Text>${escAttr(t)}</Text>\n    </Paragraph>`
+    );
+  }
+  return `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<FinalDraft DocumentType="Script" Template="No" Version="5">
+  <Content>
+${paragraphs.join('\n')}
+  </Content>
+  <TitlePage>
+    <Content>
+      <Paragraph><Text>${escAttr(title)}</Text></Paragraph>
+    </Content>
+  </TitlePage>
+</FinalDraft>
+`;
+}
+
 function blocksToPdfBlob(blocks: Block[], title: string): Blob {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -518,6 +603,16 @@ export async function exportProject(
       const payload = { selection: sel, storyTitle, ...state };
       blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
       filename = `${baseName}.json`;
+      break;
+    }
+    case 'fountain': {
+      blob = new Blob([blocksToFountain(blocks, storyTitle)], { type: 'text/plain;charset=utf-8' });
+      filename = `${baseName}.fountain`;
+      break;
+    }
+    case 'fdx': {
+      blob = new Blob([blocksToFdx(blocks, storyTitle)], { type: 'application/xml;charset=utf-8' });
+      filename = `${baseName}.fdx`;
       break;
     }
     case 'txt':

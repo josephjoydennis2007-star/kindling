@@ -19,6 +19,7 @@ import type {
   ChatMessage,
   WorkspaceLink,
 } from '@/types';
+import { getTemplate } from '@/lib/storyTemplates';
 
 const COLORS = ['#e76f51','#f4a261','#2a9d8f','#264653','#e9c46a','#9b5de5','#f15bb5','#00bbf9','#fb5607','#8338ec'];
 
@@ -148,6 +149,8 @@ interface AppActions {
 
   // Writer sections
   addSection: (name?: string) => string;
+  addAsset: (asset: Omit<import('@/types').Asset, 'id' | 'addedAt'>) => string;
+  deleteAsset: (id: string) => void;
   updateSection: (id: string, updates: Partial<Section>) => void;
   deleteSection: (id: string) => void;
   setActiveSection: (id: string | null) => void;
@@ -205,6 +208,8 @@ interface AppActions {
   updateBeat: (id: string, updates: Partial<Beat>) => void;
   deleteBeat: (id: string) => void;
   moveBeat: (beatId: string, fromActId: string, toActId: string) => void;
+  reorderBeats: (actId: string, beatIds: string[]) => void;
+  reorderScenes: (sceneIds: string[]) => void;
   reorderShots: (sceneId: string, shotIds: string[]) => void;
   
   // Notes
@@ -253,10 +258,21 @@ export const useAppStore = create<AppState & AppActions>()(
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
+        // Pull a per-type template so a YouTube short doesn't open the same
+        // blank screenplay as a Feature Film.
+        const tpl = getTemplate(story.type);
+        const reset = resetStoryData();
         set((state) => ({
           stories: [...state.stories, story],
           activeStoryId: story.id,
-          ...resetStoryData(),
+          ...reset,
+          screenplay: {
+            ...reset.screenplay!,
+            sections: tpl.sections,
+            activeSectionId: tpl.sections[0]?.id ?? null,
+            elements: tpl.elements,
+            started: true,
+          },
         }));
         return story.id;
       },
@@ -321,6 +337,23 @@ export const useAppStore = create<AppState & AppActions>()(
       setActiveSection: (id) => set((state) => ({
         screenplay: { ...state.screenplay, activeSectionId: id },
       })),
+
+      addAsset: (asset) => {
+        const id = genId();
+        const list = get().screenplay.assets || [];
+        const next = { ...asset, id, addedAt: Date.now() };
+        set((state) => ({
+          screenplay: { ...state.screenplay, assets: [...list, next] },
+        }));
+        return id;
+      },
+      deleteAsset: (id) =>
+        set((state) => ({
+          screenplay: {
+            ...state.screenplay,
+            assets: (state.screenplay.assets || []).filter((a) => a.id !== id),
+          },
+        })),
 
       // ---- Coworkers / chat ----
       addCoworker: (info) => {
@@ -659,6 +692,26 @@ export const useAppStore = create<AppState & AppActions>()(
             s.id === sceneId ? { ...s, shotIds } : s
           ),
         })),
+      reorderBeats: (actId, beatIds) =>
+        set((state) => ({
+          plotBoard: {
+            ...state.plotBoard,
+            acts: state.plotBoard.acts.map((a) => (a.id === actId ? { ...a, beatIds } : a)),
+          },
+        })),
+      reorderScenes: (sceneIds) =>
+        set((state) => {
+          const map = new Map(state.scenes.map((s) => [s.id, s]));
+          const reordered: Scene[] = [];
+          sceneIds.forEach((id, i) => {
+            const s = map.get(id);
+            if (s) { reordered.push({ ...s, order: i }); map.delete(id); }
+          });
+          // Append any scenes that weren't in sceneIds (defensive)
+          let i = reordered.length;
+          for (const s of map.values()) reordered.push({ ...s, order: i++ });
+          return { scenes: reordered };
+        }),
 
       // Notes
       addNote: (text, category) =>

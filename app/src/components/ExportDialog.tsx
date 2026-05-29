@@ -37,12 +37,14 @@ interface Props {
 }
 
 const FORMATS: { id: ExportFormat; label: string; sub: string; icon: any }[] = [
-  { id: 'pdf',  label: 'PDF',           sub: 'Printable, fixed layout',  icon: FileBadge },
-  { id: 'docx', label: 'Word (.docx)',  sub: 'Editable in Word / Pages', icon: FileType2 },
-  { id: 'html', label: 'HTML',          sub: 'Open in any browser',      icon: FileCode },
-  { id: 'md',   label: 'Markdown',      sub: 'For Notion, GitHub, etc.', icon: FileText },
-  { id: 'txt',  label: 'Plain Text',    sub: 'Universal, screenplay-formatted', icon: FileText },
-  { id: 'json', label: 'JSON Backup',   sub: 'Full project backup',      icon: FileJson },
+  { id: 'pdf',      label: 'PDF',           sub: 'Printable, fixed layout',  icon: FileBadge },
+  { id: 'docx',     label: 'Word (.docx)',  sub: 'Editable in Word / Pages', icon: FileType2 },
+  { id: 'fountain', label: 'Fountain',      sub: 'Final Draft / Highland / WriterDuet', icon: FileCode },
+  { id: 'fdx',      label: 'Final Draft',   sub: '.fdx — opens natively in Final Draft', icon: FileCode },
+  { id: 'html',     label: 'HTML',          sub: 'Open in any browser',      icon: FileCode },
+  { id: 'md',       label: 'Markdown',      sub: 'For Notion, GitHub, etc.', icon: FileText },
+  { id: 'txt',      label: 'Plain Text',    sub: 'Universal, screenplay-formatted', icon: FileText },
+  { id: 'json',     label: 'JSON Backup',   sub: 'Full project backup',      icon: FileJson },
 ];
 
 const TARGETS: { id: ExportTarget; label: string; sub: string; icon: any }[] = [

@@ -1,0 +1,20 @@
+{
+  "name": "Kindling — Studio for Writers & Directors",
+  "short_name": "Kindling",
+  "description": "Local-first studio for screenwriters and directors. Scenes, shots, beats, characters, and an AI co-writer — all in your browser, all offline-capable.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#a855f7",
+  "orientation": "any",
+  "categories": ["productivity", "books", "entertainment"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

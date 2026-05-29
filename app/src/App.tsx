@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
-import { StickyNote, Users, Zap } from 'lucide-react';
+import { Users, Zap } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useIndexedDB } from '@/hooks/useIndexedDB';
 import { watchAuth, getProfile, upsertProfile, signOutUser, type UserProfile } from '@/firebase';
@@ -18,6 +18,13 @@ import StatusBar from '@/components/StatusBar';
 import RightPanel from '@/components/RightPanel';
 import StorySelector from '@/components/StorySelector';
 import WorkspaceView from '@/components/WorkspaceView';
+import StoryDashboard from '@/components/StoryDashboard';
+import CalendarView from '@/components/CalendarView';
+import CommandPalette from '@/components/CommandPalette';
+import Onboarding from '@/components/Onboarding';
+import FindReplace from '@/components/FindReplace';
+import StylePane from '@/components/StylePane';
+import CompareOverlay from '@/components/CompareOverlay';
 import ExportDialog from '@/components/ExportDialog';
 import SocialBar from '@/components/SocialBar';
 import SettingsOverlay from '@/components/SettingsOverlay';
@@ -65,11 +72,42 @@ function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [skippedAuth, setSkippedAuth] = useState(false);
+  // skippedAuth is persisted so "Continue without account" is a one-time
+  // decision — the user shouldn't see the sign-in wall on every refresh.
+  const [skippedAuth, _setSkippedAuth] = useState<boolean>(() => {
+    try { return localStorage.getItem('kindling-auth-skipped') === '1'; } catch { return false; }
+  });
+  const setSkippedAuth = useCallback((v: boolean) => {
+    _setSkippedAuth(v);
+    try {
+      if (v) localStorage.setItem('kindling-auth-skipped', '1');
+      else localStorage.removeItem('kindling-auth-skipped');
+    } catch {}
+  }, []);
   const [showProfile, setShowProfile] = useState(false);
+
+  // On mount: if user already skipped auth, mark as checked immediately (don't wait for Firebase)
+  // Also restore any cached profile from localStorage
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('kindling-auth-skipped') === '1') {
+        const cachedProfile = localStorage.getItem('kindling-cached-profile');
+        if (cachedProfile) {
+          const profile = JSON.parse(cachedProfile);
+          setProfile(profile);
+          updateSettings({ userId: profile.uid, userDisplayName: profile.displayName });
+          setUser(null); // local mode
+        }
+        setAuthChecked(true);
+      }
+    } catch {
+      // Silent fail
+    }
+  }, [updateSettings]);
 
   // Watch Firebase auth state; load (or auto-create) profile
   useEffect(() => {
@@ -80,6 +118,8 @@ function App() {
         if (existing) {
           setProfile(existing);
           updateSettings({ userId: u.uid, userDisplayName: existing.displayName });
+          // Cache the profile locally so it can be restored on next refresh
+          try { localStorage.setItem('kindling-cached-profile', JSON.stringify(existing)); } catch {}
         } else if (!u.isAnonymous) {
           // Auto-create skeleton profile + show editor
           const skeleton: UserProfile = {
@@ -94,6 +134,7 @@ function App() {
           await upsertProfile(skeleton);
           setProfile(skeleton);
           updateSettings({ userId: u.uid, userDisplayName: skeleton.displayName });
+          try { localStorage.setItem('kindling-cached-profile', JSON.stringify(skeleton)); } catch {}
           setShowProfile(true);
         }
       }
@@ -125,6 +166,7 @@ function App() {
   useEffect(() => {
     if (!settings.autoSave || !activeStoryId) return;
     const interval = setInterval(() => {
+      document.dispatchEvent(new CustomEvent('writer:saving'));
       addHistory('Auto-save', activeStoryId);
       const next = useAppStore.getState();
       const saveData: Partial<AppState> = {
@@ -139,6 +181,7 @@ function App() {
         history: next.history,
       };
       saveState(activeStoryId, saveData);
+      document.dispatchEvent(new CustomEvent('writer:saved'));
     }, settings.autoSaveInterval);
     return () => clearInterval(interval);
   }, [settings.autoSave, settings.autoSaveInterval, activeStoryId, saveState, addHistory]);
@@ -156,8 +199,9 @@ function App() {
     setShowStorySelector(false);
   }, [loadStory]);
 
-  const handleManualSave = useCallback(() => {
+  const handleManualSave = useCallback(async () => {
     if (!activeStoryId) return;
+    document.dispatchEvent(new CustomEvent('writer:saving'));
     addHistory('Manual save', activeStoryId);
     const state = useAppStore.getState();
     saveState(activeStoryId, {
@@ -172,12 +216,59 @@ function App() {
       history: state.history,
     });
     toast.success('Story saved');
-  }, [activeStoryId, addHistory, saveState]);
+    document.dispatchEvent(new CustomEvent('writer:saved'));
+
+    // Record today's word count for the streak tracker.
+    try {
+      const { recordWords } = await import('@/lib/writingStats');
+      const strip = (h: string) => h.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
+      const words = (state.screenplay.elements || []).reduce((acc, el) => {
+        const text = strip(el.content || '').trim();
+        return text ? acc + text.split(/\s+/).filter(Boolean).length : acc;
+      }, 0);
+      recordWords(words);
+    } catch {/* localStorage disabled */}
+
+    // If a cloud provider is configured, also push there.
+    // Errors are surfaced as toasts but don't block the save.
+    const s = state.settings as any;
+    const json = state.exportStory();
+    try {
+      const { gistPush, jsonbinPush, dropboxPush, supabasePush, webdavPush, isOnline } = await import('@/lib/cloudSync');
+      if (!isOnline()) return;
+      const stamp = () => new Date().toISOString();
+      if (s.githubGistToken) {
+        const r = await gistPush(s.githubGistToken, json, s.githubGistId);
+        if (r.ok) updateSettings({ githubGistId: r.remoteId || s.githubGistId, lastCloudSyncAt: stamp() } as any);
+        else toast.error(`Gist sync: ${r.error}`);
+      }
+      if (s.jsonbinKey) {
+        const r = await jsonbinPush(s.jsonbinKey, json, s.jsonbinId);
+        if (r.ok) updateSettings({ jsonbinId: r.remoteId || s.jsonbinId, lastCloudSyncAt: stamp() } as any);
+        else toast.error(`JSONBin sync: ${r.error}`);
+      }
+      if (s.dropboxToken) {
+        const r = await dropboxPush(s.dropboxToken, json);
+        if (r.ok) updateSettings({ lastCloudSyncAt: stamp() } as any);
+        else toast.error(`Dropbox sync: ${r.error}`);
+      }
+      if (s.supabaseUrl && s.supabaseAnonKey) {
+        const r = await supabasePush(s.supabaseUrl, s.supabaseAnonKey, json);
+        if (r.ok) updateSettings({ lastCloudSyncAt: stamp() } as any);
+        else toast.error(`Supabase sync: ${r.error}`);
+      }
+      if (s.webdavUrl && s.webdavAuth) {
+        const r = await webdavPush(s.webdavUrl, s.webdavAuth, json);
+        if (r.ok) updateSettings({ lastCloudSyncAt: stamp() } as any);
+        else toast.error(`WebDAV sync: ${r.error}`);
+      }
+    } catch {/* network or import error — silent, local save already succeeded */}
+  }, [activeStoryId, addHistory, saveState, updateSettings]);
 
   const handleImport = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json,.txt,.md,.markdown,.fountain,.html,.htm';
+    input.accept = '.json,.txt,.md,.markdown,.fountain,.fdx,.html,.htm';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
@@ -194,6 +285,46 @@ function App() {
     input.click();
   }, []);
 
+  // Live-sync poller — when settings.liveSync is on AND a cloud provider is
+  // configured, pull every 15 seconds. Cheap polling-based "collab" without a
+  // dedicated backend.
+  useEffect(() => {
+    const s = settings as any;
+    if (!(settings as any).liveSync) return;
+    const haveProvider = !!(s.githubGistToken && s.githubGistId)
+      || !!(s.jsonbinKey && s.jsonbinId)
+      || !!s.dropboxToken
+      || !!(s.supabaseUrl && s.supabaseAnonKey)
+      || !!(s.webdavUrl && s.webdavAuth);
+    if (!haveProvider) return;
+
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const cs = await import('@/lib/cloudSync');
+        if (!cs.isOnline()) return;
+        let res: Awaited<ReturnType<typeof cs.gistPull>> | null = null;
+        if (s.githubGistToken && s.githubGistId)         res = await cs.gistPull(s.githubGistToken, s.githubGistId);
+        else if (s.jsonbinKey && s.jsonbinId)            res = await cs.jsonbinPull(s.jsonbinKey, s.jsonbinId);
+        else if (s.dropboxToken)                         res = await cs.dropboxPull(s.dropboxToken);
+        else if (s.webdavUrl && s.webdavAuth)            res = await cs.webdavPull(s.webdavUrl, s.webdavAuth);
+        else if (s.supabaseUrl && s.supabaseAnonKey)     res = await cs.supabasePull(s.supabaseUrl, s.supabaseAnonKey);
+        if (!res || !res.ok || !res.data) return;
+        // Only import if the cloud data is newer than what we have. We use the
+        // exportedAt field that exportStory writes; on first pull we always
+        // accept.
+        try {
+          const remote = JSON.parse(res.data);
+          const local = JSON.parse(useAppStore.getState().exportStory());
+          if (typeof remote.exportedAt === 'number' && typeof local.exportedAt === 'number' && remote.exportedAt <= local.exportedAt) return;
+          useAppStore.getState().importStory(res.data);
+        } catch {/* malformed remote */}
+      } catch {/* network glitch */}
+    }, 15_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [settings]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -203,6 +334,36 @@ function App() {
       else if (mod && e.key === '.') { e.preventDefault(); toggleFocusMode(); }
       else if (mod && e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); setShowExport(true); }
       else if (mod && e.key === ',') { e.preventDefault(); setShowSettings(true); }
+      else if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); setShowPalette((v) => !v); }
+      else if (mod && e.key.toLowerCase() === 'f' && useAppStore.getState().activeTab === 'writer') {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('writer:findOpen'));
+      }
+      else if (mod && e.shiftKey && e.key.toLowerCase() === 's' && useAppStore.getState().activeTab === 'writer') {
+        // Ctrl/Cmd+Shift+S → toggle Style assistant
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('writer:openStyle'));
+      }
+      else if (mod && e.shiftKey && e.key.toLowerCase() === 'c') {
+        // Ctrl/Cmd+Shift+C → toggle Compare overlay
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('writer:openCompare'));
+      }
+      // 'b' on the Plot tab quick-adds a beat to the first act, unless typing
+      // in an input.
+      else if (
+        e.key.toLowerCase() === 'b' && !mod &&
+        useAppStore.getState().activeTab === 'plot' &&
+        !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))
+      ) {
+        const state = useAppStore.getState();
+        const firstActId = state.plotBoard?.acts?.[0]?.id;
+        if (firstActId) {
+          e.preventDefault();
+          state.addBeat(firstActId);
+          toast('Beat added — type to name it');
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -326,6 +487,7 @@ function App() {
 
   return (
     <div className={`app-container ${isFocusMode ? 'focus-mode' : ''}`}>
+      <a href="#main-content" className="skip-link">Skip to content</a>
       <Toaster theme={settings.theme === 'light' ? 'light' : 'dark'} position="bottom-right" richColors />
       {isFocusMode && (
         <button
@@ -373,7 +535,7 @@ function App() {
         />
       )}
 
-      <div className="main-area">
+      <div className="main-area" id="main-content" role="main">
         <Toolbar
           activeTab={activeTab}
           onToggleFocusMode={toggleFocusMode}
@@ -438,6 +600,7 @@ function App() {
                   onUpdateBeat={(id, updates) => useAppStore.getState().updateBeat(id, updates)}
                   onDeleteBeat={(id) => useAppStore.getState().deleteBeat(id)}
                   onMoveBeat={(beatId, fromActId, toActId) => useAppStore.getState().moveBeat(beatId, fromActId, toActId)}
+                  onReorderBeats={(actId, ids) => useAppStore.getState().reorderBeats(actId, ids)}
                 />
               </div>
             )}
@@ -447,15 +610,26 @@ function App() {
                 <WorkspaceView />
               </div>
             )}
+
+            {activeTab === 'dashboard' && (
+              <div key="dashboard" className="h-full">
+                <StoryDashboard />
+              </div>
+            )}
+
+            {activeTab === 'calendar' && (
+              <div key="calendar" className="h-full">
+                <CalendarView />
+              </div>
+            )}
         </div>
 
         {!isFocusMode && activeTab === 'writer' && (
           <CharacterBar
             characters={characters}
-            onCharacterClick={() => {
-              useAppStore.setState({ rightPanel: 'characters' });
-            }}
+            onCharacterClick={(id) => useAppStore.getState().focusCharacter(id)}
             onAddCharacter={() => togglePanel('characters')}
+            onOpenAllCharacters={() => useAppStore.setState({ rightPanel: 'characters' })}
           />
         )}
 
@@ -496,30 +670,41 @@ function App() {
         />
       )}
 
-      {!isFocusMode && (
+      {!isFocusMode && !showStorySelector && (
         <FloatingActionButton
           isFocusMode={isFocusMode}
           actions={[
             {
-              id: 'new-note',
-              label: 'Add Note',
-              icon: StickyNote,
-              color: 'bg-gradient-to-br from-amber-500 to-orange-600 text-white',
-              onClick: () => addNote('New note', 'general')
-            },
-            {
               id: 'new-character',
-              label: 'New Character',
+              label: 'Add Character',
               icon: Users,
               color: 'bg-gradient-to-br from-blue-500 to-cyan-600 text-white',
-              onClick: () => useAppStore.getState().addCharacter({ name: 'New Character', displayName: 'New Character', description: '', color: '#3b82f6', image: null, backstory: '', goals: '', personality: '', age: '', occupation: '', motivation: '', conflict: '', relationships: '', notes: '', voiceAudio: null, tags: [], createdAt: Date.now() })
+              onClick: () => {
+                useAppStore.getState().addCharacter({
+                  name: 'New Character', displayName: 'New Character', description: '',
+                  color: '#3b82f6', image: null, backstory: '', goals: '', personality: '',
+                  age: '', occupation: '', motivation: '', conflict: '', relationships: '',
+                  notes: '', voiceAudio: null, tags: [], createdAt: Date.now(),
+                });
+                useAppStore.setState({ rightPanel: 'characters' });
+                toast.success('Character added — fill in their profile');
+              },
             },
             {
               id: 'add-beat',
               label: 'Add Beat',
               icon: Zap,
               color: 'bg-gradient-to-br from-purple-500 to-pink-600 text-white',
-              onClick: () => { if (plotBoard?.acts?.[0]?.id) addBeat(plotBoard.acts[0].id); }
+              onClick: () => {
+                const actId = plotBoard?.acts?.[0]?.id;
+                if (actId) {
+                  addBeat(actId);
+                  setTab('plot');
+                  toast.success('Beat added');
+                } else {
+                  toast.error('Create an act first on the Plot board');
+                }
+              },
             },
           ]}
         />
@@ -527,6 +712,17 @@ function App() {
 
       <ExportDialog open={showExport} onClose={() => setShowExport(false)} />
       <SettingsOverlay open={showSettings} onClose={() => setShowSettings(false)} />
+      <Onboarding />
+      <FindReplace />
+      <StylePane />
+      <CompareOverlay />
+      <CommandPalette
+        open={showPalette}
+        onClose={() => setShowPalette(false)}
+        onSave={handleManualSave}
+        onExport={() => setShowExport(true)}
+        onSettings={() => setShowSettings(true)}
+      />
 
       {profile && (
         <ProfileEditor

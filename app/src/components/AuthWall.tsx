@@ -25,15 +25,29 @@ export default function AuthWall({ onSignedIn }: Props) {
 
   const doGoogle = async () => {
     if (!isFirebaseConfigured) {
-      toast.error('Firebase is not configured yet — see SETUP.md');
+      toast.error('Firebase is not configured — to enable Google sign-in, add your Firebase credentials to .env (see SETUP.md)');
       return;
     }
     setBusy(true); setErr(null);
     try {
       const u = await signInWithGoogle();
-      if (u) onSignedIn(u, 'firebase');
+      if (u) {
+        onSignedIn(u, 'firebase');
+      } else {
+        // Redirect happened, user will be bounced back by Firebase
+        toast.info('Completing Google sign-in...');
+      }
     } catch (e: any) {
-      setErr(humanError(e));
+      const humanMsg = humanError(e);
+      setErr(humanMsg);
+      // Log the full error for debugging
+      if (e?.code === 'auth/popup-blocked') {
+        toast.error('Pop-up blocked — please enable pop-ups for this site and try again');
+      } else if (e?.code === 'auth/network-request-failed') {
+        toast.error('Network error — check your internet connection');
+      } else if (e?.message?.includes('Firebase')) {
+        toast.error('Firebase error — is it configured in .env? See SETUP.md');
+      }
     } finally { setBusy(false); }
   };
 
@@ -42,12 +56,22 @@ export default function AuthWall({ onSignedIn }: Props) {
       toast.error('Firebase is not configured yet — see SETUP.md');
       return;
     }
+    if (!email || !password) {
+      toast.error('Email and password required');
+      return;
+    }
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
     setBusy(true); setErr(null);
     try {
       const u = mode === 'signin' ? await signInEmail(email, password) : await signUpEmail(email, password);
       onSignedIn(u, 'firebase');
     } catch (e: any) {
-      setErr(humanError(e));
+      const humanMsg = humanError(e);
+      setErr(humanMsg);
+      toast.error(humanMsg);
     } finally { setBusy(false); }
   };
 

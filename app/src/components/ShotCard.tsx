@@ -7,6 +7,7 @@ import {
   Film,
   X,
   Camera,
+  ImagePlus,
 } from 'lucide-react';
 import type { Shot, BRoll, Character, ShotType } from '@/types';
 
@@ -116,15 +117,85 @@ export default function ShotCard({
           className="w-full min-h-[60px] bg-transparent border-none text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none resize-y"
         />
 
-        {/* Camera / movement */}
-        <div className="flex items-center gap-2 mt-2">
+        {/* Camera / movement + lens + duration */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
           <Camera className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" />
           <input
             defaultValue={shot.camera}
             onBlur={(e) => onUpdate(shot.id, { camera: e.target.value })}
-            placeholder="Camera & movement (e.g. dolly in, handheld, 35mm)"
-            className="flex-1 bg-transparent border-none text-xs text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] outline-none"
+            placeholder="Camera & movement (e.g. dolly in, handheld)"
+            className="flex-1 min-w-[120px] bg-transparent border-none text-xs text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] outline-none"
           />
+          <input
+            defaultValue={shot.lens || ''}
+            onBlur={(e) => onUpdate(shot.id, { lens: e.target.value } as any)}
+            placeholder="Lens"
+            title="Lens (e.g. 35mm)"
+            className="w-20 px-2 py-1 bg-[var(--card)] border border-[var(--border)] rounded text-[11px] text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+          />
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            defaultValue={shot.durationSec || ''}
+            onBlur={(e) => onUpdate(shot.id, { durationSec: Number(e.target.value) || 0 } as any)}
+            placeholder="0s"
+            title="Duration in seconds"
+            className="w-16 px-2 py-1 bg-[var(--card)] border border-[var(--border)] rounded text-[11px] text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] text-right"
+          />
+        </div>
+
+        {/* Storyboard image — also a drop target for AssetsPanel image drags. */}
+        <div
+          className="mt-3"
+          onDragOver={(e) => {
+            // Accept image-asset drags as a copy.
+            if (e.dataTransfer.types.includes('application/x-kindling-asset')) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }
+          }}
+          onDrop={(e) => {
+            const uri = e.dataTransfer.getData('text/uri-list');
+            if (uri) {
+              e.preventDefault();
+              onUpdate(shot.id, { storyboard: uri } as any);
+            }
+          }}
+        >
+          {shot.storyboard ? (
+            <div className="relative inline-block group/img">
+              <img
+                src={shot.storyboard}
+                alt="storyboard"
+                className="max-h-32 rounded-lg border border-[var(--border)] object-cover"
+              />
+              <button
+                onClick={() => onUpdate(shot.id, { storyboard: null } as any)}
+                className="absolute top-1 right-1 p-1 rounded-full bg-black/70 text-white opacity-0 group-hover/img:opacity-100 hover:bg-red-500 transition-opacity"
+                title="Remove storyboard"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <label className="inline-flex items-center gap-1.5 px-2 py-1 bg-[var(--card)] border border-dashed border-[var(--border)] rounded-md text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer transition-colors">
+              <ImagePlus className="w-3 h-3" />
+              Add storyboard
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => onUpdate(shot.id, { storyboard: reader.result as string } as any);
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </label>
+          )}
         </div>
 
         {/* B-Rolls */}

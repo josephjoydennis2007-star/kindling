@@ -18,7 +18,7 @@
     --border-light: #3a3a4a;
     --text: #e8e8e8;
     --text-secondary: #a0a0a0;
-    --text-muted: #6b6b7b;
+    --text-muted: #8a8a99; /* bumped from #6b6b7b for WCAG 4.5:1 against --bg */
     --danger: #e76f51;
     --success: #2a9d8f;
     --info: #4cc9f0;
@@ -140,15 +140,68 @@
       width: 100% !important;
       top: 0 !important;
       bottom: 0 !important;
+      z-index: 110;
+    }
+    /* The toolbar's secondary content (Format chip + format buttons + Add
+       Section) wraps onto a second row on phones so nothing overflows. */
+    .toolbar {
+      height: auto;
+      min-height: 52px;
+      flex-wrap: wrap;
+      padding: 6px 10px;
+      row-gap: 6px;
+    }
+    .toolbar button {
+      min-height: 36px;   /* Apple/Material recommended tap target */
+    }
+    /* Make every standalone icon button big enough to tap reliably. */
+    button[title] svg { min-width: 14px; min-height: 14px; }
+    .status-bar {
+      padding: 0 10px;
+      gap: 12px;
+      font-size: 10px;
+    }
+    .character-bar {
+      padding: 0 10px;
+      gap: 8px;
+      height: 56px;
+    }
+  }
+
+  /* Phone-specific — under 640px the dashboard goes single column and
+     primary toolbar buttons get bigger tap targets. */
+  @media (max-width: 640px) {
+    .toolbar {
+      padding: 6px 8px;
+    }
+    .toolbar button {
+      min-height: 44px;          /* iOS HIG recommended minimum */
+      min-width: 44px;
+    }
+    .character-bar .char-chip {
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+    /* The Director scene-list buttons get a wider hit area. */
+    .director-scene-row {
+      padding: 12px 14px !important;
     }
   }
 
   .main-area {
-    flex: 1;
+    flex: 1 1 0%;
+    min-width: 0;                /* allow flex shrink so the sidebar resize
+                                    doesn't push the toolbar / border off */
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: relative;
+    border-left: 0;              /* no double border with sidebar's border-right */
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .view-container > * {
+    min-width: 0;                /* same trick one level deeper for the tabs */
   }
 
   .toolbar {
@@ -365,6 +418,59 @@
   .animate-pulse-slow {
     animation: pulse 2s ease-in-out infinite;
   }
+
+  /* ---- Accessibility ---- */
+
+  /* Visible focus ring for keyboard navigation. Mouse clicks don't show it
+     (UA :focus-visible logic). */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Skip-to-content link — hidden until focused via Tab */
+  .skip-link {
+    position: fixed;
+    top: -100px;
+    left: 12px;
+    z-index: 1000;
+    background: var(--accent);
+    color: var(--bg);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 12px;
+    transition: top 0.2s;
+  }
+  .skip-link:focus {
+    top: 12px;
+  }
+
+  /* Honour reduced-motion users */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+
+  /* Hemingway-style focus typing: dim everything except the paragraph the
+     cursor is in. Activated by adding .focus-typing on the editor wrapper.
+     The active paragraph is marked with .is-active-paragraph from JS. */
+  .focus-typing .ProseMirror > * {
+    transition: opacity 0.3s ease, filter 0.3s ease;
+    opacity: 0.25;
+    filter: blur(0.3px);
+  }
+  .focus-typing .ProseMirror > .is-active-paragraph {
+    opacity: 1;
+    filter: none;
+  }
+
+  /* Reading mode — present the page like a finished script */
+  .reading-mode .ProseMirror { caret-color: transparent; }
+  .reading-mode .ProseMirror p { user-select: text; }
 
   /* Focus mode */
   .focus-mode .sidebar,

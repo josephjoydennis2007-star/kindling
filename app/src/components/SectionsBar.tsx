@@ -93,41 +93,58 @@ export default function SectionsBar({
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className="absolute right-0 top-full mt-1 z-50 w-72 p-3 bg-[var(--panel)] border border-[var(--border)] rounded-lg shadow-2xl"
+                className="absolute right-0 top-full mt-2 z-50 w-[min(640px,calc(100vw-2rem))] p-4 bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl"
               >
-                <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-2">
-                  Choose a preset…
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[11px] uppercase tracking-wider text-[var(--text-muted)] font-bold">
+                    Add a section
+                  </div>
+                  <button
+                    onClick={() => setShowAdd(false)}
+                    className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]"
+                    title="Close"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 gap-1 mb-3 max-h-44 overflow-y-auto">
+
+                {/* Everything visible at once — no tiny scroll. */}
+                <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-2">
+                  Common presets
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mb-4">
                   {SUGGESTED_NAMES.map((n) => (
                     <button
                       key={n}
                       onClick={() => add(n)}
-                      className="text-left text-[11px] px-2 py-1.5 rounded bg-[var(--card)] hover:bg-[var(--hover)] hover:text-[var(--accent)] transition-colors text-[var(--text-secondary)]"
+                      className="text-left text-[11px] px-2.5 py-2 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all text-[var(--text-secondary)]"
                     >
                       {n}
                     </button>
                   ))}
                 </div>
-                <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-1">
-                  …or name it yourself
+
+                <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-2">
+                  Or name your own
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-2">
                   <input
                     value={customName}
                     onChange={(e) => setCustomName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && customName.trim()) add(customName.trim());
                     }}
-                    placeholder="Section name"
+                    placeholder="Section name (e.g. Pre-credits, Investigation, Climax)"
                     autoFocus
-                    className="flex-1 px-2 py-1.5 text-xs bg-[var(--bg)] border border-[var(--border)] rounded outline-none focus:border-[var(--accent)] text-[var(--text)]"
+                    className="flex-1 px-3 py-2 text-xs bg-[var(--bg)] border border-[var(--border)] rounded-md outline-none focus:border-[var(--accent)] text-[var(--text)] placeholder:text-[var(--text-muted)]"
                   />
                   <button
                     onClick={() => customName.trim() && add(customName.trim())}
-                    className="px-3 py-1.5 bg-[var(--accent)] text-[var(--bg)] rounded text-xs font-semibold"
+                    disabled={!customName.trim()}
+                    className="px-4 py-2 bg-[var(--accent)] text-[var(--bg)] rounded-md text-xs font-semibold disabled:opacity-40 flex items-center gap-1.5"
                   >
                     <BookmarkPlus className="w-3.5 h-3.5" />
+                    Add
                   </button>
                 </div>
               </motion.div>

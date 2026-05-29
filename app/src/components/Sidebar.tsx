@@ -10,7 +10,6 @@ import {
   Settings,
   Plus,
   ChevronDown,
-  FileText,
   Download,
   Upload,
   PanelLeftClose,
@@ -20,8 +19,13 @@ import {
   Briefcase,
   Bot,
   Users2,
+  Sparkles,
+  Image as ImageIcon,
+  CalendarDays,
 } from 'lucide-react';
 import type { Story } from '@/types';
+import { t } from '@/lib/i18n';
+import { useAppStore } from '@/store/useAppStore';
 
 interface SidebarProps {
   activeTab: string;
@@ -41,11 +45,13 @@ interface SidebarProps {
   onOpenSettings?: () => void;
 }
 
-const tabs = [
-  { id: 'writer', label: 'Writer', icon: PenLine },
-  { id: 'director', label: 'Director', icon: Clapperboard },
-  { id: 'plot', label: 'Plot', icon: LayoutGrid },
-  { id: 'workspace', label: 'Workspace', icon: Briefcase },
+const TAB_DEFS = [
+  { id: 'dashboard', key: 'tab.dashboard', icon: Sparkles },
+  { id: 'writer',    key: 'tab.writer',    icon: PenLine },
+  { id: 'director',  key: 'tab.director',  icon: Clapperboard },
+  { id: 'plot',      key: 'tab.plot',      icon: LayoutGrid },
+  { id: 'calendar',  key: 'tab.calendar',  icon: CalendarDays },
+  { id: 'workspace', key: 'tab.workspace', icon: Briefcase },
 ];
 
 export default function Sidebar({
@@ -68,9 +74,12 @@ export default function Sidebar({
   onOpenProfile,
   onSignOut,
 }: SidebarProps & { user?: { displayName?: string | null; photoURL?: string | null; email?: string | null } | null; onOpenProfile?: () => void; onSignOut?: () => void }) {
-  const [showStories, setShowStories] = useState(false);
   const [showUser, setShowUser] = useState(false);
   const currentStory = stories.find(s => s.id === activeStoryId);
+  // Backwards-compat: the old dropdown state is no longer used since stories
+  // are shown inline now.
+  const showStories = false;
+  const locale = (useAppStore((s) => (s.settings as any).locale) as ('en'|'es'|'fr')) || 'en';
 
   const handleNav = (fn: () => void) => {
     fn();
@@ -109,56 +118,43 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Story selector */}
+        {/* Story switcher — inline list (Notion-style). Each entry shows a
+            color dot tied to its type. Click to switch, "+ New" at the bottom. */}
         {!collapsed && (
-          <div className="relative">
-            <button
-              onClick={() => setShowStories(!showStories)}
-              className="w-full flex items-center gap-2 px-3 py-2 bg-[var(--card)] rounded-lg border border-[var(--border)] hover:border-[var(--accent)] transition-all text-left"
-            >
-              <FileText className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />
-              <span className="text-xs font-medium truncate flex-1">
-                {currentStory?.title || 'Select Story'}
-              </span>
-              <ChevronDown className={`w-3 h-3 text-[var(--text-muted)] transition-transform ${showStories ? 'rotate-180' : ''}`} />
-            </button>
-
-            <AnimatePresence>
-              {showStories && (
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  className="absolute top-full left-0 right-0 mt-1 bg-[var(--panel)] border border-[var(--border)] rounded-lg shadow-xl z-50 overflow-hidden"
-                >
-                  {stories.map(story => (
-                    <button
-                      key={story.id}
-                      onClick={() => {
-                        onStoryChange(story.id);
-                        setShowStories(false);
-                        onCloseMobile();
-                      }}
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-[var(--hover)] transition-colors ${
-                        story.id === activeStoryId ? 'text-[var(--accent)] bg-[var(--hover)]' : 'text-[var(--text-secondary)]'
-                      }`}
-                    >
-                      {story.title}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => {
-                      onShowStorySelector();
-                      setShowStories(false);
-                      onCloseMobile();
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs text-[var(--accent)] hover:bg-[var(--hover)] border-t border-[var(--border)] flex items-center gap-2"
-                  >
-                    <Plus className="w-3 h-3" /> New Story
-                  </button>
-                </motion.div>
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between px-2 mb-1">
+              <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">Stories</span>
+              <span className="text-[9px] text-[var(--text-muted)]">{stories.length}</span>
+            </div>
+            <div className="max-h-44 overflow-y-auto pr-1 -mr-1">
+              {stories.length === 0 && (
+                <p className="text-[10px] text-[var(--text-muted)] px-2 py-1.5 italic">No stories yet</p>
               )}
-            </AnimatePresence>
+              {stories.map((story) => {
+                const isActive = story.id === activeStoryId;
+                const typeColor = storyTypeColor(story.type);
+                return (
+                  <button
+                    key={story.id}
+                    onClick={() => { onStoryChange(story.id); onCloseMobile(); }}
+                    title={`${story.title} · ${story.type || 'movie'}`}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-xs transition-colors ${
+                      isActive ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: typeColor }} aria-hidden />
+                    <span className="truncate flex-1 font-medium">{story.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => { onShowStorySelector(); onCloseMobile(); }}
+              className="w-full mt-1 flex items-center gap-2 px-2 py-1.5 rounded-md text-[11px] text-[var(--accent)] hover:bg-[var(--hover)] border border-dashed border-[var(--border)]"
+            >
+              <Plus className="w-3 h-3" /> New story
+            </button>
+            <div className="hidden">{showStories ? '' : ''}{currentStory?.title}</div>
           </div>
         )}
       </div>
@@ -166,23 +162,26 @@ export default function Sidebar({
       {/* Tabs — wrap into rows so they aren't crushed when 4 are present */}
       <div className={`p-3 border-b border-[var(--border)] space-y-2 ${collapsed ? 'flex flex-col gap-1' : ''}`}>
         <div className="grid grid-cols-2 gap-2">
-          {tabs.map((tab) => (
-            <motion.button
-              key={tab.id}
-              onClick={() => handleNav(() => onTabChange(tab.id))}
-              title={tab.label}
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              className={`flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl text-[11px] font-semibold uppercase tracking-wider transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white shadow-lg ring-2 ring-offset-2 ring-offset-[var(--bg)] ring-purple-400'
-                  : 'text-[var(--text-secondary)] bg-[var(--card)]/60 hover:bg-[var(--card)] border border-[var(--border)]/50 hover:border-[var(--accent)]/50'
-              }`}
-            >
-              <tab.icon className="w-4 h-4 flex-shrink-0" />
-              {!collapsed && <span>{tab.label}</span>}
-            </motion.button>
-          ))}
+          {TAB_DEFS.map((tab) => {
+            const label = t(tab.key, locale);
+            return (
+              <motion.button
+                key={tab.id}
+                onClick={() => handleNav(() => onTabChange(tab.id))}
+                title={label}
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.95 }}
+                className={`flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl text-[11px] font-semibold uppercase tracking-wider transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white shadow-lg ring-2 ring-offset-2 ring-offset-[var(--bg)] ring-purple-400'
+                    : 'text-[var(--text-secondary)] bg-[var(--card)]/60 hover:bg-[var(--card)] border border-[var(--border)]/50 hover:border-[var(--accent)]/50'
+                }`}
+              >
+                <tab.icon className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span>{label}</span>}
+              </motion.button>
+            );
+          })}
         </div>
       </div>
 
@@ -199,7 +198,7 @@ export default function Sidebar({
             {activeTab === 'writer' && (
               <SidebarItem
                 icon={Lightbulb}
-                label="Instructions"
+                label={t('sb.instructions', locale)}
                 collapsed={collapsed}
                 active={rightPanel === 'instructions'}
                 onClick={() => handleNav(() => onTogglePanel('instructions'))}
@@ -207,38 +206,45 @@ export default function Sidebar({
             )}
             <SidebarItem
               icon={StickyNote}
-              label="Notes"
+              label={t('sb.notes', locale)}
               collapsed={collapsed}
               active={rightPanel === 'notes'}
               onClick={() => handleNav(() => onTogglePanel('notes'))}
             />
             <SidebarItem
               icon={Users}
-              label="Characters"
+              label={t('sb.characters', locale)}
               collapsed={collapsed}
               active={rightPanel === 'characters'}
               onClick={() => handleNav(() => onTogglePanel('characters'))}
             />
             <SidebarItem
               icon={History}
-              label="History"
+              label={t('sb.history', locale)}
               collapsed={collapsed}
               active={rightPanel === 'history'}
               onClick={() => handleNav(() => onTogglePanel('history'))}
             />
             <SidebarItem
               icon={Users2}
-              label="Collaborate"
+              label={t('sb.collaborate', locale)}
               collapsed={collapsed}
               active={rightPanel === 'collab'}
               onClick={() => handleNav(() => onTogglePanel('collab'))}
             />
             <SidebarItem
               icon={Bot}
-              label="AI Helper"
+              label={t('sb.ai_helper', locale)}
               collapsed={collapsed}
               active={rightPanel === 'ai'}
               onClick={() => handleNav(() => onTogglePanel('ai'))}
+            />
+            <SidebarItem
+              icon={ImageIcon}
+              label={t('sb.assets', locale)}
+              collapsed={collapsed}
+              active={rightPanel === 'assets'}
+              onClick={() => handleNav(() => onTogglePanel('assets'))}
             />
           </div>
         </div>
@@ -253,19 +259,19 @@ export default function Sidebar({
           <div className="space-y-0.5">
             <SidebarItem
               icon={Settings}
-              label="App Settings"
+              label={t('sb.app_settings', locale)}
               collapsed={collapsed}
               onClick={() => handleNav(() => onOpenSettings?.())}
             />
             <SidebarItem
               icon={Download}
-              label="Export"
+              label={t('sb.export', locale)}
               collapsed={collapsed}
               onClick={() => handleNav(onExport)}
             />
             <SidebarItem
               icon={Upload}
-              label="Import"
+              label={t('sb.import', locale)}
               collapsed={collapsed}
               onClick={() => handleNav(onImport)}
             />
@@ -273,43 +279,96 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* User chip */}
-      {user && (
-        <div className="relative border-t border-[var(--border)] p-2">
-          <button
-            onClick={() => setShowUser((v) => !v)}
-            className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-[var(--hover)] transition-all ${collapsed ? 'justify-center' : ''}`}
-          >
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 flex items-center justify-center text-[10px] font-bold text-white overflow-hidden flex-shrink-0">
-              {user.photoURL ? <img src={user.photoURL} alt="" className="w-full h-full object-cover" /> : (user.displayName || user.email || 'U').charAt(0).toUpperCase()}
-            </div>
-            {!collapsed && (
-              <div className="flex-1 min-w-0 text-left">
-                <div className="text-xs font-semibold text-[var(--text)] truncate">{user.displayName || user.email || 'You'}</div>
-                <div className="text-[10px] text-[var(--text-muted)] truncate">{user.email || 'Local profile'}</div>
+      {/* User dock — always visible. In local-only mode the user is null, but
+          we still show a profile chip with "You / Local profile" so it behaves
+          like a real user dock (Claude-app style). */}
+      <div className="relative border-t border-[var(--border)] p-2 flex-shrink-0 bg-[var(--sidebar)]">
+        <button
+          onClick={() => setShowUser((v) => !v)}
+          className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-[var(--hover)] transition-all ${collapsed ? 'justify-center' : ''}`}
+          title={user?.displayName || user?.email || 'You'}
+        >
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 flex items-center justify-center text-xs font-bold text-white overflow-hidden flex-shrink-0 ring-2 ring-[var(--bg)] shadow">
+            {user?.photoURL
+              ? <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+              : (user?.displayName || user?.email || 'Y').charAt(0).toUpperCase()}
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0 text-left">
+              <div className="text-xs font-semibold text-[var(--text)] truncate">
+                {user?.displayName || user?.email || 'You'}
               </div>
-            )}
-          </button>
+              <div className="text-[10px] text-[var(--text-muted)] truncate flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                {user?.email || 'Local profile'}
+              </div>
+            </div>
+          )}
+          {!collapsed && (
+            <ChevronDown className={`w-3 h-3 text-[var(--text-muted)] transition-transform ${showUser ? 'rotate-180' : ''}`} />
+          )}
+        </button>
+
+        <AnimatePresence>
           {showUser && (
-            <div className="absolute bottom-full left-2 right-2 mb-1 bg-[var(--panel)] border border-[var(--border)] rounded-lg shadow-2xl overflow-hidden z-50">
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="absolute bottom-full left-2 right-2 mb-1 bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden z-50"
+            >
+              <div className="px-3 py-2 border-b border-[var(--border)] bg-[var(--card)]">
+                <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">Account</div>
+                <div className="text-xs text-[var(--text)] truncate font-medium">{user?.displayName || 'You'}</div>
+                <div className="text-[10px] text-[var(--text-muted)] truncate">{user?.email || 'No account — local only'}</div>
+              </div>
               <button
                 onClick={() => { setShowUser(false); onOpenProfile?.(); }}
-                className="w-full text-left px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
+                className="w-full text-left px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] flex items-center gap-2"
               >
+                <Users className="w-3.5 h-3.5" />
                 Edit profile
               </button>
               <button
-                onClick={() => { setShowUser(false); onSignOut?.(); }}
-                className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/10"
+                onClick={() => { setShowUser(false); onOpenSettings?.(); }}
+                className="w-full text-left px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] flex items-center gap-2"
               >
-                Sign out
+                <Settings className="w-3.5 h-3.5" />
+                Settings
               </button>
-            </div>
+              <button
+                onClick={() => { setShowUser(false); onSignOut?.(); }}
+                className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 border-t border-[var(--border)] flex items-center gap-2"
+              >
+                <X className="w-3.5 h-3.5" />
+                {user ? 'Sign out' : 'Reset session'}
+              </button>
+            </motion.div>
           )}
-        </div>
-      )}
+        </AnimatePresence>
+      </div>
     </aside>
   );
+}
+
+/** Color dot per story type — matches the Story Selector theme. */
+function storyTypeColor(type?: string): string {
+  switch (type) {
+    case 'tv-series': return '#ec4899';
+    case 'tv-show': return '#f59e0b';
+    case 'mini-series': return '#6366f1';
+    case 'thriller': return '#dc2626';
+    case 'documentary': return '#10b981';
+    case 'short-film': return '#06b6d4';
+    case 'music-video': return '#a855f7';
+    case 'commercial': return '#f97316';
+    case 'youtube': return '#ef4444';
+    case 'web-series': return '#0ea5e9';
+    case 'stage-play': return '#9333ea';
+    case 'animation': return '#14b8a6';
+    case 'movie':
+    default: return '#3b82f6';
+  }
 }
 
 function SidebarItem({ icon: Icon, label, active, onClick, collapsed }: { icon: any; label: string; active?: boolean; onClick: () => void; collapsed?: boolean }) {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutGrid,
   Plus,
@@ -10,6 +10,8 @@ import {
   Layers,
 } from 'lucide-react';
 import type { Act, Beat } from '@/types';
+import { BEAT_SHEETS } from '@/lib/beatSheets';
+import { Wand2 } from 'lucide-react';
 
 interface PlotBoardViewProps {
   plotBoard: { acts: Act[] };
@@ -21,7 +23,25 @@ interface PlotBoardViewProps {
   onUpdateBeat: (id: string, updates: Partial<Beat>) => void;
   onDeleteBeat: (id: string) => void;
   onMoveBeat: (beatId: string, fromActId: string, toActId: string) => void;
+  onReorderBeats?: (actId: string, beatIds: string[]) => void;
 }
+
+// Soft color suggestions per beat type so they read at a glance.
+const BEAT_TYPE_COLORS: Record<string, string> = {
+  setup: '#3b82f6',
+  hook: '#f97316',
+  inciting: '#eab308',
+  turn: '#a855f7',
+  twist: '#ec4899',
+  midpoint: '#06b6d4',
+  crisis: '#ef4444',
+  climax: '#dc2626',
+  payoff: '#22c55e',
+  tag: '#64748b',
+  other: '#94a3b8',
+};
+
+const BEAT_TYPES = ['setup', 'hook', 'inciting', 'turn', 'twist', 'midpoint', 'crisis', 'climax', 'payoff', 'tag', 'other'] as const;
 
 export default function PlotBoardView({
   plotBoard,
@@ -33,10 +53,13 @@ export default function PlotBoardView({
   onUpdateBeat,
   onDeleteBeat,
   onMoveBeat,
+  onReorderBeats,
 }: PlotBoardViewProps) {
   const [draggedBeat, setDraggedBeat] = useState<string | null>(null);
   const [dragOverAct, setDragOverAct] = useState<string | null>(null);
+  const [dragOverBeat, setDragOverBeat] = useState<string | null>(null);
   const [justAddedBeat, setJustAddedBeat] = useState<string | null>(null);
+  const [expandedBeat, setExpandedBeat] = useState<string | null>(null);
 
   const handleDragStart = (beatId: string) => {
     setDraggedBeat(beatId);
@@ -54,16 +77,50 @@ export default function PlotBoardView({
 
   const handleDrop = (e: React.DragEvent, targetActId: string) => {
     e.preventDefault();
-    if (!draggedBeat) return;
-
-    const beat = beats[draggedBeat];
-    if (!beat || beat.actId === targetActId) {
-      setDragOverAct(null);
-      return;
-    }
-
-    onMoveBeat(draggedBeat, beat.actId, targetActId);
     setDragOverAct(null);
+    if (!draggedBeat) return;
+    const beat = beats[draggedBeat];
+    if (!beat) return;
+    // If we're dropping inside the same act and not on a specific beat, do nothing.
+    if (beat.actId === targetActId && !dragOverBeat) return;
+    if (beat.actId === targetActId) return; // handled by handleBeatDrop
+    onMoveBeat(draggedBeat, beat.actId, targetActId);
+  };
+
+  // Drop on a specific beat → reorder within act (if same), or insert at that
+  // position (if cross-act).
+  const handleBeatDrop = (e: React.DragEvent, targetActId: string, targetBeatId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverAct(null);
+    setDragOverBeat(null);
+    if (!draggedBeat || draggedBeat === targetBeatId) return;
+    const beat = beats[draggedBeat];
+    if (!beat) return;
+
+    if (beat.actId === targetActId) {
+      // Intra-act reorder
+      const targetAct = plotBoard.acts.find((a) => a.id === targetActId);
+      if (!targetAct) return;
+      const order = targetAct.beatIds.slice();
+      const fromIdx = order.indexOf(draggedBeat);
+      const toIdx = order.indexOf(targetBeatId);
+      if (fromIdx === -1 || toIdx === -1) return;
+      order.splice(fromIdx, 1);
+      order.splice(toIdx, 0, draggedBeat);
+      onReorderBeats?.(targetActId, order);
+    } else {
+      // Cross-act move + insert at the target position
+      onMoveBeat(draggedBeat, beat.actId, targetActId);
+      const targetAct = plotBoard.acts.find((a) => a.id === targetActId);
+      if (targetAct) {
+        const newOrder = [...targetAct.beatIds.filter((b) => b !== draggedBeat), draggedBeat];
+        const toIdx = newOrder.indexOf(targetBeatId);
+        const moved = newOrder.filter((b) => b !== draggedBeat);
+        moved.splice(toIdx, 0, draggedBeat);
+        onReorderBeats?.(targetActId, moved);
+      }
+    }
   };
 
   return (
@@ -121,6 +178,12 @@ export default function PlotBoardView({
                       onDragEnd={handleDragEnd}
                       isDragging={draggedBeat === beat.id}
                       autoFocus={beat.id === justAddedBeat}
+                      isDropTarget={dragOverBeat === beat.id}
+                      expanded={expandedBeat === beat.id}
+                      onToggleExpand={() => setExpandedBeat((cur) => (cur === beat.id ? null : beat.id))}
+                      onBeatDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverBeat(beat.id); }}
+                      onBeatDragLeave={() => setDragOverBeat((cur) => (cur === beat.id ? null : cur))}
+                      onBeatDrop={(e) => handleBeatDrop(e, act.id, beat.id)}
                     />
                   );
                 })}
@@ -155,8 +218,72 @@ export default function PlotBoardView({
             <Plus className="w-6 h-6" />
             <span className="text-xs font-medium">Add Act</span>
           </motion.button>
+
+          <BeatSheetPicker />
         </div>
       </div>
+    </div>
+  );
+}
+
+function BeatSheetPicker() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Apply a famous beat structure"
+        className="w-[140px] flex-shrink-0 flex flex-col items-center justify-center gap-2 px-3 py-4 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 border-2 border-dashed border-[var(--border)] rounded-xl text-[var(--accent)] hover:border-[var(--accent)] transition-all"
+      >
+        <Wand2 className="w-6 h-6" />
+        <span className="text-xs font-bold whitespace-nowrap">Apply a Beat Sheet</span>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            className="absolute top-full left-0 mt-2 w-72 z-50 bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="px-3 py-2 border-b border-[var(--border)] flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">Choose a sheet</span>
+              <button onClick={() => setOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Close">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {BEAT_SHEETS.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={async () => {
+                    if (!confirm(`Replace the current Plot board with the ${s.label} template? Your current beats and acts will be cleared.`)) return;
+                    const { useAppStore } = await import('@/store/useAppStore');
+                    const st = useAppStore.getState();
+                    // Wipe acts + beats, then rebuild
+                    useAppStore.setState({ beats: {}, plotBoard: { acts: [] } });
+                    for (const act of s.acts) {
+                      const actId = st.addAct();
+                      useAppStore.getState().updateAct(actId, { title: act.title });
+                      for (const b of act.beats) {
+                        const beatId = useAppStore.getState().addBeat(actId);
+                        useAppStore.getState().updateBeat(beatId, {
+                          title: b.title,
+                          description: b.hint,
+                          beatType: b.beatType,
+                        });
+                      }
+                    }
+                    setOpen(false);
+                  }}
+                  className="block w-full text-left px-3 py-2 hover:bg-[var(--hover)] border-t border-[var(--border)]"
+                >
+                  <div className="text-xs font-bold text-[var(--text)]">{s.label}</div>
+                  <div className="text-[10px] text-[var(--text-muted)] truncate">{s.source} · {s.description}</div>
+                </button>
+              ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -169,6 +296,12 @@ function BeatCard({
   onDragEnd,
   isDragging,
   autoFocus,
+  isDropTarget,
+  expanded,
+  onToggleExpand,
+  onBeatDragOver,
+  onBeatDragLeave,
+  onBeatDrop,
 }: {
   beat: Beat;
   onUpdate: (id: string, updates: Partial<Beat>) => void;
@@ -177,6 +310,12 @@ function BeatCard({
   onDragEnd: () => void;
   isDragging: boolean;
   autoFocus?: boolean;
+  isDropTarget?: boolean;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  onBeatDragOver?: (e: React.DragEvent) => void;
+  onBeatDragLeave?: () => void;
+  onBeatDrop?: (e: React.DragEvent) => void;
 }) {
   const [showTagInput, setShowTagInput] = useState(false);
   const [tagValue, setTagValue] = useState('');
@@ -195,13 +334,20 @@ function BeatCard({
     onDragStart(beat.id);
   };
 
+  // Color comes from beat.color, but if beat has a beatType, prefer its color.
+  const stripeColor = (beat.beatType && BEAT_TYPE_COLORS[beat.beatType]) || beat.color;
+
   return (
     <div
       draggable
       onDragStart={handleDragStart}
       onDragEnd={onDragEnd}
-      className={`beat-card ${isDragging ? 'dragging' : ''}`}
-      style={{ borderLeftWidth: '3px', borderLeftStyle: 'solid', borderLeftColor: beat.color }}
+      onDragOver={onBeatDragOver}
+      onDragLeave={onBeatDragLeave}
+      onDrop={onBeatDrop}
+      onDoubleClick={onToggleExpand}
+      className={`beat-card ${isDragging ? 'dragging' : ''} ${isDropTarget ? 'ring-2 ring-[var(--accent)]/70' : ''}`}
+      style={{ borderLeftWidth: '3px', borderLeftStyle: 'solid', borderLeftColor: stripeColor }}
     >
       <button
         onClick={() => onDelete(beat.id)}
@@ -221,11 +367,39 @@ function BeatCard({
         />
       </div>
 
+      {/* Beat type picker */}
+      <div className="flex items-center gap-1 mb-2 flex-wrap">
+        {BEAT_TYPES.slice(0, expanded ? BEAT_TYPES.length : 6).map((t) => (
+          <button
+            key={t}
+            onClick={() => onUpdate(beat.id, { beatType: t } as any)}
+            className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider transition-all ${
+              beat.beatType === t
+                ? 'text-white shadow'
+                : 'text-[var(--text-muted)] border border-[var(--border)] hover:border-[var(--accent)]'
+            }`}
+            style={beat.beatType === t ? { background: BEAT_TYPE_COLORS[t] } : undefined}
+            title={`Set as ${t}`}
+          >
+            {t}
+          </button>
+        ))}
+        {!expanded && (
+          <button
+            onClick={onToggleExpand}
+            className="text-[9px] px-1 text-[var(--text-muted)] hover:text-[var(--accent)]"
+            title="Show all beat types"
+          >
+            +
+          </button>
+        )}
+      </div>
+
       <textarea
         value={beat.description}
         onChange={(e) => onUpdate(beat.id, { description: e.target.value })}
-        placeholder="Description..."
-        className="w-full min-h-[50px] bg-transparent text-xs text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] outline-none resize-y"
+        placeholder={expanded ? "Write your beat in detail — setup, conflict, escalation, outcome..." : "Description..."}
+        className={`w-full bg-transparent text-xs text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] outline-none resize-y ${expanded ? 'min-h-[160px]' : 'min-h-[50px]'}`}
       />
 
       {/* Tags */}

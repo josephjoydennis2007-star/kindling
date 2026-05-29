@@ -58,6 +58,7 @@ export default function CollabPanel({ onClose }: Props) {
   const coworkers = useAppStore((s) => s.coworkers);
   const localChat = useAppStore((s) => s.chat);
   const settings = useAppStore((s) => s.settings);
+  const updateSettings = useAppStore((s) => s.updateSettings);
   const sendChatMessage = useAppStore((s) => s.sendChatMessage);
   const addCoworker = useAppStore((s) => s.addCoworker);
   const removeCoworker = useAppStore((s) => s.removeCoworker);
@@ -130,6 +131,30 @@ export default function CollabPanel({ onClose }: Props) {
                   {coworkers.filter((c) => c.status === 'online').length} online · {coworkers.length} collaborators
                 </div>
               </div>
+              {/* Overlapping avatar row showing presence. Online users get a
+                  green ring, offline a muted ring. Caps at 5 + (+N) overflow. */}
+              {coworkers.length > 0 && (
+                <div className="hidden sm:flex -space-x-2 ml-3">
+                  {coworkers.slice(0, 5).map((c) => {
+                    const onlineNow = c.status === 'online';
+                    return (
+                      <div
+                        key={c.id}
+                        title={`${c.name} · ${c.role || 'collaborator'} · ${onlineNow ? 'online' : 'offline'}`}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white border-2 ${onlineNow ? 'border-emerald-400' : 'border-zinc-500'}`}
+                        style={{ background: stringToColor(c.id || c.name) }}
+                      >
+                        {c.avatar ? <img src={c.avatar} alt="" className="w-full h-full rounded-full object-cover" /> : (c.name || '?').charAt(0).toUpperCase()}
+                      </div>
+                    );
+                  })}
+                  {coworkers.length > 5 && (
+                    <div className="w-7 h-7 rounded-full bg-[var(--card)] border-2 border-[var(--border)] flex items-center justify-center text-[10px] text-[var(--text-muted)]">
+                      +{coworkers.length - 5}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]">
@@ -143,6 +168,27 @@ export default function CollabPanel({ onClose }: Props) {
           <CallButton icon={Phone}     label="Voice" color="bg-gradient-to-br from-emerald-500 to-teal-600" onClick={() => toast.info('Voice call needs a signaling backend — UI ready.')} />
           <CallButton icon={Share2}    label="Share Link" color="bg-gradient-to-br from-amber-500 to-orange-600" onClick={() => copyInviteLink()} />
           <CallButton icon={Bell}      label="Ping" color="bg-gradient-to-br from-rose-500 to-pink-600" onClick={() => toast.success('Ping sent to active coworkers')} />
+        </div>
+
+        {/* Live sync — uses the cloud provider you've already set up to poll
+            for changes every 15s. Zero-backend, free, multi-user. */}
+        <div className="relative mt-3 px-3 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] flex items-center gap-2">
+          <button
+            onClick={() => {
+              const cur = (settings as any).liveSync;
+              updateSettings({ liveSync: !cur } as any);
+              toast.success(cur ? 'Live sync paused' : 'Live sync on — pulling every 15s');
+            }}
+            className={`w-9 h-5 rounded-full transition-all ${(settings as any).liveSync ? 'bg-emerald-500' : 'bg-[var(--border)]'}`}
+          >
+            <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${(settings as any).liveSync ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-bold text-[var(--text)]">Live sync via cloud</div>
+            <div className="text-[10px] text-[var(--text-muted)] truncate">
+              {(settings as any).liveSync ? 'On — pulls every 15s, pushes on save.' : 'Off. Needs a configured cloud provider in Settings.'}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -716,4 +762,13 @@ async function copyInviteLink() {
   } catch {
     toast.error('Could not copy');
   }
+}
+
+// Deterministic colour from a string — used for avatar fallbacks so the
+// same user always gets the same hue.
+function stringToColor(input: string): string {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) h = (h << 5) - h + input.charCodeAt(i);
+  const hue = Math.abs(h) % 360;
+  return `hsl(${hue}, 60%, 50%)`;
 }

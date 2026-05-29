@@ -18,6 +18,14 @@ export interface Character {
   voiceAudio: string | null;
   tags: string[];
   createdAt: number;
+  // Extended profile (all optional so old data still loads)
+  archetype?: string;        // e.g. "The Mentor", "The Trickster"
+  voiceOf?: string;          // distinctive speech style / dialect
+  want?: string;             // what they consciously want
+  need?: string;             // what they actually need
+  fear?: string;             // deepest fear / wound
+  secret?: string;           // hidden truth
+  pronouns?: string;
 }
 
 export interface ScreenplayElement {
@@ -40,6 +48,20 @@ export interface Scene {
   status: SceneStatus;
   shotIds: string[];
   order: number;
+  /** ISO YYYY-MM-DD shoot date (optional) */
+  shootDate?: string;
+  /** Per-category budget. Currency is whatever the user picks in Settings. */
+  budget?: {
+    cast?: number;
+    crew?: number;
+    location?: number;
+    props?: number;
+    post?: number;
+  };
+  /** ISO timestamp the scene was last touched (for revision marks) */
+  lastEditedAt?: number;
+  /** Revision color tag — "blue" / "pink" / "yellow" / etc. */
+  revisionColor?: string;
 }
 
 export type ShotType =
@@ -61,8 +83,11 @@ export interface Shot {
   camera: string;
   bRollIds: string[];
   order: number;
-  audioNote?: string;   // optional audio cue (sfx / music / ambience)
+  audioNote?: string;        // optional audio cue (sfx / music / ambience)
   audioFile?: string | null; // optional audio data URL
+  storyboard?: string | null; // storyboard image as data URL
+  durationSec?: number;       // shot duration in seconds
+  lens?: string;              // lens metadata, e.g. "35mm", "85mm anamorphic"
 }
 
 export interface BRoll {
@@ -78,6 +103,19 @@ export interface Act {
   order: number;
 }
 
+export type BeatType =
+  | 'setup'
+  | 'hook'
+  | 'inciting'
+  | 'turn'
+  | 'twist'
+  | 'midpoint'
+  | 'crisis'
+  | 'climax'
+  | 'payoff'
+  | 'tag'
+  | 'other';
+
 export interface Beat {
   id: string;
   actId: string;
@@ -85,6 +123,9 @@ export interface Beat {
   description: string;
   tags: string[];
   color: string;
+  beatType?: BeatType;
+  /** numerical order inside its act (lower first). New beats default to end. */
+  order?: number;
 }
 
 export interface Note {
@@ -207,12 +248,49 @@ export interface AppSettings {
   // New
   defaultSaveFolder: string | null;       // user-friendly name (handle stored in IDB)
   socialBarEnabled: boolean;
-  aiProvider: 'anthropic' | 'openai' | 'custom';
+  aiProvider: 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
   aiApiKey: string;
   aiModel: string;
   aiEndpoint: string;
   userDisplayName: string;
   userRole: 'admin' | 'writer' | 'director' | 'viewer';
+
+  // Optional cloud-storage provider tokens. All optional so existing
+  // saved settings stay valid; each provider stores its own token here.
+  githubGistToken?: string;
+  githubGistId?: string;       // last pushed gist
+  dropboxToken?: string;
+  googleDriveClientId?: string;
+  webdavUrl?: string;
+  webdavAuth?: string;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  jsonbinKey?: string;
+  jsonbinId?: string;          // last pushed bin
+  pastebinKey?: string;
+  /** ISO timestamp of last successful cloud sync */
+  lastCloudSyncAt?: string;
+  /** When true, pull from the first configured cloud provider every 15s and
+   *  treat changes as collab updates. Push on every save. */
+  liveSync?: boolean;
+  /** Preferred UI language (i18n) */
+  locale?: 'en' | 'es' | 'fr';
+  /** Currency code (ISO 4217) used to format budget amounts. */
+  currency?: 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'JPY' | 'INR' | 'NGN' | 'ZAR';
+}
+
+export type AssetKind = 'image' | 'audio' | 'reference';
+
+export interface Asset {
+  id: string;
+  name: string;
+  kind: AssetKind;
+  /** data: URL — kept inline so it travels with story exports. */
+  data: string;
+  size: number;          // bytes (approximate)
+  addedAt: number;
+  /** Optional caption / source URL / notes the user attaches. */
+  note?: string;
 }
 
 export interface Screenplay {
@@ -226,9 +304,29 @@ export interface Screenplay {
   elements: ScreenplayElement[];
   sections?: Section[];          // optional list of writer sections
   activeSectionId?: string | null;
+  assets?: Asset[];              // per-story asset library
+  /** Industry revision-color stage. Index into REVISION_COLORS. */
+  revisionStage?: number;
 }
 
-export type AppTab = 'writer' | 'director' | 'plot' | 'workspace';
+/**
+ * Standard production color-revision order. White is the production draft;
+ * each subsequent color marks a new revision pass.
+ */
+export const REVISION_COLORS: { name: string; hex: string; textHex: string }[] = [
+  { name: 'White',     hex: '#ffffff', textHex: '#222222' },
+  { name: 'Blue',      hex: '#bfdbfe', textHex: '#1e3a8a' },
+  { name: 'Pink',      hex: '#fbcfe8', textHex: '#9d174d' },
+  { name: 'Yellow',    hex: '#fef08a', textHex: '#854d0e' },
+  { name: 'Green',     hex: '#bbf7d0', textHex: '#14532d' },
+  { name: 'Goldenrod', hex: '#fde68a', textHex: '#78350f' },
+  { name: 'Buff',      hex: '#fde4cf', textHex: '#9a3412' },
+  { name: 'Salmon',    hex: '#fecaca', textHex: '#991b1b' },
+  { name: 'Cherry',    hex: '#fda4af', textHex: '#9f1239' },
+  { name: 'Second White', hex: '#f8fafc', textHex: '#222222' },
+];
+
+export type AppTab = 'dashboard' | 'writer' | 'director' | 'plot' | 'workspace' | 'calendar';
 
 export type RightPanelType =
   | 'notes'
@@ -237,6 +335,7 @@ export type RightPanelType =
   | 'characters'
   | 'instructions'
   | 'collab'
+  | 'assets'
   | 'ai'
   | 'export'
   | null;
