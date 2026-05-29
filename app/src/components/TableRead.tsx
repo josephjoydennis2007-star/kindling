@@ -45,12 +45,17 @@ const NARRATOR = 'narrator';
 
 export default function TableRead({ onClose }: Props) {
   const screenplay = useAppStore((s) => s.screenplay);
+  const scenes = useAppStore((s) => s.scenes);
+  const activeSceneId = useAppStore((s) => s.activeSceneId);
+  const activeStoryId = useAppStore((s) => s.activeStoryId) || 'no-story';
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceMap, setVoiceMap] = useState<Record<string, string>>(() => loadVoiceMap());
   const [rate, setRate] = useState(1.0);
   const [volume, setVolume] = useState(1.0);
-  const [idx, setIdx] = useState(0);
+  // idx initializes from the persisted position for this story so a writer
+  // can close the panel mid-read and pick up exactly where they left off.
+  const [idx, setIdx] = useState(() => loadPosition(activeStoryId));
   const [playing, setPlaying] = useState(false);
   const [paused, setPaused] = useState(false);
 
@@ -146,6 +151,17 @@ export default function TableRead({ onClose }: Props) {
   // Persist voice picks
   useEffect(() => { saveVoiceMap(voiceMap); }, [voiceMap]);
 
+  // Persist read position per story (debounce: only every ~500ms idle).
+  useEffect(() => {
+    const t = setTimeout(() => savePosition(activeStoryId, idx), 500);
+    return () => clearTimeout(t);
+  }, [activeStoryId, idx]);
+
+  // When the active story changes (e.g. user switched), reload its saved idx.
+  useEffect(() => {
+    setIdx(loadPosition(activeStoryId));
+  }, [activeStoryId]);
+
   // Stop talking if the user closes / pauses.
   const stop = () => {
     if (supported) window.speechSynthesis.cancel();
@@ -204,6 +220,21 @@ export default function TableRead({ onClose }: Props) {
   };
   const next = () => speakAt(Math.min(items.length - 1, idx + 1));
   const back = () => speakAt(Math.max(0, idx - 1));
+  const restart = () => speakAt(0);
+
+  /** Find the first item belonging to the user's currently-active scene
+   *  (or first scene heading on screen, as fallback). */
+  const fromCurrentScene = () => {
+    if (!items.length) return;
+    // Match by sceneId on screenplay elements — items[i].id === element.id.
+    const targetSceneId = activeSceneId;
+    if (!targetSceneId) { speakAt(0); return; }
+    const elements = (screenplay?.elements || []);
+    const firstElInScene = elements.find((el) => el.sceneId === targetSceneId);
+    if (!firstElInScene) { speakAt(0); return; }
+    const itemIdx = items.findIndex((it) => it.id === firstElInScene.id);
+    speakAt(itemIdx >= 0 ? itemIdx : 0);
+  };
 
   return (
     <motion.div
@@ -305,6 +336,30 @@ export default function TableRead({ onClose }: Props) {
             </button>
           </div>
 
+          {/* Position controls — show only when there are items + scenes */}
+          {items.length > 0 && scenes.length > 0 && (
+            <div className="px-4 py-2 flex items-center gap-2 border-b border-[var(--border)] text-[10px]">
+              <button
+                onClick={fromCurrentScene}
+                disabled={!activeSceneId}
+                title="Read from the currently-active scene"
+                className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                From current scene
+              </button>
+              <button
+                onClick={restart}
+                title="Restart from page 1"
+                className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+              >
+                Restart
+              </button>
+              <span className="ml-auto text-[var(--text-muted)] tabular-nums">
+                {idx + 1} / {items.length}
+              </span>
+            </div>
+          )}
+
           {/* Voice assignments + speed */}
           <div className="px-4 py-3 space-y-3 max-h-[40vh] overflow-y-auto">
             <div className="grid grid-cols-2 gap-3">
@@ -391,6 +446,7 @@ function VoicePick({
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const VMAP_KEY = 'kindling-tableread-voices';
+const POS_KEY = 'kindling-tableread-pos';
 
 function loadVoiceMap(): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(VMAP_KEY) || '{}'); } catch { return {}; }
@@ -398,6 +454,25 @@ function loadVoiceMap(): Record<string, string> {
 
 function saveVoiceMap(m: Record<string, string>) {
   try { localStorage.setItem(VMAP_KEY, JSON.stringify(m)); } catch {}
+}
+
+/** Per-story read position. Stored as `{ [storyId]: number }`. */
+function loadPosition(storyId: string): number {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (!raw) return 0;
+    const blob = JSON.parse(raw) as Record<string, number>;
+    return typeof blob[storyId] === 'number' ? blob[storyId] : 0;
+  } catch { return 0; }
+}
+
+function savePosition(storyId: string, idx: number) {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    const blob = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    blob[storyId] = idx;
+    localStorage.setItem(POS_KEY, JSON.stringify(blob));
+  } catch {}
 }
 
 function stripHtml(html: string): string {

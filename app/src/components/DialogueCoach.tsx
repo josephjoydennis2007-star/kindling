@@ -534,6 +534,14 @@ function FlaggedLine({ line }: { line: CoachLine }) {
     }
   };
 
+  /** Dispatch a writer:replaceText event so WriterView swaps the line
+   *  in the actual editor (preserving its dialogue/action paragraph class). */
+  const replaceInScript = () => {
+    document.dispatchEvent(new CustomEvent('writer:replaceText', {
+      detail: { find: line.original, replace: line.rewrite },
+    }));
+  };
+
   return (
     <div className="p-3 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -545,14 +553,26 @@ function FlaggedLine({ line }: { line: CoachLine }) {
         <span>"{line.original}"</span>
       </div>
       <div className="text-[10px] text-[var(--text-muted)]">{line.issue}</div>
-      <button
-        onClick={() => copy(line.rewrite)}
-        title="Click to copy rewrite"
-        className="w-full text-left p-2 rounded-md bg-[var(--accent)]/10 border border-[var(--accent)]/30 text-[11px] text-[var(--text)] hover:bg-[var(--accent)]/20 transition-colors"
-      >
-        <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--accent)] block mb-1">Suggested rewrite — click to copy</span>
-        "{line.rewrite}"
-      </button>
+      <div className="p-2 rounded-md bg-[var(--accent)]/10 border border-[var(--accent)]/30">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--accent)] block mb-1">Suggested rewrite</span>
+        <span className="text-[11px] text-[var(--text)] block mb-2">"{line.rewrite}"</span>
+        <div className="flex gap-1.5">
+          <button
+            onClick={replaceInScript}
+            title="Find this line in the script and replace it with the rewrite"
+            className="flex-1 px-2 py-1 rounded bg-[var(--accent)] text-[var(--bg)] text-[10px] font-bold hover:brightness-110 transition-all"
+          >
+            Replace in script
+          </button>
+          <button
+            onClick={() => copy(line.rewrite)}
+            title="Copy rewrite to clipboard"
+            className="px-2 py-1 rounded border border-[var(--border)] text-[10px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

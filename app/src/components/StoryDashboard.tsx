@@ -18,6 +18,7 @@ import {
 import { useAppStore } from '@/store/useAppStore';
 import { getTemplate } from '@/lib/storyTemplates';
 import SceneHeatMap from '@/components/SceneHeatMap';
+import CharacterGraph from '@/components/CharacterGraph';
 
 /**
  * "Home" view for the active story — a quick snapshot of:
@@ -156,6 +157,11 @@ export default function StoryDashboard() {
         {/* Scene Heat Map — pacing at a glance, click-to-jump */}
         <div className="mb-6">
           <SceneHeatMap />
+        </div>
+
+        {/* Character Relationship Graph — who talks to whom, sized by lines */}
+        <div className="mb-6">
+          <CharacterGraph />
         </div>
 
         {/* Two-column body */}

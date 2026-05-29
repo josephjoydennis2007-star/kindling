@@ -259,6 +259,50 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
     document.addEventListener('writer:streamChunk', onStreamChunk as EventListener);
     document.addEventListener('writer:streamEnd', onStreamEnd);
 
+    // Coach "Replace in script": find the paragraph whose text matches
+    // `find` and swap its content for `replace`, preserving the paragraph's
+    // screenplay-format class attribute (dialogue stays dialogue, etc).
+    const onReplaceText = (ev: Event) => {
+      if (!editor) return;
+      const { find, replace } = ((ev as CustomEvent).detail || {}) as {
+        find?: string; replace?: string;
+      };
+      const needle = (find || '').trim().replace(/\s+/g, ' ');
+      const replacement = (replace || '').trim();
+      if (!needle || !replacement) return;
+
+      // Walk the document looking for a paragraph whose collapsed text
+      // matches the needle exactly. ProseMirror gives us (node, pos) pairs.
+      let found: { from: number; to: number; cls: string | null } | null = null;
+      editor.state.doc.descendants((node, pos) => {
+        if (found) return false;
+        if (node.type.name !== 'paragraph') return true;
+        const text = (node.textContent || '').trim().replace(/\s+/g, ' ');
+        if (text === needle) {
+          found = {
+            from: pos + 1, // skip opening tag
+            to: pos + 1 + node.content.size,
+            cls: (node.attrs && (node.attrs as any).class) || null,
+          };
+          return false;
+        }
+        return true;
+      });
+
+      if (!found) {
+        import('sonner').then(({ toast }) => toast.error('Could not find that exact line in the script.'));
+        return;
+      }
+      // Replace the matched range with the new text, keep the paragraph class.
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(found, replacement)
+        .run();
+      import('sonner').then(({ toast }) => toast.success('Rewrite applied'));
+    };
+    document.addEventListener('writer:replaceText', onReplaceText as EventListener);
+
     return () => {
       editorEl?.removeEventListener('applyformat', handler);
       document.removeEventListener('writer:applyformat', handler as EventListener);
@@ -266,6 +310,7 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
       document.removeEventListener('writer:streamStart', onStreamStart);
       document.removeEventListener('writer:streamChunk', onStreamChunk as EventListener);
       document.removeEventListener('writer:streamEnd', onStreamEnd);
+      document.removeEventListener('writer:replaceText', onReplaceText as EventListener);
     };
   }, [editor, applyFormatToCurrentLine]);
 
