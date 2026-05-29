@@ -31,9 +31,18 @@ interface HeatBlock {
   dialogueRatio: number;
 }
 
-export default function SceneHeatMap() {
+interface Props {
+  /** When true, render a slim strip (no legend, no hover panel, no header)
+   *  suitable for floating above the writer paper. */
+  compact?: boolean;
+  /** Skip the tab switch in compact mode — the writer is already active. */
+  stayHere?: boolean;
+}
+
+export default function SceneHeatMap({ compact = false, stayHere = false }: Props = {}) {
   const scenes = useAppStore((s) => s.scenes);
   const screenplay = useAppStore((s) => s.screenplay);
+  const activeSceneId = useAppStore((s) => s.activeSceneId);
   const setActiveScene = useAppStore((s) => s.setActiveScene);
   const setTab = useAppStore((s) => s.setTab);
 
@@ -86,6 +95,7 @@ export default function SceneHeatMap() {
   const MIN_FLEX = 0.5;
 
   if (!scenes?.length) {
+    if (compact) return null;
     return (
       <div className="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text-muted)] text-center">
         Add scenes (Director tab → +) to see the heat map.
@@ -95,8 +105,41 @@ export default function SceneHeatMap() {
 
   const jumpTo = (sceneId: string) => {
     setActiveScene(sceneId);
-    setTab('writer');
+    if (!stayHere) setTab('writer');
   };
+
+  // Compact mode: a single slim click strip with focus ring on the active
+  // scene. Designed to live just above the writer's editor paper.
+  if (compact) {
+    return (
+      <div
+        className="w-full flex h-1.5 rounded-full overflow-hidden bg-[var(--card)] border border-[var(--border)]"
+        role="navigation"
+        aria-label="Scene heat map"
+      >
+        {blocks.map((b) => {
+          const flex = totalWords > 0 ? Math.max(MIN_FLEX, b.words / totalWords * blocks.length) : 1;
+          const isActive = activeSceneId === b.scene.id;
+          return (
+            <button
+              key={b.scene.id}
+              type="button"
+              onClick={() => jumpTo(b.scene.id)}
+              title={tooltipFor(b)}
+              aria-label={tooltipFor(b)}
+              className={`h-full transition-all hover:brightness-150 ${
+                isActive ? 'ring-1 ring-[var(--accent)] ring-inset' : ''
+              }`}
+              style={{
+                flex,
+                background: colorFor(b.dialogueRatio, b.words === 0),
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <section className="space-y-2">

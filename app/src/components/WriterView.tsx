@@ -37,6 +37,7 @@ import MentionList from '@/components/tiptap/MentionList';
 import ScreenplayParagraph from '@/components/tiptap/ScreenplayParagraph';
 import SectionsBar from '@/components/SectionsBar';
 import CharacterWorkspacePanel from '@/components/CharacterWorkspacePanel';
+import SceneHeatMap from '@/components/SceneHeatMap';
 import { useAppStore } from '@/store/useAppStore';
 import type { Character, Screenplay } from '@/types';
 
@@ -640,6 +641,13 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
         <div className="flex-1 overflow-hidden flex relative">
           <div className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}>
             <div className="relative w-full max-w-[8.5in]">
+              {/* Compact scene heat map — pacing glance above the paper.
+                  Hidden in reading/focus modes so it doesn't distract. */}
+              {!readingMode && !focusTyping && (
+                <div className="mb-3">
+                  <SceneHeatMap compact stayHere />
+                </div>
+              )}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

@@ -41,7 +41,9 @@ interface CoachReport {
 
 interface StoredReport {
   ts: number;
-  mode: 'full' | 'single';
+  mode: 'full' | 'single' | 'character';
+  /** Speaker name for 'character' mode reports. */
+  speaker?: string;
   /** Number of dialogue lines analysed (for the history label). */
   size: number;
   report: CoachReport;
@@ -116,10 +118,20 @@ export default function DialogueCoach({ onClose }: Props) {
 
   const characterCount = useMemo(() => new Set(dialogue.map((d) => d.speaker)).size, [dialogue]);
 
+  // Sorted list of speakers + their line counts — drives the per-character
+  // pill row in the empty state.
+  const speakers = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of dialogue) counts.set(d.speaker, (counts.get(d.speaker) || 0) + 1);
+    return [...counts.entries()]
+      .map(([speaker, count]) => ({ speaker, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [dialogue]);
+
   // ── Persist a new report
   const persist = useCallback(
-    (mode: 'full' | 'single', size: number, r: CoachReport) => {
-      const stored: StoredReport = { ts: Date.now(), mode, size, report: r };
+    (mode: 'full' | 'single' | 'character', size: number, r: CoachReport, speaker?: string) => {
+      const stored: StoredReport = { ts: Date.now(), mode, size, report: r, speaker };
       const next = [stored, ...history].slice(0, HISTORY_MAX);
       setHistory(next);
       saveHistory(activeStoryId, next);
@@ -207,6 +219,58 @@ export default function DialogueCoach({ onClose }: Props) {
     [dialogue, settings, persist]
   );
 
+  // ── Per-character coach: all of one speaker's lines, with consistency lens
+  const runCharacter = useCallback(
+    async (speaker: string) => {
+      if (providerNeedsKey(settings.aiProvider) && !settings.aiApiKey) {
+        toast.error('Add an AI API key first (✦ button in the toolbar)');
+        return;
+      }
+      const lines = dialogue.filter((d) => d.speaker === speaker);
+      if (lines.length === 0) {
+        toast.error(`${speaker} has no dialogue yet`);
+        return;
+      }
+
+      setBusy(true); setError(null); setReport(null);
+
+      // Cap input — even chatty leads rarely cross 120 lines in one act.
+      // We sample evenly across the script when the count goes higher so
+      // late-act voice drift still gets seen.
+      const sampled = lines.length <= 120
+        ? lines
+        : sampleEvenly(lines, 120);
+      const prompt = sampled.map((d, i) => `${i + 1}. ${d.line}`).join('\n');
+
+      const system = [
+        `You are a sharp dialogue coach. Every line below was spoken by ${speaker}.`,
+        'Judge their voice as one character across the whole script:',
+        '  - Does the voice stay consistent or drift?',
+        '  - Are there lines that any character could say (generic)?',
+        '  - Are there lines that *contradict* the established voice (voice-clash)?',
+        '  - Any on-the-nose or expository lines that bypass subtext?',
+        'Return STRICT JSON only — no prose, no markdown fences — matching:',
+        '{ "voices": [{"speaker":"NAME","profile":"one-line voice profile"}],',
+        '  "lines":  [{"speaker":"NAME","original":"…","issue":"…","rewrite":"…","kind":"on-nose|expository|generic|voice-clash"}] }',
+        `voices MUST contain exactly one entry — for ${speaker}.`,
+        'Flag at most 6 lines, the worst offenders. Be concrete, never write "make it better".',
+      ].join('\n');
+
+      const result = await aiOnce(settings, system, prompt, { maxTokens: 1500, temperature: 0.4 });
+      setBusy(false);
+      if (!result.ok) { setError(result.error); return; }
+      const parsed = extractJSON<CoachReport>(result.text);
+      if (!parsed || !Array.isArray(parsed.lines)) {
+        setError(`AI returned something we couldn't parse as JSON. First 200 chars: ${result.text.slice(0, 200)}`);
+        return;
+      }
+      setReport(parsed);
+      persist('character', sampled.length, parsed, speaker);
+      toast.success(`Coached ${speaker} (${parsed.lines.length} flag${parsed.lines.length === 1 ? '' : 's'})`);
+    },
+    [dialogue, settings, persist]
+  );
+
   // ── Listen for the inline "coach this line" trigger
   useEffect(() => {
     const onCoach = (ev: Event) => {
@@ -274,7 +338,7 @@ export default function DialogueCoach({ onClose }: Props) {
         ) : (
           <>
             {!report && !busy && !error && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <button
                   onClick={runFull}
                   disabled={dialogue.length === 0}
@@ -283,6 +347,29 @@ export default function DialogueCoach({ onClose }: Props) {
                   <Sparkles className="w-4 h-4" />
                   {dialogue.length === 0 ? 'Write some dialogue first' : `Coach the last ${Math.min(80, dialogue.length)} lines`}
                 </button>
+
+                {/* Per-character pills — coach one speaker's entire arc */}
+                {speakers.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-1.5">
+                      Or coach one character
+                    </h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {speakers.map((s) => (
+                        <button
+                          key={s.speaker}
+                          onClick={() => runCharacter(s.speaker)}
+                          title={`Coach all ${s.count} line${s.count === 1 ? '' : 's'} from ${s.speaker}`}
+                          className="px-2.5 py-1 rounded-full bg-[var(--card)] border border-[var(--border)] text-[11px] text-[var(--text)] hover:border-fuchsia-400/60 hover:text-fuchsia-300 transition-colors flex items-center gap-1.5"
+                        >
+                          <span className="font-bold">{s.speaker}</span>
+                          <span className="text-[9px] text-[var(--text-muted)]">{s.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-[10px] text-[var(--text-muted)] text-center px-2">
                   Tip: put your cursor on any dialogue line and press <kbd className="px-1 py-0.5 rounded bg-[var(--hover)] text-[10px]">Ctrl/⌘+Shift+L</kbd> to coach just that line.
                 </p>
@@ -413,7 +500,9 @@ function HistoryList({
           >
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--accent)]">
-                {r.mode === 'full' ? 'Full pass' : 'Single line'}
+                {r.mode === 'full' ? 'Full pass'
+                  : r.mode === 'character' ? `Character · ${r.speaker || ''}`
+                  : 'Single line'}
               </span>
               <span className="text-[10px] text-[var(--text-muted)]">{formatAgo(r.ts)}</span>
             </div>
@@ -469,6 +558,21 @@ function FlaggedLine({ line }: { line: CoachLine }) {
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
+
+/**
+ * Pick `target` items from `arr` at evenly spaced indices. Used so a 400-line
+ * character coach still sees voice samples from across the whole script, not
+ * just the start.
+ */
+function sampleEvenly<T>(arr: T[], target: number): T[] {
+  if (arr.length <= target) return arr;
+  const out: T[] = [];
+  const step = arr.length / target;
+  for (let i = 0; i < target; i++) {
+    out.push(arr[Math.min(arr.length - 1, Math.floor(i * step))]);
+  }
+  return out;
+}
 
 function stripHtml(html: string): string {
   if (typeof document !== 'undefined') {

@@ -26,6 +26,7 @@ import FindReplace from '@/components/FindReplace';
 import StylePane from '@/components/StylePane';
 import CompareOverlay from '@/components/CompareOverlay';
 import DialogueCoach from '@/components/DialogueCoach';
+import TableRead from '@/components/TableRead';
 import ExportDialog from '@/components/ExportDialog';
 import SocialBar from '@/components/SocialBar';
 import SettingsOverlay from '@/components/SettingsOverlay';
@@ -75,6 +76,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [showCoach, setShowCoach] = useState(false);
+  const [showTableRead, setShowTableRead] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -355,6 +357,11 @@ function App() {
         // Ctrl/Cmd+Shift+D → toggle AI Dialogue Coach
         e.preventDefault();
         setShowCoach((v) => !v);
+      }
+      else if (mod && e.shiftKey && e.key.toLowerCase() === 'r' && useAppStore.getState().activeTab === 'writer') {
+        // Ctrl/Cmd+Shift+R → toggle Table Read mode
+        e.preventDefault();
+        setShowTableRead((v) => !v);
       }
       else if (mod && e.shiftKey && e.key.toLowerCase() === 'l' && useAppStore.getState().activeTab === 'writer') {
         // Ctrl/Cmd+Shift+L → coach the current dialogue line under cursor.
@@ -767,6 +774,7 @@ function App() {
       <StylePane />
       <CompareOverlay />
       {showCoach && <DialogueCoach onClose={() => setShowCoach(false)} />}
+      {showTableRead && <TableRead onClose={() => setShowTableRead(false)} />}
       <CommandPalette
         open={showPalette}
         onClose={() => setShowPalette(false)}
