@@ -90,16 +90,35 @@ export default function CharacterWorkspacePanel({ character, onClose, onUpdate }
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-[var(--border)] flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 overflow-hidden"
+          {/* Headshot — click/tap to upload a new image. We read the file as
+              a data-URL so it persists in the same store payload that gets
+              saved to IndexedDB / cloud, no external storage needed. */}
+          <label
+            className="relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 overflow-hidden cursor-pointer group/avatar"
             style={{ background: character.image ? 'transparent' : character.color }}
+            title="Click to change headshot"
           >
             {character.image ? (
               <img src={character.image} alt={character.name} className="w-full h-full object-cover" />
             ) : (
               character.name.charAt(0)
             )}
-          </div>
+            <span className="absolute inset-0 bg-black/50 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-[8px] uppercase tracking-wider">
+              Edit
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = () => onUpdate(character.id, { image: String(reader.result) });
+                reader.readAsDataURL(f);
+              }}
+            />
+          </label>
           <div className="min-w-0">
             <div className="text-xs font-bold text-[var(--text)] truncate">{character.name}</div>
             {character.age && <div className="text-[10px] text-[var(--text-muted)]">{character.age} yrs old</div>}

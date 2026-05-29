@@ -68,6 +68,8 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
   // Get focusCharacterId and methods from store
   const focusCharacterId = useAppStore((s) => s.focusCharacterId);
   const updateCharacter = useAppStore((s) => s.updateCharacter);
+  // Settings for the user-toggleable writer adornments (heat strip + gutter).
+  const settings = useAppStore((s) => s.settings);
 
   // Hooks lifted to top so they run unconditionally
   const addSection = useAppStore((s) => s.addSection);
@@ -709,16 +711,18 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
         <div className="flex-1 overflow-hidden flex relative">
           <div className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center gap-2 relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}>
             {/* Dialogue density gutter — minimap-style strip on the left.
-                Hidden on small screens where it would crowd the paper. */}
-            {!readingMode && !focusTyping && (
+                Hidden on small screens where it would crowd the paper, and
+                user-toggleable in Settings (defaults to on). */}
+            {!readingMode && !focusTyping && settings.showGutter !== false && (
               <div className="hidden sm:flex flex-col pt-12 sticky top-0 self-start max-h-[calc(100vh-9rem)] pb-2">
                 <DialogueGutter />
               </div>
             )}
             <div className="relative w-full max-w-[8.5in]">
               {/* Compact scene heat map — pacing glance above the paper.
-                  Hidden in reading/focus modes so it doesn't distract. */}
-              {!readingMode && !focusTyping && (
+                  Hidden in reading/focus modes so it doesn't distract,
+                  and user-toggleable in Settings (defaults to on). */}
+              {!readingMode && !focusTyping && settings.showHeatStrip !== false && (
                 <div className="mb-3">
                   <SceneHeatMap compact stayHere />
                 </div>

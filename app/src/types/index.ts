@@ -277,6 +277,12 @@ export interface AppSettings {
   locale?: 'en' | 'es' | 'fr';
   /** Currency code (ISO 4217) used to format budget amounts. */
   currency?: 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'JPY' | 'INR' | 'NGN' | 'ZAR';
+  /** Show the thin dialogue-density gutter beside the writer paper.
+   *  Defaults to true; writers can hide it from Settings. */
+  showGutter?: boolean;
+  /** Show the compact scene heat strip above the writer paper.
+   *  Defaults to true. */
+  showHeatStrip?: boolean;
 }
 
 export type AssetKind = 'image' | 'audio' | 'reference';

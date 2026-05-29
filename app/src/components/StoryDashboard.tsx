@@ -19,6 +19,8 @@ import { useAppStore } from '@/store/useAppStore';
 import { getTemplate } from '@/lib/storyTemplates';
 import SceneHeatMap from '@/components/SceneHeatMap';
 import CharacterGraph from '@/components/CharacterGraph';
+import { celebrate, markGoalCelebrated } from '@/lib/celebrate';
+import { toast } from 'sonner';
 
 /**
  * "Home" view for the active story — a quick snapshot of:
@@ -110,6 +112,16 @@ export default function StoryDashboard() {
     : activeStory.type === 'tv-series' || activeStory.type === 'mini-series' ? 55
     : 110;
   const pageProgress = Math.min(100, Math.round((stats.pages / goalPages) * 100));
+
+  // Fire a confetti burst the first time the writer hits the page goal each
+  // day. markGoalCelebrated() is a localStorage one-shot per YYYY-MM-DD, so
+  // re-renders don't re-fire and tomorrow's session can celebrate again.
+  useEffect(() => {
+    if (pageProgress >= 100 && markGoalCelebrated()) {
+      celebrate(28);
+      toast.success('🎉 Page goal hit! Keep going — every word counts.', { duration: 5000 });
+    }
+  }, [pageProgress]);
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--bg)]">

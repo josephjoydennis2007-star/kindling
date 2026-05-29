@@ -335,6 +335,20 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                       </>
                     )}
                   </Section>
+                  <Section title="Scene heat strip">
+                    <Toggle
+                      value={(draft as any).showHeatStrip !== false}
+                      onChange={(v) => setDraft({ ...draft, showHeatStrip: v } as any)}
+                      label={(draft as any).showHeatStrip !== false ? 'Visible above the writer paper' : 'Hidden'}
+                    />
+                  </Section>
+                  <Section title="Dialogue density gutter">
+                    <Toggle
+                      value={(draft as any).showGutter !== false}
+                      onChange={(v) => setDraft({ ...draft, showGutter: v } as any)}
+                      label={(draft as any).showGutter !== false ? 'Visible to the left of the paper' : 'Hidden'}
+                    />
+                  </Section>
                 </div>
               )}
 
