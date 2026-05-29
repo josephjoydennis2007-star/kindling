@@ -21,6 +21,10 @@ import {
   Megaphone,
   Drama,
   ClipboardList,
+  MessageSquareQuote,
+  Mic2,
+  Wand2,
+  Search,
   type LucideIcon,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
@@ -124,6 +128,38 @@ export default function Toolbar({
 
       <div className="flex-1" />
 
+      {/* AI tool icons — only on the writer tab, where these apply.
+          Hidden on narrow screens to keep the row from overflowing. */}
+      {activeTab === 'writer' && (
+        <div className="hidden md:flex items-center gap-1 mr-1">
+          <ToolbarIconButton
+            icon={MessageSquareQuote}
+            label="Dialogue Coach"
+            shortcut="⇧⌘D"
+            onClick={() => document.dispatchEvent(new CustomEvent('writer:openCoach'))}
+          />
+          <ToolbarIconButton
+            icon={Mic2}
+            label="Table Read"
+            shortcut="⇧⌘R"
+            onClick={() => document.dispatchEvent(new CustomEvent('writer:openTableRead'))}
+          />
+          <ToolbarIconButton
+            icon={Wand2}
+            label="Style Assistant"
+            shortcut="⇧⌘S"
+            onClick={() => document.dispatchEvent(new CustomEvent('writer:openStyle'))}
+          />
+          <ToolbarIconButton
+            icon={Search}
+            label="Find & Replace"
+            shortcut="⌘F"
+            onClick={() => document.dispatchEvent(new CustomEvent('writer:findOpen'))}
+          />
+          <div className="w-px h-5 bg-[var(--border)] mx-1" />
+        </div>
+      )}
+
       <ReportsButton />
 
       <button
@@ -185,6 +221,22 @@ function WriterFormatRow({ onAddSection }: { onAddSection?: () => void }) {
         </>
       )}
     </div>
+  );
+}
+
+/** Compact icon button for the AI-tools row in the writer toolbar. */
+function ToolbarIconButton({
+  icon: Icon, label, shortcut, onClick,
+}: { icon: LucideIcon; label: string; shortcut?: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={shortcut ? `${label} (${shortcut})` : label}
+      aria-label={label}
+      className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--hover)] hover:text-[var(--accent)] transition-all"
+    >
+      <Icon className="w-4 h-4" />
+    </button>
   );
 }
 

@@ -329,6 +329,20 @@ function App() {
     return () => { cancelled = true; clearInterval(interval); };
   }, [settings]);
 
+  // Listen for explicit "open this panel" events dispatched by buttons in
+  // the sidebar / toolbar. We can't bind onClick directly on those because
+  // the state lives here in App.tsx, and they don't know about it.
+  useEffect(() => {
+    const openCoach = () => setShowCoach(true);
+    const openTableRead = () => setShowTableRead(true);
+    document.addEventListener('writer:openCoach', openCoach);
+    document.addEventListener('writer:openTableRead', openTableRead);
+    return () => {
+      document.removeEventListener('writer:openCoach', openCoach);
+      document.removeEventListener('writer:openTableRead', openTableRead);
+    };
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

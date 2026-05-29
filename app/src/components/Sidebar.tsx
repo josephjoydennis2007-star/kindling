@@ -22,6 +22,11 @@ import {
   Sparkles,
   Image as ImageIcon,
   CalendarDays,
+  MessageSquareQuote,
+  Mic2,
+  Search,
+  GitCompare,
+  Wand2,
 } from 'lucide-react';
 import type { Story } from '@/types';
 import { t } from '@/lib/i18n';
@@ -249,6 +254,53 @@ export default function Sidebar({
           </div>
         </div>
 
+        {/* AI Tools — features that used to be keyboard-only.
+            Each button dispatches a custom event that App.tsx listens for. */}
+        <div className="mb-4">
+          {!collapsed && (
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2 px-2">
+              AI Tools
+            </h3>
+          )}
+          <div className="space-y-0.5">
+            <SidebarItem
+              icon={MessageSquareQuote}
+              label="Dialogue Coach"
+              collapsed={collapsed}
+              shortcut="⇧⌘D"
+              onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openCoach')))}
+            />
+            <SidebarItem
+              icon={Mic2}
+              label="Table Read"
+              collapsed={collapsed}
+              shortcut="⇧⌘R"
+              onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openTableRead')))}
+            />
+            <SidebarItem
+              icon={Wand2}
+              label="Style Assistant"
+              collapsed={collapsed}
+              shortcut="⇧⌘S"
+              onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openStyle')))}
+            />
+            <SidebarItem
+              icon={Search}
+              label="Find & Replace"
+              collapsed={collapsed}
+              shortcut="⌘F"
+              onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:findOpen')))}
+            />
+            <SidebarItem
+              icon={GitCompare}
+              label="Compare Scripts"
+              collapsed={collapsed}
+              shortcut="⇧⌘C"
+              onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openCompare')))}
+            />
+          </div>
+        </div>
+
         {/* Settings */}
         <div>
           {!collapsed && (
@@ -371,11 +423,11 @@ function storyTypeColor(type?: string): string {
   }
 }
 
-function SidebarItem({ icon: Icon, label, active, onClick, collapsed }: { icon: any; label: string; active?: boolean; onClick: () => void; collapsed?: boolean }) {
+function SidebarItem({ icon: Icon, label, active, onClick, collapsed, shortcut }: { icon: any; label: string; active?: boolean; onClick: () => void; collapsed?: boolean; shortcut?: string }) {
   return (
     <button
       onClick={onClick}
-      title={label}
+      title={shortcut ? `${label} (${shortcut})` : label}
       className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all text-left ${
         collapsed ? 'justify-center' : ''
       } ${
@@ -385,7 +437,16 @@ function SidebarItem({ icon: Icon, label, active, onClick, collapsed }: { icon: 
       }`}
     >
       <Icon className="w-4 h-4 flex-shrink-0" />
-      {!collapsed && <span className="font-medium">{label}</span>}
+      {!collapsed && (
+        <>
+          <span className="font-medium flex-1">{label}</span>
+          {shortcut && (
+            <span className="text-[9px] text-[var(--text-muted)] tabular-nums select-none">
+              {shortcut}
+            </span>
+          )}
+        </>
+      )}
     </button>
   );
 }
