@@ -1,0 +1,151 @@
+/**
+ * Minimal, side-effect-free wrapper for the same 6 AI providers AIHelperPanel
+ * supports. AIHelperPanel keeps its own streaming `callAI` for chat; this file
+ * is for *one-shot* structured calls from other features (Dialogue Coach,
+ * scene breakdown, style assistant, etc.) that just want a JSON response back.
+ *
+ * Intentionally NOT a streaming API — features that want streaming should
+ * import AIHelperPanel's variant or implement their own SSE reader.
+ */
+
+import type { AppSettings } from '@/types';
+
+const DEFAULT_MODELS: Record<string, string> = {
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-3-5-sonnet-latest',
+  openrouter: 'openai/gpt-4o-mini',
+  groq: 'llama-3.3-70b-versatile',
+  ollama: 'llama3.2',
+  custom: '',
+};
+
+export interface AIMsg {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+/**
+ * Result of an AI call. We keep the `ok: false` path explicit so callers can
+ * render a friendly error inline instead of try/catching.
+ */
+export type AIResult =
+  | { ok: true; text: string }
+  | { ok: false; error: string };
+
+/**
+ * Returns true if the provider is reachable WITHOUT an API key (e.g. local
+ * Ollama). Useful for deciding whether to gate UI on a missing key.
+ */
+export function providerNeedsKey(provider: string): boolean {
+  return provider !== 'ollama';
+}
+
+/**
+ * One-shot call. Picks the right endpoint + auth shape per provider.
+ * Caller-supplied `system` becomes the system prompt; `user` is the
+ * (typically large) input we want analyzed.
+ */
+export async function aiOnce(
+  settings: Pick<AppSettings, 'aiProvider' | 'aiApiKey' | 'aiModel' | 'aiEndpoint'>,
+  system: string,
+  user: string,
+  opts: { maxTokens?: number; temperature?: number } = {}
+): Promise<AIResult> {
+  const provider = settings.aiProvider;
+  const apiKey = (settings.aiApiKey || '').trim();
+  const model = (settings.aiModel || '').trim() || DEFAULT_MODELS[provider] || 'gpt-4o-mini';
+  const maxTokens = opts.maxTokens ?? 1800;
+  const temperature = opts.temperature ?? 0.4;
+
+  if (providerNeedsKey(provider) && !apiKey) {
+    return { ok: false, error: `No API key for ${provider}. Add one in the AI panel (✦ button).` };
+  }
+
+  try {
+    if (provider === 'anthropic') {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          system,
+          messages: [{ role: 'user', content: user }],
+          temperature,
+        }),
+      });
+      if (!r.ok) return { ok: false, error: `Anthropic ${r.status}: ${(await r.text()).slice(0, 200)}` };
+      const j = await r.json();
+      return { ok: true, text: (j.content?.[0]?.text || '').trim() };
+    }
+
+    // OpenAI-style chat-completions request (everything else)
+    const url =
+      provider === 'openai'     ? 'https://api.openai.com/v1/chat/completions' :
+      provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
+      provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :
+      provider === 'ollama'     ? `${(settings.aiEndpoint || 'http://localhost:11434').replace(/\/$/, '')}/v1/chat/completions` :
+      /* custom */                (settings.aiEndpoint || '');
+
+    if (!url) return { ok: false, error: 'Custom endpoint not set in AI settings.' };
+
+    const extraHeaders: Record<string, string> =
+      provider === 'openrouter'
+        ? { 'HTTP-Referer': typeof location !== 'undefined' ? location.origin : '', 'X-Title': 'Kindling' }
+        : {};
+
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+        ...extraHeaders,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        max_tokens: maxTokens,
+        temperature,
+      }),
+    });
+    if (!r.ok) {
+      const body = (await r.text()).slice(0, 300);
+      return { ok: false, error: `${provider} ${r.status}: ${body}` };
+    }
+    const j = await r.json();
+    const text = (j.choices?.[0]?.message?.content || j.content || '').toString().trim();
+    return { ok: true, text };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
+/**
+ * Pull a JSON object out of an AI response that may or may not have
+ * surrounding prose / code fences. Returns null if no JSON could be found.
+ */
+export function extractJSON<T = any>(s: string): T | null {
+  if (!s) return null;
+  // First try: whole string is JSON
+  try { return JSON.parse(s) as T; } catch {}
+  // Strip ```json … ``` fences
+  const fence = s.match(/```(?:json)?\s*([\s\S]+?)```/i);
+  if (fence) {
+    try { return JSON.parse(fence[1]) as T; } catch {}
+  }
+  // Fallback: find first { and matching last }
+  const first = s.indexOf('{');
+  const last = s.lastIndexOf('}');
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(s.slice(first, last + 1)) as T; } catch {}
+  }
+  return null;
+}

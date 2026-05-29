@@ -25,6 +25,7 @@ import Onboarding from '@/components/Onboarding';
 import FindReplace from '@/components/FindReplace';
 import StylePane from '@/components/StylePane';
 import CompareOverlay from '@/components/CompareOverlay';
+import DialogueCoach from '@/components/DialogueCoach';
 import ExportDialog from '@/components/ExportDialog';
 import SocialBar from '@/components/SocialBar';
 import SettingsOverlay from '@/components/SettingsOverlay';
@@ -73,6 +74,7 @@ function App() {
   const [showExport, setShowExport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  const [showCoach, setShowCoach] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -348,6 +350,11 @@ function App() {
         // Ctrl/Cmd+Shift+C → toggle Compare overlay
         e.preventDefault();
         document.dispatchEvent(new CustomEvent('writer:openCompare'));
+      }
+      else if (mod && e.shiftKey && e.key.toLowerCase() === 'd' && useAppStore.getState().activeTab === 'writer') {
+        // Ctrl/Cmd+Shift+D → toggle AI Dialogue Coach
+        e.preventDefault();
+        setShowCoach((v) => !v);
       }
       // 'b' on the Plot tab quick-adds a beat to the first act, unless typing
       // in an input.
@@ -716,6 +723,7 @@ function App() {
       <FindReplace />
       <StylePane />
       <CompareOverlay />
+      {showCoach && <DialogueCoach onClose={() => setShowCoach(false)} />}
       <CommandPalette
         open={showPalette}
         onClose={() => setShowPalette(false)}
