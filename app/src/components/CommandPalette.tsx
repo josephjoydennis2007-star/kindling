@@ -79,6 +79,14 @@ export default function CommandPalette({ open, onClose, onSave, onExport, onSett
       { id: 'cmd-export',    label: 'Export…',              hint: 'Ctrl+Shift+E', icon: FileDown, run: onExport, rank: 3 },
       { id: 'cmd-focus',     label: 'Toggle Focus mode',    hint: 'Ctrl+.',     icon: Focus,      run: toggleFocusMode, rank: 3 },
       { id: 'cmd-settings',  label: 'Open Settings',        hint: 'Ctrl+,',     icon: Settings,   run: onSettings, rank: 3 },
+      { id: 'cmd-shortcuts', label: 'Keyboard shortcuts',   hint: 'Reference',  icon: Settings,   run: () => {
+          // Open Settings, then ask SettingsOverlay to switch to the Keys tab
+          // once it mounts. The listener inside SettingsOverlay handles this.
+          onSettings();
+          requestAnimationFrame(() => {
+            document.dispatchEvent(new CustomEvent('settings:openTab', { detail: { tab: 'shortcuts' } }));
+          });
+        }, rank: 3 },
     ];
     sections.forEach((s) => list.push({ id: 'sec-' + s.id, label: `Section: ${s.name}`, icon: Layers, run: () => { setActiveSection(s.id); setTab('writer'); }, rank: 4 }));
     scenes.forEach((s) => list.push({ id: 'scene-' + s.id, label: `Scene: ${s.name || s.heading}`, hint: `${s.shotIds.length} shots`, icon: Clapperboard, run: () => { setActiveDirectorScene(s.id); setTab('director'); }, rank: 5 }));

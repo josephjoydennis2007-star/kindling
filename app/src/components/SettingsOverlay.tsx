@@ -74,6 +74,19 @@ export default function SettingsOverlay({ open, onClose }: Props) {
   const [tab, setTab] = useState<'appearance' | 'editor' | 'files' | 'story' | 'collab' | 'ai' | 'cloud' | 'shortcuts'>('appearance');
   const [syncing, setSyncing] = useState<string | null>(null);
 
+  // Allow external code (Command Palette → "Keyboard shortcuts") to deep-link
+  // into a specific tab. The event MUST be dispatched after this overlay has
+  // mounted, so callers use a requestAnimationFrame after toggling `open`.
+  useEffect(() => {
+    if (!open) return;
+    const onOpenTab = (ev: Event) => {
+      const t = (ev as CustomEvent).detail?.tab;
+      if (typeof t === 'string') setTab(t as any);
+    };
+    document.addEventListener('settings:openTab', onOpenTab as EventListener);
+    return () => document.removeEventListener('settings:openTab', onOpenTab as EventListener);
+  }, [open]);
+
   type Provider = 'gist' | 'jsonbin' | 'dropbox' | 'supabase' | 'webdav' | 'pastebin';
   const PROVIDER_NAME: Record<Provider, string> = {
     gist: 'GitHub Gist',

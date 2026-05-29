@@ -259,41 +259,41 @@ export default function Sidebar({
         <div className="mb-4">
           {!collapsed && (
             <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2 px-2">
-              AI Tools
+              {t('sb.ai_tools', locale)}
             </h3>
           )}
           <div className="space-y-0.5">
             <SidebarItem
               icon={MessageSquareQuote}
-              label="Dialogue Coach"
+              label={t('sb.dialogue_coach', locale)}
               collapsed={collapsed}
               shortcut="⇧⌘D"
               onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openCoach')))}
             />
             <SidebarItem
               icon={Mic2}
-              label="Table Read"
+              label={t('sb.table_read', locale)}
               collapsed={collapsed}
               shortcut="⇧⌘R"
               onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openTableRead')))}
             />
             <SidebarItem
               icon={Wand2}
-              label="Style Assistant"
+              label={t('sb.style_assist', locale)}
               collapsed={collapsed}
               shortcut="⇧⌘S"
               onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openStyle')))}
             />
             <SidebarItem
               icon={Search}
-              label="Find & Replace"
+              label={t('sb.find_replace', locale)}
               collapsed={collapsed}
               shortcut="⌘F"
               onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:findOpen')))}
             />
             <SidebarItem
               icon={GitCompare}
-              label="Compare Scripts"
+              label={t('sb.compare', locale)}
               collapsed={collapsed}
               shortcut="⇧⌘C"
               onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openCompare')))}

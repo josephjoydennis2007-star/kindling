@@ -39,6 +39,7 @@ import SectionsBar from '@/components/SectionsBar';
 import CharacterWorkspacePanel from '@/components/CharacterWorkspacePanel';
 import SceneHeatMap from '@/components/SceneHeatMap';
 import DialogueGutter from '@/components/DialogueGutter';
+import CoachInlinePill from '@/components/CoachInlinePill';
 import { useAppStore } from '@/store/useAppStore';
 import type { Character, Screenplay } from '@/types';
 
@@ -737,6 +738,11 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
               >
                 <EditorContent editor={editor} className="min-h-[9in] outline-none" />
               </motion.div>
+
+              {/* Floating "Coach ✨" pill — appears beside the dialogue line
+                  the cursor is in, click to coach just that line. Disabled
+                  in reading + focus typing modes. */}
+              <CoachInlinePill enabled={!readingMode && !focusTyping} />
 
               {showMention && filteredChars.length > 0 && (
                 <MentionList
