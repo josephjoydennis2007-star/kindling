@@ -25,6 +25,7 @@ import {
   Mic2,
   Wand2,
   Search,
+  Shuffle,
   type LucideIcon,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
@@ -155,6 +156,22 @@ export default function Toolbar({
             label="Find & Replace"
             shortcut="⌘F"
             onClick={() => document.dispatchEvent(new CustomEvent('writer:findOpen'))}
+          />
+          <ToolbarIconButton
+            icon={Shuffle}
+            label="What if…?"
+            shortcut="⇧⌘W"
+            onClick={() => {
+              const sel = window.getSelection();
+              const text = sel?.toString().trim() || '';
+              if (!text) {
+                toast.error('Select a passage in the script first.');
+                return;
+              }
+              document.dispatchEvent(new CustomEvent('writer:openAltTake', {
+                detail: { text, label: 'Selection' },
+              }));
+            }}
           />
           <div className="w-px h-5 bg-[var(--border)] mx-1" />
         </div>

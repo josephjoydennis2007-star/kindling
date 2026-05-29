@@ -38,11 +38,48 @@ function injectStyleOnce() {
 }
 
 /**
- * Fire `count` particles. Defaults are tuned for a single goal-hit moment;
- * pass `count: 30` for a bigger burst.
+ * Play a short three-note arpeggio (C5 → E5 → G5, major triad ascending)
+ * via Web Audio. ~600 ms total. Self-contained: creates an AudioContext on
+ * the fly and tears it down. If the browser blocks audio (user hasn't
+ * interacted yet) we silently no-op — celebrate() always still runs the
+ * visual burst.
+ */
+function chime() {
+  try {
+    const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      // Quick ADSR — instant attack, gentle decay so it doesn't feel sharp.
+      const start = now + i * 0.12;
+      const peak = 0.18;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(peak, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.45);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.5);
+    });
+    // Close the context once the sound finishes so we don't leak.
+    setTimeout(() => { try { ctx.close(); } catch {} }, 1000);
+  } catch {
+    // Autoplay block or no audio support — no-op.
+  }
+}
+
+/**
+ * Fire `count` particles + a short chime. Defaults are tuned for a single
+ * goal-hit moment; pass `count: 30` for a bigger burst.
  */
 export function celebrate(count = 18) {
   if (typeof document === 'undefined') return;
+  chime();
   injectStyleOnce();
 
   const container = document.createElement('div');

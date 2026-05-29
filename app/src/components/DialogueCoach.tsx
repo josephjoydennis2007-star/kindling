@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import { aiOnce, extractJSON, providerNeedsKey } from '@/lib/aiClient';
+import { t } from '@/lib/i18n';
 import type { ScreenplayElement } from '@/types';
 
 /**
@@ -305,7 +306,7 @@ export default function DialogueCoach({ onClose }: Props) {
           <MessageSquareQuote className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-[var(--text)]">Dialogue Coach</div>
+          <div className="text-sm font-bold text-[var(--text)]">{t('coach.title')}</div>
           <div className="text-[10px] text-[var(--text-muted)]">
             {dialogue.length} line{dialogue.length === 1 ? '' : 's'} · {characterCount} character{characterCount === 1 ? '' : 's'}
           </div>
@@ -345,7 +346,9 @@ export default function DialogueCoach({ onClose }: Props) {
                   className="w-full py-3 rounded-lg bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white text-sm font-semibold shadow hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
-                  {dialogue.length === 0 ? 'Write some dialogue first' : `Coach the last ${Math.min(80, dialogue.length)} lines`}
+                  {dialogue.length === 0
+                    ? t('coach.write_first')
+                    : t('coach.coach_lines').replace('%n', String(Math.min(80, dialogue.length)))}
                 </button>
 
                 {/* Per-character pills — coach one speaker's entire arc */}
@@ -398,7 +401,7 @@ export default function DialogueCoach({ onClose }: Props) {
                 {report.voices && report.voices.length > 0 && (
                   <section>
                     <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2">
-                      Voice profiles
+                      {t('coach.voice_profiles')}
                     </h3>
                     <div className="space-y-1.5">
                       {report.voices.map((v) => {
@@ -427,7 +430,7 @@ export default function DialogueCoach({ onClose }: Props) {
                 {report.lines.length > 0 && (
                   <section>
                     <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2">
-                      Lines to sharpen ({report.lines.length})
+                      {t('coach.lines_to_sharpen')} ({report.lines.length})
                     </h3>
                     <div className="space-y-2">
                       {report.lines.map((l, i) => (<FlaggedLine key={i} line={l} />))}
@@ -554,7 +557,7 @@ function FlaggedLine({ line }: { line: CoachLine }) {
       </div>
       <div className="text-[10px] text-[var(--text-muted)]">{line.issue}</div>
       <div className="p-2 rounded-md bg-[var(--accent)]/10 border border-[var(--accent)]/30">
-        <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--accent)] block mb-1">Suggested rewrite</span>
+        <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--accent)] block mb-1">{t('coach.suggested_rewrite')}</span>
         <span className="text-[11px] text-[var(--text)] block mb-2">"{line.rewrite}"</span>
         <div className="flex gap-1.5">
           <button
@@ -562,7 +565,7 @@ function FlaggedLine({ line }: { line: CoachLine }) {
             title="Find this line in the script and replace it with the rewrite"
             className="flex-1 px-2 py-1 rounded bg-[var(--accent)] text-[var(--bg)] text-[10px] font-bold hover:brightness-110 transition-all"
           >
-            Replace in script
+            {t('coach.replace')}
           </button>
           <button
             onClick={() => copy(line.rewrite)}

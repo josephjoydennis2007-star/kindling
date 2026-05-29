@@ -27,6 +27,7 @@ import StylePane from '@/components/StylePane';
 import CompareOverlay from '@/components/CompareOverlay';
 import DialogueCoach from '@/components/DialogueCoach';
 import TableRead from '@/components/TableRead';
+import AltTakeOverlay from '@/components/AltTakeOverlay';
 import ExportDialog from '@/components/ExportDialog';
 import SocialBar from '@/components/SocialBar';
 import SettingsOverlay from '@/components/SettingsOverlay';
@@ -376,6 +377,21 @@ function App() {
         // Ctrl/Cmd+Shift+R → toggle Table Read mode
         e.preventDefault();
         setShowTableRead((v) => !v);
+      }
+      else if (mod && e.shiftKey && e.key.toLowerCase() === 'w' && useAppStore.getState().activeTab === 'writer') {
+        // Ctrl/Cmd+Shift+W → "What if?" — open the AltTakeOverlay with whatever
+        // the user has selected in the editor. If nothing is selected, show
+        // a toast pointing them at the right gesture.
+        e.preventDefault();
+        const sel = window.getSelection();
+        const text = sel?.toString().trim() || '';
+        if (!text) {
+          toast.error('Select a passage in the script first, then press Ctrl/⌘+Shift+W');
+          return;
+        }
+        document.dispatchEvent(new CustomEvent('writer:openAltTake', {
+          detail: { text, label: 'Selection' },
+        }));
       }
       else if (mod && e.shiftKey && e.key.toLowerCase() === 'l' && useAppStore.getState().activeTab === 'writer') {
         // Ctrl/Cmd+Shift+L → coach the current dialogue line under cursor.
@@ -789,6 +805,7 @@ function App() {
       <CompareOverlay />
       {showCoach && <DialogueCoach onClose={() => setShowCoach(false)} />}
       {showTableRead && <TableRead onClose={() => setShowTableRead(false)} />}
+      <AltTakeOverlay />
       <CommandPalette
         open={showPalette}
         onClose={() => setShowPalette(false)}

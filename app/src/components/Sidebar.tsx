@@ -27,6 +27,7 @@ import {
   Search,
   GitCompare,
   Wand2,
+  Shuffle,
 } from 'lucide-react';
 import type { Story } from '@/types';
 import { t } from '@/lib/i18n';
@@ -297,6 +298,29 @@ export default function Sidebar({
               collapsed={collapsed}
               shortcut="⇧⌘C"
               onClick={() => handleNav(() => document.dispatchEvent(new CustomEvent('writer:openCompare')))}
+            />
+            <SidebarItem
+              icon={Shuffle}
+              label="What if…?"
+              collapsed={collapsed}
+              shortcut="⇧⌘W"
+              onClick={() => {
+                // Pull whatever the user has selected and open the overlay;
+                // if no selection, toast a hint. Done inline so we don't
+                // need yet another App.tsx event.
+                handleNav(() => {
+                  const sel = window.getSelection();
+                  const text = sel?.toString().trim() || '';
+                  if (!text) {
+                    import('sonner').then(({ toast }) =>
+                      toast.error('Select a passage in the script first.'));
+                    return;
+                  }
+                  document.dispatchEvent(new CustomEvent('writer:openAltTake', {
+                    detail: { text, label: 'Selection' },
+                  }));
+                });
+              }}
             />
           </div>
         </div>

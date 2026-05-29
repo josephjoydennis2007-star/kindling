@@ -872,6 +872,7 @@ function ShortcutsPanel() {
         { keys: `${mod}+${shift}+R`,    action: 'Open Table-Read mode (read aloud)' },
         { keys: `${mod}+${shift}+S`,    action: 'Open the Style Assistant' },
         { keys: `${mod}+${shift}+C`,    action: 'Open the Compare overlay' },
+        { keys: `${mod}+${shift}+W`,    action: 'What if? — AI alternate take for the selection' },
         { keys: `${mod}+F`,             action: 'Find & Replace in the script' },
       ],
     },

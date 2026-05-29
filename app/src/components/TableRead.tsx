@@ -5,6 +5,7 @@ import {
   Mic2, Users, Gauge, Volume2, AlertCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { t } from '@/lib/i18n';
 import type { ScreenplayElement } from '@/types';
 
 /**
@@ -252,7 +253,7 @@ export default function TableRead({ onClose }: Props) {
           <Mic2 className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold">Table Read</div>
+          <div className="text-sm font-bold">{t('tableread.title')}</div>
           <div className="text-[10px] text-[var(--text-muted)]">
             {items.length} element{items.length === 1 ? '' : 's'} · {speakers.length} character{speakers.length === 1 ? '' : 's'}
           </div>
@@ -313,7 +314,7 @@ export default function TableRead({ onClose }: Props) {
                 disabled={items.length === 0}
                 className="flex-1 py-2 rounded-md bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold shadow flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Play className="w-4 h-4" /> {paused ? 'Resume' : 'Read aloud'}
+                <Play className="w-4 h-4" /> {paused ? t('tableread.resume') : t('tableread.read_aloud')}
               </button>
             ) : (
               <button
@@ -345,14 +346,14 @@ export default function TableRead({ onClose }: Props) {
                 title="Read from the currently-active scene"
                 className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                From current scene
+                {t('tableread.from_scene')}
               </button>
               <button
                 onClick={restart}
                 title="Restart from page 1"
                 className="px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
               >
-                Restart
+                {t('tableread.restart')}
               </button>
               <span className="ml-auto text-[var(--text-muted)] tabular-nums">
                 {idx + 1} / {items.length}
@@ -365,7 +366,7 @@ export default function TableRead({ onClose }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <label className="space-y-1">
                 <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold flex items-center gap-1">
-                  <Gauge className="w-3 h-3" /> Speed
+                  <Gauge className="w-3 h-3" /> {t('tableread.speed')}
                 </span>
                 <input
                   type="range" min={0.7} max={1.4} step={0.05}
@@ -377,7 +378,7 @@ export default function TableRead({ onClose }: Props) {
               </label>
               <label className="space-y-1">
                 <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold flex items-center gap-1">
-                  <Volume2 className="w-3 h-3" /> Volume
+                  <Volume2 className="w-3 h-3" /> {t('tableread.volume')}
                 </span>
                 <input
                   type="range" min={0} max={1} step={0.05}
@@ -391,7 +392,7 @@ export default function TableRead({ onClose }: Props) {
 
             <div>
               <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2 flex items-center gap-1">
-                <Users className="w-3 h-3" /> Cast voices
+                <Users className="w-3 h-3" /> {t('tableread.cast_voices')}
               </h3>
               <div className="space-y-1.5">
                 <VoicePick
