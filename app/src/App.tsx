@@ -356,6 +356,49 @@ function App() {
         e.preventDefault();
         setShowCoach((v) => !v);
       }
+      else if (mod && e.shiftKey && e.key.toLowerCase() === 'l' && useAppStore.getState().activeTab === 'writer') {
+        // Ctrl/Cmd+Shift+L → coach the current dialogue line under cursor.
+        // Walk the live DOM (TipTap paragraphs render with the screenplay
+        // format as the class name) to find the dialogue paragraph the
+        // selection is inside, then walk backwards to find the preceding
+        // CHARACTER cue.
+        e.preventDefault();
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) {
+          toast.error('Put the cursor inside a dialogue line first');
+          return;
+        }
+        let node: Node | null = sel.getRangeAt(0).startContainer;
+        while (node && node.nodeType !== 1) node = node.parentNode;
+        let dialogueEl: HTMLElement | null = null;
+        for (let cur = node as HTMLElement | null; cur; cur = cur.parentElement) {
+          if (cur.classList?.contains('dialogue')) { dialogueEl = cur; break; }
+        }
+        if (!dialogueEl) {
+          toast.error('Cursor isn’t inside a dialogue line — try clicking one first');
+          return;
+        }
+        // Walk previous siblings (and their previous siblings via parent walk)
+        // to find the most recent CHARACTER cue paragraph.
+        let speaker = '';
+        let prev: Element | null = dialogueEl.previousElementSibling;
+        while (prev) {
+          if (prev.classList.contains('character')) {
+            speaker = (prev.textContent || '').replace(/\(.+?\)/g, '').trim().toUpperCase();
+            break;
+          }
+          if (prev.classList.contains('scene-heading') || prev.classList.contains('transition')) break;
+          prev = prev.previousElementSibling;
+        }
+        if (!speaker) speaker = 'UNKNOWN';
+        const line = (dialogueEl.textContent || '').trim();
+        if (!line) { toast.error('Dialogue line is empty'); return; }
+        setShowCoach(true);
+        // Defer the event so the coach mounts and registers its listener first.
+        setTimeout(() => {
+          document.dispatchEvent(new CustomEvent('writer:coachLine', { detail: { speaker, line } }));
+        }, 40);
+      }
       // 'b' on the Plot tab quick-adds a beat to the first act, unless typing
       // in an input.
       else if (

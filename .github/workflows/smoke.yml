@@ -1,0 +1,79 @@
+name: Smoke test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/smoke.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - '.github/workflows/smoke.yml'
+  workflow_dispatch:
+
+# Cancel any in-flight run when a newer commit is pushed to the same ref.
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Playwright on Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        # npm ci is reproducible and uses the committed lockfile.
+        run: npm ci
+
+      # Cache the Playwright browser binaries — ~120 MB Chromium download
+      # is the slowest step in a cold run.
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+
+      - name: Install Playwright browsers
+        # --with-deps grabs the Linux fonts/codecs Chromium needs to render.
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright OS deps only
+        # On a cache hit the binaries are present but the OS libs may not be.
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Typecheck
+        # Catch obvious type regressions before we spin up a browser.
+        run: npx tsc -b
+
+      - name: Run smoke test
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            app/playwright-report
+            app/test-results
+          retention-days: 7
+          if-no-files-found: ignore

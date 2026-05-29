@@ -1,6 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { X, MessageSquareQuote, Loader2, Sparkles, AlertCircle, ChevronDown, ChevronRight, Quote } from 'lucide-react';
+import {
+  X, MessageSquareQuote, Loader2, Sparkles, AlertCircle,
+  ChevronDown, ChevronRight, Quote, History, Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import { aiOnce, extractJSON, providerNeedsKey } from '@/lib/aiClient';
@@ -9,29 +12,25 @@ import type { ScreenplayElement } from '@/types';
 /**
  * AI Dialogue Coach.
  *
- * Reads the active screenplay's character + dialogue elements, groups them
- * per character, asks the AI to:
- *   1. Build a one-line "voice profile" for each character
- *   2. Flag specific lines that are on-the-nose, expository, generic, or
- *      indistinguishable from other characters
- *   3. Suggest a sharper rewrite for each flagged line
+ * Two modes:
+ *   - 'full'   — analyse the last 80 dialogue lines of the screenplay,
+ *                return per-character voice profiles + flagged lines.
+ *                Opened by Ctrl/Cmd+Shift+D.
+ *   - 'single' — analyse exactly one dialogue line, returning a focused
+ *                rewrite. Triggered by the `writer:coachLine` custom event
+ *                (dispatched by App.tsx on Ctrl/Cmd+Shift+L when cursor is
+ *                inside a dialogue paragraph).
  *
- * Local-first: only the dialogue elements are sent — no logline, no settings,
- * no character names beyond what already appears in the script.
- *
- * Open with Ctrl/Cmd+Shift+D or via the menu button in the Writer toolbar.
+ * Reports are persisted per-screenplay to localStorage so a writer can
+ * scroll back through yesterday's analysis without re-running the AI.
+ * Nothing leaves the device unless the user triggers a new AI call.
  */
 
 interface CoachLine {
-  /** Speaker name as it appears in the script (e.g. "JANE"). */
   speaker: string;
-  /** The verbatim original dialogue. */
   original: string;
-  /** Why this line is weak. One sentence. */
   issue: string;
-  /** Concrete suggested rewrite. */
   rewrite: string;
-  /** Issue category — drives the badge color. */
   kind: 'on-nose' | 'expository' | 'generic' | 'voice-clash';
 }
 
@@ -40,22 +39,63 @@ interface CoachReport {
   lines: CoachLine[];
 }
 
+interface StoredReport {
+  ts: number;
+  mode: 'full' | 'single';
+  /** Number of dialogue lines analysed (for the history label). */
+  size: number;
+  report: CoachReport;
+}
+
 interface Props { onClose: () => void; }
 
+const HISTORY_KEY = 'kindling-coach-history';
+const HISTORY_MAX = 20; // cap per story so localStorage stays small
+
+// ─── localStorage helpers ────────────────────────────────────────────────────
+
+function loadHistory(storyId: string): StoredReport[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const blob = JSON.parse(raw) as Record<string, StoredReport[]>;
+    return Array.isArray(blob[storyId]) ? blob[storyId] : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(storyId: string, reports: StoredReport[]) {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const blob = raw ? (JSON.parse(raw) as Record<string, StoredReport[]>) : {};
+    blob[storyId] = reports.slice(0, HISTORY_MAX);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(blob));
+  } catch {
+    // Quota errors are fine — history is best-effort.
+  }
+}
+
 export default function DialogueCoach({ onClose }: Props) {
-  // The store holds the *active* screenplay directly on `screenplay` — the
-  // `stories` array is for the workspace switcher. We read the live one.
   const screenplay = useAppStore((s) => s.screenplay);
   const settings = useAppStore((s) => s.settings);
+  const activeStoryId = useAppStore((s) => s.activeStoryId) || 'no-story';
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<CoachReport | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<StoredReport[]>(() => loadHistory(activeStoryId));
 
-  // Extract just the dialogue blocks from the active screenplay. We pair
-  // each character cue with the dialogue line that follows so the AI sees
-  // "WHO said WHAT" pairs — much cleaner input than the raw element list.
+  // Re-load history if the user switches stories while the panel is open.
+  useEffect(() => {
+    setHistory(loadHistory(activeStoryId));
+    setReport(null);
+  }, [activeStoryId]);
+
+  // Extract dialogue lines from the active screenplay. Pair each character
+  // cue with the dialogue that follows so the AI sees clean "WHO: WHAT" pairs.
   const dialogue = useMemo(() => {
     if (!screenplay?.elements) return [] as { speaker: string; line: string }[];
     const out: { speaker: string; line: string }[] = [];
@@ -64,7 +104,6 @@ export default function DialogueCoach({ onClose }: Props) {
       const text = stripHtml(el.content).trim();
       if (!text) continue;
       if (el.type === 'character') {
-        // Character cues are typed in uppercase; collapse "(V.O.)" etc.
         current = text.replace(/\(.+?\)/g, '').trim().toUpperCase();
       } else if (el.type === 'dialogue' && current) {
         out.push({ speaker: current, line: text });
@@ -75,12 +114,21 @@ export default function DialogueCoach({ onClose }: Props) {
     return out;
   }, [screenplay?.elements]);
 
-  const characterCount = useMemo(() => {
-    const s = new Set(dialogue.map((d) => d.speaker));
-    return s.size;
-  }, [dialogue]);
+  const characterCount = useMemo(() => new Set(dialogue.map((d) => d.speaker)).size, [dialogue]);
 
-  const run = async () => {
+  // ── Persist a new report
+  const persist = useCallback(
+    (mode: 'full' | 'single', size: number, r: CoachReport) => {
+      const stored: StoredReport = { ts: Date.now(), mode, size, report: r };
+      const next = [stored, ...history].slice(0, HISTORY_MAX);
+      setHistory(next);
+      saveHistory(activeStoryId, next);
+    },
+    [history, activeStoryId]
+  );
+
+  // ── Full-screenplay coach
+  const runFull = useCallback(async () => {
     if (!dialogue.length) {
       toast.error('No dialogue found in this screenplay yet. Write a few lines and try again.');
       return;
@@ -90,18 +138,10 @@ export default function DialogueCoach({ onClose }: Props) {
       return;
     }
 
-    setBusy(true);
-    setError(null);
-    setReport(null);
+    setBusy(true); setError(null); setReport(null);
 
-    // Cap the input so we don't blow up token limits on huge scripts. Take
-    // the most recent 80 lines — that's typically the act in progress, which
-    // is what the writer cares about right now.
     const sample = dialogue.slice(-80);
-    const prompt = sample
-      .map((d, i) => `${i + 1}. ${d.speaker}: ${d.line}`)
-      .join('\n');
-
+    const prompt = sample.map((d, i) => `${i + 1}. ${d.speaker}: ${d.line}`).join('\n');
     const system = [
       'You are a sharp dialogue coach for screenwriters.',
       'You will receive numbered "SPEAKER: line" pairs.',
@@ -114,18 +154,75 @@ export default function DialogueCoach({ onClose }: Props) {
 
     const result = await aiOnce(settings, system, prompt, { maxTokens: 1500, temperature: 0.4 });
     setBusy(false);
-
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
+    if (!result.ok) { setError(result.error); return; }
     const parsed = extractJSON<CoachReport>(result.text);
     if (!parsed || !Array.isArray(parsed.lines)) {
       setError(`AI returned something we couldn't parse as JSON. First 200 chars: ${result.text.slice(0, 200)}`);
       return;
     }
     setReport(parsed);
+    persist('full', sample.length, parsed);
     toast.success(`Coached ${parsed.lines.length} line${parsed.lines.length === 1 ? '' : 's'} across ${parsed.voices?.length || 0} character${parsed.voices?.length === 1 ? '' : 's'}`);
+  }, [dialogue, settings, persist]);
+
+  // ── Single-line coach (triggered by Ctrl+Shift+L)
+  const runSingle = useCallback(
+    async (speaker: string, line: string) => {
+      if (providerNeedsKey(settings.aiProvider) && !settings.aiApiKey) {
+        toast.error('Add an AI API key first (✦ button in the toolbar)');
+        return;
+      }
+      setBusy(true); setError(null); setReport(null);
+
+      // Build minimal context: the target line plus the 3 dialogue lines on
+      // either side (so the AI can judge voice consistency without seeing
+      // the whole script).
+      const idx = dialogue.findIndex((d) => d.speaker === speaker && d.line === line);
+      const window = idx >= 0
+        ? dialogue.slice(Math.max(0, idx - 3), idx + 4).map((d, i) =>
+            `${idx - 3 + i === idx ? '>>' : '  '} ${d.speaker}: ${d.line}`).join('\n')
+        : `>> ${speaker}: ${line}`;
+
+      const system = [
+        'You are a sharp dialogue coach. The user wants ONE line coached.',
+        'The target line is marked with ">>" in the input.',
+        'Return STRICT JSON only — same shape as the multi-line coach:',
+        '{ "voices": [{"speaker":"NAME","profile":"one-line voice read"}],',
+        '  "lines":  [{"speaker":"NAME","original":"…","issue":"…","rewrite":"…","kind":"on-nose|expository|generic|voice-clash"}] }',
+        'Include exactly ONE entry in lines (the >> line). Voices may be empty or include just this speaker.',
+      ].join('\n');
+
+      const result = await aiOnce(settings, system, window, { maxTokens: 500, temperature: 0.5 });
+      setBusy(false);
+      if (!result.ok) { setError(result.error); return; }
+      const parsed = extractJSON<CoachReport>(result.text);
+      if (!parsed || !Array.isArray(parsed.lines)) {
+        setError(`AI returned something we couldn't parse as JSON. First 200 chars: ${result.text.slice(0, 200)}`);
+        return;
+      }
+      setReport(parsed);
+      persist('single', 1, parsed);
+      toast.success('Line coached');
+    },
+    [dialogue, settings, persist]
+  );
+
+  // ── Listen for the inline "coach this line" trigger
+  useEffect(() => {
+    const onCoach = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { speaker: string; line: string } | undefined;
+      if (!detail?.line) return;
+      runSingle(detail.speaker || 'UNKNOWN', detail.line);
+    };
+    document.addEventListener('writer:coachLine', onCoach as EventListener);
+    return () => document.removeEventListener('writer:coachLine', onCoach as EventListener);
+  }, [runSingle]);
+
+  const clearHistory = () => {
+    if (!confirm('Clear all saved coach reports for this story?')) return;
+    setHistory([]);
+    saveHistory(activeStoryId, []);
+    toast.success('History cleared');
   };
 
   return (
@@ -146,9 +243,17 @@ export default function DialogueCoach({ onClose }: Props) {
         <div className="flex-1 min-w-0">
           <div className="text-sm font-bold text-[var(--text)]">Dialogue Coach</div>
           <div className="text-[10px] text-[var(--text-muted)]">
-            {dialogue.length} line{dialogue.length === 1 ? '' : 's'} across {characterCount} character{characterCount === 1 ? '' : 's'}
+            {dialogue.length} line{dialogue.length === 1 ? '' : 's'} · {characterCount} character{characterCount === 1 ? '' : 's'}
           </div>
         </div>
+        <button
+          onClick={() => setShowHistory((v) => !v)}
+          title={`History (${history.length})`}
+          aria-label="Toggle coach history"
+          className={`p-1.5 rounded-md ${showHistory ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'hover:bg-[var(--hover)] text-[var(--text-muted)]'}`}
+        >
+          <History className="w-4 h-4" />
+        </button>
         <button
           onClick={onClose}
           className="p-1.5 rounded-md hover:bg-[var(--hover)] text-[var(--text-muted)]"
@@ -160,94 +265,103 @@ export default function DialogueCoach({ onClose }: Props) {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {!report && !busy && !error && (
-          <button
-            onClick={run}
-            disabled={dialogue.length === 0}
-            className="w-full py-3 rounded-lg bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white text-sm font-semibold shadow hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            <Sparkles className="w-4 h-4" />
-            {dialogue.length === 0 ? 'Write some dialogue first' : `Coach the last ${Math.min(80, dialogue.length)} lines`}
-          </button>
-        )}
-
-        {busy && (
-          <div className="flex flex-col items-center gap-2 py-12 text-[var(--text-muted)] text-xs">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--accent)]" />
-            Analysing voice and subtext…
-          </div>
-        )}
-
-        {error && (
-          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-[11px] flex items-start gap-2">
-            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-            <div className="space-y-2">
-              <div>{error}</div>
-              <button onClick={() => setError(null)} className="text-[10px] underline opacity-80 hover:opacity-100">Try again</button>
-            </div>
-          </div>
-        )}
-
-        {report && (
+        {showHistory ? (
+          <HistoryList
+            history={history}
+            onPick={(r) => { setReport(r.report); setShowHistory(false); }}
+            onClear={clearHistory}
+          />
+        ) : (
           <>
-            {/* Voice profiles */}
-            {report.voices && report.voices.length > 0 && (
-              <section>
-                <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2">
-                  Voice profiles
-                </h3>
-                <div className="space-y-1.5">
-                  {report.voices.map((v) => {
-                    const key = `voice-${v.speaker}`;
-                    const isOpen = expanded[key] ?? true;
-                    return (
-                      <div key={key} className="border border-[var(--border)] rounded-lg bg-[var(--card)]">
-                        <button
-                          onClick={() => setExpanded((m) => ({ ...m, [key]: !isOpen }))}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-left"
-                          aria-expanded={isOpen}
-                        >
-                          {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                          <span className="text-xs font-bold text-[var(--text)]">{v.speaker}</span>
-                        </button>
-                        {isOpen && (
-                          <p className="px-3 pb-2 text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                            {v.profile}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-
-            {/* Flagged lines */}
-            {report.lines.length > 0 && (
-              <section>
-                <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2">
-                  Lines to sharpen ({report.lines.length})
-                </h3>
-                <div className="space-y-2">
-                  {report.lines.map((l, i) => (
-                    <FlaggedLine key={i} line={l} />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {report.lines.length === 0 && (
-              <div className="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text-secondary)] text-center">
-                ✨ No weak lines flagged — the dialogue is sharp.
+            {!report && !busy && !error && (
+              <div className="space-y-2">
+                <button
+                  onClick={runFull}
+                  disabled={dialogue.length === 0}
+                  className="w-full py-3 rounded-lg bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white text-sm font-semibold shadow hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {dialogue.length === 0 ? 'Write some dialogue first' : `Coach the last ${Math.min(80, dialogue.length)} lines`}
+                </button>
+                <p className="text-[10px] text-[var(--text-muted)] text-center px-2">
+                  Tip: put your cursor on any dialogue line and press <kbd className="px-1 py-0.5 rounded bg-[var(--hover)] text-[10px]">Ctrl/⌘+Shift+L</kbd> to coach just that line.
+                </p>
               </div>
             )}
 
-            <button
-              onClick={run}
-              className="w-full mt-2 py-2 rounded-lg border border-[var(--border)] text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
-            >
-              Re-run with latest dialogue
-            </button>
+            {busy && (
+              <div className="flex flex-col items-center gap-2 py-12 text-[var(--text-muted)] text-xs">
+                <Loader2 className="w-5 h-5 animate-spin text-[var(--accent)]" />
+                Analysing voice and subtext…
+              </div>
+            )}
+
+            {error && (
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-[11px] flex items-start gap-2">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <div>{error}</div>
+                  <button onClick={() => setError(null)} className="text-[10px] underline opacity-80 hover:opacity-100">Try again</button>
+                </div>
+              </div>
+            )}
+
+            {report && (
+              <>
+                {report.voices && report.voices.length > 0 && (
+                  <section>
+                    <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2">
+                      Voice profiles
+                    </h3>
+                    <div className="space-y-1.5">
+                      {report.voices.map((v) => {
+                        const key = `voice-${v.speaker}`;
+                        const isOpen = expanded[key] ?? true;
+                        return (
+                          <div key={key} className="border border-[var(--border)] rounded-lg bg-[var(--card)]">
+                            <button
+                              onClick={() => setExpanded((m) => ({ ...m, [key]: !isOpen }))}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                              aria-expanded={isOpen}
+                            >
+                              {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                              <span className="text-xs font-bold text-[var(--text)]">{v.speaker}</span>
+                            </button>
+                            {isOpen && (
+                              <p className="px-3 pb-2 text-[11px] text-[var(--text-secondary)] leading-relaxed">{v.profile}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {report.lines.length > 0 && (
+                  <section>
+                    <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2">
+                      Lines to sharpen ({report.lines.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {report.lines.map((l, i) => (<FlaggedLine key={i} line={l} />))}
+                    </div>
+                  </section>
+                )}
+
+                {report.lines.length === 0 && (
+                  <div className="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text-secondary)] text-center">
+                    ✨ No weak lines flagged — the dialogue is sharp.
+                  </div>
+                )}
+
+                <button
+                  onClick={runFull}
+                  className="w-full mt-2 py-2 rounded-lg border border-[var(--border)] text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+                >
+                  Re-run with latest dialogue
+                </button>
+              </>
+            )}
           </>
         )}
       </div>
@@ -258,6 +372,58 @@ export default function DialogueCoach({ onClose }: Props) {
         Using {settings.aiProvider}{settings.aiModel ? ` · ${settings.aiModel}` : ''}
       </div>
     </motion.div>
+  );
+}
+
+// ─── Sub-components ─────────────────────────────────────────────────────────
+
+function HistoryList({
+  history, onPick, onClear,
+}: {
+  history: StoredReport[];
+  onPick: (r: StoredReport) => void;
+  onClear: () => void;
+}) {
+  if (history.length === 0) {
+    return (
+      <div className="p-6 text-center text-xs text-[var(--text-muted)]">
+        No saved reports yet. Run a coach and it'll appear here.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+          History ({history.length})
+        </h3>
+        <button
+          onClick={onClear}
+          className="text-[10px] text-[var(--text-muted)] hover:text-red-400 flex items-center gap-1"
+        >
+          <Trash2 className="w-3 h-3" /> Clear
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        {history.map((r) => (
+          <button
+            key={r.ts}
+            onClick={() => onPick(r)}
+            className="w-full text-left p-3 rounded-lg bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--accent)]">
+                {r.mode === 'full' ? 'Full pass' : 'Single line'}
+              </span>
+              <span className="text-[10px] text-[var(--text-muted)]">{formatAgo(r.ts)}</span>
+            </div>
+            <div className="text-[11px] text-[var(--text-secondary)]">
+              {r.report.lines.length} flagged · {r.report.voices?.length || 0} voice profile{(r.report.voices?.length || 0) === 1 ? '' : 's'} · {r.size} line{r.size === 1 ? '' : 's'} analysed
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -302,10 +468,8 @@ function FlaggedLine({ line }: { line: CoachLine }) {
   );
 }
 
-/**
- * Strip HTML tags out of a TipTap content string so we feed the AI plain text.
- * Uses the platform DOM parser when available, falls back to a regex.
- */
+// ─── Utilities ──────────────────────────────────────────────────────────────
+
 function stripHtml(html: string): string {
   if (typeof document !== 'undefined') {
     const d = document.createElement('div');
@@ -313,4 +477,12 @@ function stripHtml(html: string): string {
     return d.textContent || '';
   }
   return (html || '').replace(/<[^>]+>/g, '');
+}
+
+function formatAgo(ts: number): string {
+  const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
 }

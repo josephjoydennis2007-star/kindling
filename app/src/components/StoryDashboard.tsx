@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { getTemplate } from '@/lib/storyTemplates';
+import SceneHeatMap from '@/components/SceneHeatMap';
 
 /**
  * "Home" view for the active story — a quick snapshot of:
@@ -150,6 +151,11 @@ export default function StoryDashboard() {
           <Stat icon={Clapperboard} label="Scenes" value={sceneStats.total} sub={`${sceneStats.totalShots} shots`} />
           <Stat icon={Users} label="Characters" value={characters.length} sub="cast" />
           <Stat icon={LayoutGrid} label="Beats" value={Object.keys(beats).length} sub={`${plotBoard.acts.length} acts`} />
+        </div>
+
+        {/* Scene Heat Map — pacing at a glance, click-to-jump */}
+        <div className="mb-6">
+          <SceneHeatMap />
         </div>
 
         {/* Two-column body */}
