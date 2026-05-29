@@ -14,6 +14,7 @@ import {
   Moon,
   Sun,
   Monitor,
+  Keyboard,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
@@ -70,7 +71,7 @@ export default function SettingsOverlay({ open, onClose }: Props) {
     logline: screenplay.logline,
     synopsis: screenplay.synopsis,
   });
-  const [tab, setTab] = useState<'appearance' | 'editor' | 'files' | 'story' | 'collab' | 'ai' | 'cloud'>('appearance');
+  const [tab, setTab] = useState<'appearance' | 'editor' | 'files' | 'story' | 'collab' | 'ai' | 'cloud' | 'shortcuts'>('appearance');
   const [syncing, setSyncing] = useState<string | null>(null);
 
   type Provider = 'gist' | 'jsonbin' | 'dropbox' | 'supabase' | 'webdav' | 'pastebin';
@@ -205,6 +206,7 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                 { id: 'collab' as const,     icon: Users,       label: 'Profile' },
                 { id: 'ai' as const,         icon: Sparkles,    label: 'AI' },
                 { id: 'cloud' as const,      icon: Wifi,        label: 'Cloud' },
+                { id: 'shortcuts' as const,  icon: Keyboard,    label: 'Keys' },
               ].map((t) => (
                 <button
                   key={t.id}
@@ -630,6 +632,10 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                   </p>
                 </div>
               )}
+
+              {tab === 'shortcuts' && (
+                <ShortcutsPanel />
+              )}
             </div>
 
             {/* Footer */}
@@ -813,6 +819,102 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="w-8 h-8 rounded cursor-pointer border border-[var(--border)]" />
         <input value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 px-3 py-1.5 bg-[var(--bg)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Read-only reference list of every keyboard shortcut wired in App.tsx
+ * (plus a few editor-local ones). Keep this in sync when shortcuts change.
+ * Detects the user's platform and renders ⌘ on macOS, Ctrl elsewhere.
+ */
+function ShortcutsPanel() {
+  // Detect macOS so we render the right modifier symbol.
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+  const mod = isMac ? '⌘' : 'Ctrl';
+  const shift = isMac ? '⇧' : 'Shift';
+
+  const groups: { title: string; rows: { keys: string; action: string }[] }[] = [
+    {
+      title: 'Files & saving',
+      rows: [
+        { keys: `${mod}+S`,             action: 'Save the active story now' },
+        { keys: `${mod}+${shift}+E`,    action: 'Open the Export dialog (PDF / Word / Fountain / FDX)' },
+        { keys: `${mod}+,`,             action: 'Open Settings' },
+        { keys: `${mod}+K`,             action: 'Open the Command Palette' },
+      ],
+    },
+    {
+      title: 'View',
+      rows: [
+        { keys: `${mod}+\\`,            action: 'Collapse / expand the sidebar' },
+        { keys: `${mod}+.`,             action: 'Toggle Focus Mode' },
+      ],
+    },
+    {
+      title: 'AI tools (writer tab)',
+      rows: [
+        { keys: `${mod}+${shift}+D`,    action: 'Open the AI Dialogue Coach' },
+        { keys: `${mod}+${shift}+L`,    action: 'Coach the dialogue line under the cursor' },
+        { keys: `${mod}+${shift}+R`,    action: 'Open Table-Read mode (read aloud)' },
+        { keys: `${mod}+${shift}+S`,    action: 'Open the Style Assistant' },
+        { keys: `${mod}+${shift}+C`,    action: 'Open the Compare overlay' },
+        { keys: `${mod}+F`,             action: 'Find & Replace in the script' },
+      ],
+    },
+    {
+      title: 'Plot board',
+      rows: [
+        { keys: 'B',                    action: 'Add a beat to the first act (when not typing)' },
+      ],
+    },
+    {
+      title: 'Editor (TipTap)',
+      rows: [
+        { keys: `${mod}+B`,             action: 'Bold the selection' },
+        { keys: `${mod}+I`,             action: 'Italicize the selection' },
+        { keys: `${mod}+U`,             action: 'Underline the selection' },
+        { keys: `${mod}+Z`,             action: 'Undo' },
+        { keys: `${mod}+${shift}+Z`,    action: 'Redo' },
+        { keys: 'Tab',                  action: 'Cycle screenplay format (Action → Character → …)' },
+      ],
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="p-3 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[11px] text-[var(--text-secondary)] flex items-start gap-2">
+        <Keyboard className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-[var(--accent)]" />
+        <div>
+          Every keyboard shortcut in Kindling, grouped by what it does. The
+          buttons in the sidebar's <strong>AI Tools</strong> section show the
+          same shortcuts inline — both routes do the same thing.
+        </div>
+      </div>
+
+      {groups.map((g) => (
+        <Section key={g.title} title={g.title}>
+          <div className="space-y-1">
+            {g.rows.map((r) => (
+              <div
+                key={r.keys + r.action}
+                className="flex items-center gap-3 py-1.5 px-2 rounded-md hover:bg-[var(--hover)]"
+              >
+                <kbd className="px-2 py-1 rounded-md bg-[var(--bg)] border border-[var(--border)] text-[11px] font-mono text-[var(--text)] tabular-nums flex-shrink-0 min-w-[88px] text-center">
+                  {r.keys}
+                </kbd>
+                <span className="text-[11px] text-[var(--text-secondary)] flex-1">
+                  {r.action}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Section>
+      ))}
+
+      <p className="text-[10px] text-[var(--text-muted)] text-center pt-2">
+        Showing {isMac ? 'macOS' : 'Windows / Linux'} shortcuts based on your browser.
+      </p>
     </div>
   );
 }
