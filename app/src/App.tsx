@@ -118,19 +118,27 @@ function App() {
     }
   }, [updateSettings]);
 
-  // Watch Firebase auth state; load (or auto-create) profile
+  // Watch Firebase auth state; load (or auto-create) profile.
+  //
+  // FIX: setAuthChecked(true) used to live ONLY at the end of the async
+  // callback, so if Firestore rules blocked getProfile()/upsertProfile()
+  // or the request hung, the splash screen ("Lighting Kindling…") would
+  // never go away. We now set it FIRST so the UI moves on regardless of
+  // profile-fetch outcome, and wrap the Firestore calls in try/catch so
+  // a missing/locked Firestore database doesn't block sign-in.
   useEffect(() => {
     const unsub = watchAuth(async (u) => {
       setUser(u);
-      if (u) {
+      setAuthChecked(true); // unblock the UI immediately
+      if (!u) return;
+      try {
         const existing = await getProfile(u.uid);
         if (existing) {
           setProfile(existing);
           updateSettings({ userId: u.uid, userDisplayName: existing.displayName });
-          // Cache the profile locally so it can be restored on next refresh
           try { localStorage.setItem('kindling-cached-profile', JSON.stringify(existing)); } catch {}
         } else if (!u.isAnonymous) {
-          // Auto-create skeleton profile + show editor
+          // Auto-create skeleton profile + show editor.
           const skeleton: UserProfile = {
             uid: u.uid,
             email: u.email,
@@ -140,14 +148,30 @@ function App() {
             createdAt: Date.now(),
             updatedAt: Date.now(),
           };
-          await upsertProfile(skeleton);
+          try {
+            await upsertProfile(skeleton);
+          } catch (err) {
+            // Firestore unreachable or rules block writes — keep the
+            // profile in memory + cached locally so sign-in still works.
+            // eslint-disable-next-line no-console
+            console.warn('[Kindling] Could not save profile to Firestore (using local cache instead):', err);
+          }
           setProfile(skeleton);
           updateSettings({ userId: u.uid, userDisplayName: skeleton.displayName });
           try { localStorage.setItem('kindling-cached-profile', JSON.stringify(skeleton)); } catch {}
           setShowProfile(true);
         }
+      } catch (err) {
+        // Firestore probably isn't enabled or rules block reads. Fall back
+        // to the locally-cached profile if we have one — the user can
+        // still use the app, they just can't sync profile metadata.
+        // eslint-disable-next-line no-console
+        console.warn('[Kindling] Could not load profile from Firestore (using local cache):', err);
+        try {
+          const cached = localStorage.getItem('kindling-cached-profile');
+          if (cached) setProfile(JSON.parse(cached));
+        } catch {}
       }
-      setAuthChecked(true);
     });
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -191,10 +215,16 @@ function App() {
   const [dirty, setDirty] = useState(false);
   useEffect(() => {
     if (!activeStoryId) return;
-    // Mark dirty whenever any of the persistable per-story fields change.
-    // Zustand's subscribe with a selector fires only when the slice changes.
+    // The initial story load mutates screenplay/scenes/etc. as the data
+    // hydrates from IndexedDB, which would falsely mark the story dirty.
+    // Skip the first ~700 ms of changes after activeStoryId switches.
+    let armed = false;
+    const armTimer = setTimeout(() => { armed = true; }, 700);
+    setDirty(false); // reset when switching stories — they start clean
+
     const unsub = useAppStore.subscribe((s, prev) => {
-      if (s.activeStoryId !== activeStoryId) return; // ignore other stories
+      if (!armed) return;
+      if (s.activeStoryId !== activeStoryId) return;
       if (s.screenplay !== prev.screenplay ||
           s.scenes !== prev.scenes ||
           s.shots !== prev.shots ||
@@ -206,7 +236,7 @@ function App() {
         setDirty(true);
       }
     });
-    return unsub;
+    return () => { clearTimeout(armTimer); unsub(); };
   }, [activeStoryId]);
 
   // beforeunload guard — only warns when there's actually unsaved work.
