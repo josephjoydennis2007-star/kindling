@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   MoreHorizontal, FileDown, Upload, MessageSquareQuote, Mic2, Wand2,
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
-  LogOut, UserCircle2, Share2, UserPlus,
+  LogOut, UserCircle2, Share2, UserPlus, PanelRight, Lightbulb, StickyNote,
+  Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -31,7 +32,23 @@ interface Props {
   onOpenSettings: () => void;
   onSignOut?: () => void;
   storyTitle?: string;
+  /** Currently open right-panel name (or null if closed). Drives Tools button active state. */
+  currentPanel?: string | null;
+  /** Called when the user picks a panel from the Tools dropdown. */
+  onOpenPanel?: (panel: string) => void;
 }
+
+// Story tools dropdown menu — same panels as the ContextPanel footer, but
+// reachable from every tab (Writer included). Mirrors ContextPanel's labels.
+const TOOL_ITEMS: Array<{ key: string; label: string; icon: any }> = [
+  { key: 'instructions', label: 'Instructions', icon: Lightbulb },
+  { key: 'notes',        label: 'Notes',        icon: StickyNote },
+  { key: 'characters',   label: 'Characters',   icon: Users },
+  { key: 'history',      label: 'History',      icon: HistoryIcon },
+  { key: 'collab',       label: 'Collaborate',  icon: Users2 },
+  { key: 'ai',           label: 'AI Helper',    icon: Bot },
+  { key: 'assets',       label: 'Assets',       icon: ImageIcon },
+];
 
 const FMT_MOD = (() => {
   if (typeof navigator === 'undefined') return 'Ctrl';
@@ -41,10 +58,28 @@ const FMT_SHIFT = FMT_MOD === '⌘' ? '⇧' : 'Shift';
 
 export default function TopBar({
   activeTab, isFocusMode, onToggleFocusMode, onOpenExport, onOpenSettings, onSignOut, storyTitle,
+  currentPanel, onOpenPanel,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const toolsRef = useRef<HTMLDivElement | null>(null);
   const activeStoryId = useAppStore((s) => s.activeStoryId);
+
+  // Close Tools popover on outside click + Escape.
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) setToolsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setToolsOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [toolsOpen]);
 
   // Close on outside click + Escape.
   useEffect(() => {
@@ -90,6 +125,83 @@ export default function TopBar({
           <Focus className="w-3.5 h-3.5" />
           {isFocusMode ? 'Exit' : 'Focus'}
         </button>
+
+        {/* Story Tools dropdown — open Notes / Characters / History / Collab /
+            AI Helper / Assets / Instructions from any tab, not just non-Writer
+            tabs. Clicking the currently-open tool again toggles the panel
+            closed. */}
+        <div className="relative" ref={toolsRef}>
+          <button
+            onClick={() => setToolsOpen((v) => !v)}
+            title="Story tools"
+            aria-label="Story tools"
+            aria-haspopup="menu"
+            aria-expanded={toolsOpen}
+            disabled={!activeStoryId}
+            className={`flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              currentPanel || toolsOpen
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/40'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+            }`}
+          >
+            <PanelRight className="w-3.5 h-3.5" />
+            Tools
+          </button>
+
+          <AnimatePresence>
+            {toolsOpen && (
+              <motion.div
+                role="menu"
+                aria-label="Story tools"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.12 }}
+                className="absolute top-full right-0 mt-1 w-[220px] bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg overflow-hidden z-50"
+              >
+                <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+                  Story tools
+                </div>
+                {TOOL_ITEMS.map((it) => {
+                  const active = currentPanel === it.key;
+                  return (
+                    <button
+                      key={it.key}
+                      role="menuitem"
+                      onClick={() => {
+                        setToolsOpen(false);
+                        onOpenPanel?.(it.key);
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
+                        active
+                          ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                          : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      <it.icon className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="flex-1 font-medium">{it.label}</span>
+                      {active && <span className="text-[9.5px] text-[var(--accent)] uppercase tracking-wider">Open</span>}
+                    </button>
+                  );
+                })}
+                {currentPanel && (
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setToolsOpen(false);
+                      // Toggling the currently-open panel closes it.
+                      onOpenPanel?.(currentPanel);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] border-t border-[var(--rule)] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
+                  >
+                    <X className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="flex-1 font-medium">Close tools panel</span>
+                  </button>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <div className="relative" ref={menuRef}>
           <button

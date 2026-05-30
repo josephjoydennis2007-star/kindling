@@ -777,6 +777,8 @@ function App() {
               setSkippedAuth(false);
             } : undefined}
             storyTitle={stories.find((s) => s.id === activeStoryId)?.title}
+            currentPanel={rightPanel}
+            onOpenPanel={(p) => togglePanel(p as any)}
           />
         )}
         {/* The original Toolbar now only renders on the Writer tab and only
