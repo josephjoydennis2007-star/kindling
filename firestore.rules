@@ -49,13 +49,38 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && request.resource.data.owner == request.auth.uid;
       // Owner OR a collaborator can update the `data` slice.
-      // Only the owner can change `owner`, `collaborators`, `shareable`.
+      // Only the owner can change `owner`, `collaborators`, `shareable` —
+      // EXCEPT in the self-join case (see below).
       allow update: if request.auth != null && (
         resource.data.owner == request.auth.uid ||
         (request.auth.uid in resource.data.collaborators
          && request.resource.data.owner == resource.data.owner
          && request.resource.data.collaborators == resource.data.collaborators
-         && request.resource.data.shareable == resource.data.shareable)
+         && request.resource.data.shareable == resource.data.shareable) ||
+        // ── Self-join via invite ──
+        // An invitee can add themselves (and only themselves) to the
+        // collaborators array IF a matching invite document exists at the
+        // deterministic /invites/{storyId}__{lowercase-email} path. This
+        // breaks the chicken-and-egg where a never-yet-a-collaborator can't
+        // accept their own invite. Constraints:
+        //   - owner unchanged
+        //   - shareable unchanged
+        //   - title/data may change to whatever (story payload edits are
+        //     a separate concern, governed by the previous branch once
+        //     they ARE a collaborator)
+        //   - they were NOT a collaborator before
+        //   - they ARE a collaborator after
+        //   - the collaborators array grew by exactly 1
+        //   - a /invites/{storyId}__{email} doc exists (proves a real
+        //     invite was sent to them; anyone could otherwise self-add)
+        (
+          request.resource.data.owner == resource.data.owner
+          && request.resource.data.shareable == resource.data.shareable
+          && !(request.auth.uid in resource.data.collaborators)
+          && (request.auth.uid in request.resource.data.collaborators)
+          && request.resource.data.collaborators.size() == resource.data.collaborators.size() + 1
+          && exists(/databases/$(database)/documents/invites/$(storyId + '__' + request.auth.token.email.lower()))
+        )
       );
       // Only the owner can delete.
       allow delete: if request.auth != null

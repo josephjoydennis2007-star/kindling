@@ -40,7 +40,6 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
-  addDoc,
   getDocs,
   enableNetwork,
   disableNetwork,
@@ -287,7 +286,14 @@ export async function inviteByEmail(input: {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in');
   return withRecovery(async () => {
-    await addDoc(collection(db, 'invites'), {
+    // Use a DETERMINISTIC invite ID — "{storyId}__{lowercaseEmail}" — so the
+    // /stories security rule can verify "does an invite exist for this user
+    // on this story?" via a known exists() path. Without a deterministic ID
+    // the invitee can never accept their own invite because the story's
+    // update rule requires them to already be a collaborator. Two underscores
+    // separate the parts so a normal storyId or email never collides.
+    const inviteId = inviteIdFor(input.storyId, input.toEmail);
+    await setDoc(doc(db, 'invites', inviteId), {
       storyId: input.storyId,
       storyTitle: input.storyTitle,
       fromUid: user.uid,
@@ -297,6 +303,12 @@ export async function inviteByEmail(input: {
       createdAt: serverTimestamp(),
     });
   });
+}
+
+/** Deterministic invite document ID. MUST match the path checked by the
+ *  /stories update rule in firestore.rules. */
+function inviteIdFor(storyId: string, email: string): string {
+  return `${storyId}__${email.toLowerCase().trim()}`;
 }
 
 /** List pending invites addressed to the current user's email. */
@@ -331,8 +343,14 @@ export async function acceptInvite(inviteId: string): Promise<string | null> {
     if (invite.toEmail !== user.email?.toLowerCase()) {
       throw new Error('Invite is for a different email address');
     }
-    await addCollaborator(invite.storyId, user.uid);
+    // Mark accepted FIRST. This succeeds because the invite rule allows the
+    // invitee to update their own invites. Then add ourselves to the story's
+    // collaborators — the /stories update rule allows this self-join when a
+    // matching invite exists at the deterministic /invites/{storyId}__{email}
+    // path. Old-style invites (random auto-IDs) won't satisfy the exists
+    // check, so they need to be resent in the new format.
     await updateDoc(inviteRef, { status: 'accepted' });
+    await addCollaborator(invite.storyId, user.uid);
     return invite.storyId;
   });
 }
