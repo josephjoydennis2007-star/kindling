@@ -4,7 +4,7 @@ import {
   MoreHorizontal, FileDown, Upload, MessageSquareQuote, Mic2, Wand2,
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
   LogOut, UserCircle2, Share2, UserPlus, PanelRight, Lightbulb, StickyNote,
-  Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X,
+  Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X, Stethoscope,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -328,6 +328,14 @@ export default function TopBar({
                 </Group>
 
                 <Group title="Account">
+                  <Item
+                    icon={Stethoscope}
+                    label="Diagnose cloud…"
+                    onClick={() => {
+                      setOpen(false);
+                      (window as any).__openDiagnostic?.();
+                    }}
+                  />
                   <Item
                     icon={UserCircle2}
                     label="Settings"

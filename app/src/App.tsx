@@ -18,6 +18,7 @@ import TopBar from '@/components/TopBar';
 import UserMenu from '@/components/UserMenu';
 import ShareDialog from '@/components/ShareDialog';
 import InviteDialog from '@/components/InviteDialog';
+import CloudDiagnostic from '@/components/CloudDiagnostic';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
 import DirectorView from '@/components/DirectorView';
@@ -956,6 +957,10 @@ function App() {
           (flip skippedAuth back to false to re-mount the AuthWall). */}
       <ShareDialog user={user} onOpenAuth={() => setSkippedAuth(false)} />
       <InviteDialog user={user} onOpenAuth={() => setSkippedAuth(false)} />
+      {/* Live Firestore round-trip probe — opens via the ⋯ menu or a custom
+          event from any UI surface. Tells the user EXACTLY which step fails
+          (config / auth / network / write / read), with the raw error code. */}
+      <CloudDiagnostic />
       <Onboarding />
       <FindReplace />
       <StylePane />
