@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Resetting Kindling…</title>
+  <style>
+    html, body { margin: 0; height: 100%; font: 14px system-ui, -apple-system, Segoe UI, sans-serif; background: #0a0a0f; color: #e4e4e7; }
+    body { display: flex; align-items: center; justify-content: center; }
+    .card { max-width: 480px; padding: 24px; border: 1px solid #27272a; border-radius: 12px; background: #18181b; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    p { margin: 8px 0; color: #a1a1aa; line-height: 1.5; }
+    .log { margin: 16px 0; padding: 12px; background: #09090b; border-radius: 8px; font: 12px ui-monospace, Menlo, monospace; color: #84cc16; max-height: 200px; overflow: auto; }
+    .log li { list-style: none; padding: 2px 0; }
+    .log li.err { color: #f87171; }
+    a.go { display: block; margin-top: 16px; padding: 10px 16px; background: #6366f1; color: #fff; text-decoration: none; text-align: center; border-radius: 6px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Resetting Kindling…</h1>
+    <p>Clearing the old service worker, caches, and storage so the latest build can take over.</p>
+    <ul class="log" id="log"></ul>
+    <p id="status">Working — please wait.</p>
+    <a class="go" id="go" href="/" style="display:none">Open the fresh app →</a>
+  </main>
+  <script>
+    // Standalone JS so this page works even if the old SW is intercepting.
+    // This page is intentionally placed at /reset.html so it bypasses any
+    // cached navigation requests in the old SW's stale-while-revalidate
+    // cache (which only knew about /index.html).
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const goEl = document.getElementById('go');
+    const log = (msg, err) => {
+      const li = document.createElement('li');
+      li.textContent = (err ? '✕ ' : '✓ ') + msg;
+      if (err) li.className = 'err';
+      logEl.appendChild(li);
+    };
+    (async () => {
+      // 1. Unregister every service worker controlling this origin.
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          if (regs.length === 0) {
+            log('No service workers registered');
+          } else {
+            for (const r of regs) {
+              await r.unregister();
+              log('Unregistered ' + (r.active && r.active.scriptURL || 'service worker'));
+            }
+          }
+        } else {
+          log('Browser has no service worker support — nothing to unregister');
+        }
+      } catch (e) {
+        log('Could not unregister service workers: ' + (e && e.message), true);
+      }
+
+      // 2. Delete every Cache Storage entry.
+      try {
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          if (keys.length === 0) {
+            log('No caches to clear');
+          } else {
+            for (const k of keys) {
+              await caches.delete(k);
+              log('Deleted cache "' + k + '"');
+            }
+          }
+        }
+      } catch (e) {
+        log('Could not clear caches: ' + (e && e.message), true);
+      }
+
+      // 3. Wipe localStorage + sessionStorage so any cached Firebase state
+      //    or stale auth fragments go too. (User will need to sign in again
+      //    — that is expected.)
+      try {
+        localStorage.clear();
+        log('Cleared localStorage');
+      } catch (e) { log('Could not clear localStorage', true); }
+      try {
+        sessionStorage.clear();
+        log('Cleared sessionStorage');
+      } catch (e) { log('Could not clear sessionStorage', true); }
+
+      // 4. Drop IndexedDB databases. The Firestore SDK + the per-story
+      //    cache live here; we want both fresh.
+      try {
+        if (indexedDB && indexedDB.databases) {
+          const dbs = await indexedDB.databases();
+          for (const db of dbs) {
+            if (db.name) {
+              await new Promise((resolve) => {
+                const req = indexedDB.deleteDatabase(db.name);
+                req.onsuccess = req.onerror = req.onblocked = () => resolve();
+              });
+              log('Deleted IndexedDB "' + db.name + '"');
+            }
+          }
+        }
+      } catch (e) {
+        log('Could not enumerate IndexedDB: ' + (e && e.message), true);
+      }
+
+      statusEl.textContent = 'Done. Opening the fresh app in 2 seconds…';
+      goEl.style.display = 'block';
+      setTimeout(() => {
+        // Cache-bust the navigation so the new SW (network-first) definitely
+        // serves a fresh index.html.
+        window.location.replace('/?reset=' + Date.now());
+      }, 2000);
+    })();
+  </script>
+</body>
+</html>
