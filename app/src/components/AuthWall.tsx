@@ -195,10 +195,27 @@ export default function AuthWall({ onSignedIn }: Props) {
           </button>
 
           {!isFirebaseConfigured && (
-            <p className="mt-3 text-[10px] text-amber-400 text-center">
-              Firebase isn't configured yet — sign-in is disabled until you add your config (see SETUP.md).
-              Local-only works right now.
-            </p>
+            <div className="mt-4 p-3 rounded-md bg-[var(--warning)]/10 border border-[var(--warning)]/30">
+              <div className="text-[11px] font-semibold text-[var(--warning)] mb-1">
+                ⚠ Sign-in not yet enabled
+              </div>
+              <p className="text-[10.5px] text-[var(--text-secondary)] leading-relaxed">
+                To turn on Google + email sign-in, set up a free Firebase project
+                (5 minutes, no credit card) and paste the keys into a <code className="px-1 rounded bg-[var(--card)]">.env</code> file
+                at the project root. Full step-by-step:{' '}
+                <a
+                  href="https://github.com/josephjoydennis2007-star/kindling/blob/main/SETUP.md"
+                  target="_blank" rel="noopener noreferrer"
+                  className="text-[var(--accent)] hover:underline font-semibold"
+                >
+                  SETUP.md
+                </a>.
+              </p>
+              <p className="text-[10.5px] text-[var(--text-muted)] mt-2">
+                Use <strong>Continue without account</strong> below to work locally for now —
+                everything is saved to this browser and you can switch to cloud later.
+              </p>
+            </div>
           )}
         </div>
 

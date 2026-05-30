@@ -135,12 +135,12 @@ export default function IconRail({
         <button
           onClick={() => onOpenProfile?.()}
           title={user?.displayName || user?.email || 'You'}
-          aria-label="Open profile menu"
-          className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-[var(--surface-2)] border border-[var(--rule)] hover:border-[var(--border-light)] transition-colors"
+          aria-label="Open user menu"
+          className="avatar-gradient w-10 h-10 rounded-full overflow-hidden flex items-center justify-center transition-transform hover:scale-[1.04]"
         >
           {user?.photoURL
             ? <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
-            : <span className="text-xs font-semibold text-[var(--text)]">
+            : <span className="text-xs font-semibold text-white drop-shadow">
                 {(user?.displayName || user?.email || 'Y').charAt(0).toUpperCase()}
               </span>}
         </button>

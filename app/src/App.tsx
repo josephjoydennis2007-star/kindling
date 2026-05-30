@@ -15,6 +15,7 @@ import IconRail from '@/components/IconRail';
 import ContextPanel from '@/components/ContextPanel';
 import StatusLine from '@/components/StatusLine';
 import TopBar from '@/components/TopBar';
+import UserMenu from '@/components/UserMenu';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
 import DirectorView from '@/components/DirectorView';
@@ -96,6 +97,7 @@ function App() {
     } catch {}
   }, []);
   const [showProfile, setShowProfile] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   // On mount: if user already skipped auth, mark as checked immediately (don't wait for Firebase)
   // Also restore any cached profile from localStorage
@@ -652,7 +654,7 @@ function App() {
           onStoryChange={handleSelectStory}
           onNewStory={() => setShowStorySelector(true)}
           onOpenSettings={() => setShowSettings(true)}
-          onOpenProfile={() => setShowProfile(true)}
+          onOpenProfile={() => setShowUserMenu((v) => !v)}
           user={user ? { displayName: profile?.displayName || user.displayName, photoURL: profile?.avatar || user.photoURL, email: user.email } : null}
         />
       )}
@@ -877,6 +879,30 @@ function App() {
           onSaved={(p) => { setProfile(p); updateSettings({ userDisplayName: p.displayName, userRole: p.role === 'both' ? 'writer' : (p.role as any) }); }}
         />
       )}
+
+      {/* User menu popover — opens from the rail avatar. Local mode shows
+          a Sign-in CTA that re-opens the AuthWall by flipping skippedAuth
+          back to false. Signed-in mode shows Edit profile + Sign out. */}
+      <UserMenu
+        open={showUserMenu}
+        onClose={() => setShowUserMenu(false)}
+        user={user}
+        profile={profile}
+        onOpenAuth={() => {
+          // Reset the "skipped" flag so the AuthWall re-mounts.
+          setSkippedAuth(false);
+        }}
+        onOpenProfile={() => { if (profile) setShowProfile(true); }}
+        onOpenSettings={() => setShowSettings(true)}
+        onSignOut={async () => {
+          const { signOutUser } = await import('@/firebase');
+          await signOutUser();
+          setUser(null);
+          setProfile(null);
+          setSkippedAuth(false);
+        }}
+        anchor="rail-bottom"
+      />
     </div>
   );
 }

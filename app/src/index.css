@@ -353,6 +353,14 @@
   [class*="ws-tile-"] {
     box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.18);
   }
+
+  /* User avatar gradient — the "you" identity chip. Uses the same accent
+     → accent-pair pair as the FAB hover so the user can spot themselves
+     at a glance in the rail. Single chip, no per-screen variation. */
+  .avatar-gradient {
+    background: linear-gradient(135deg, var(--accent), var(--accent-pair));
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.10), 0 2px 6px rgba(0,0,0,0.20);
+  }
 }
 
 @layer components {
