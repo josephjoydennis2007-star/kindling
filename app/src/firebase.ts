@@ -107,9 +107,16 @@ try {
   // initializeFirestore MUST be called before any other getFirestore() in
   // the bundle — otherwise the default-initialized instance wins and our
   // settings are ignored.
+  // IMPORTANT: this project has a NAMED database called "default" (not the
+  // standard "(default)" with parentheses). They look identical in the
+  // Console but are different resources to the SDK. Without the third
+  // argument here the SDK tries to talk to "(default)" which does not exist
+  // and every request hangs / fails with "Database not found". Passing
+  // 'default' as the databaseId routes us to the actual database the user
+  // created in their Firebase Console.
   _db = initializeFirestore(app, {
     experimentalAutoDetectLongPolling: true,
-  } as any);
+  } as any, 'default');
   _storage = getStorage(app);
   _auth = getAuth(app);
   setPersistence(_auth, browserLocalPersistence).catch(() => {});
