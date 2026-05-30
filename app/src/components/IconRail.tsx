@@ -68,8 +68,12 @@ export default function IconRail({
 
   return (
     <>
+      {/* Desktop + tablet: vertical 56px rail on the left.
+          Phone (<sm): becomes a 56px BOTTOM nav bar pinned to the screen
+          bottom (above the StatusLine), exactly like iOS tab bar. The
+          drawer + Settings cog + avatar are reachable via the same icons. */}
       <nav
-        className="flex flex-col items-center py-2 gap-1 bg-[var(--bg)] border-r border-[var(--rule)] flex-shrink-0 w-14 z-30"
+        className="hidden sm:flex flex-col items-center py-2 gap-1 bg-[var(--bg)] border-r border-[var(--rule)] flex-shrink-0 w-14 z-30"
         aria-label="Primary navigation"
       >
         {/* Logo — opens the stories drawer */}
@@ -139,6 +143,46 @@ export default function IconRail({
             : <span className="text-xs font-semibold text-[var(--text)]">
                 {(user?.displayName || user?.email || 'Y').charAt(0).toUpperCase()}
               </span>}
+        </button>
+      </nav>
+
+      {/* Mobile bottom nav (< sm) — same icons, horizontal layout */}
+      <nav
+        className="sm:hidden fixed bottom-7 left-0 right-0 h-12 flex items-center justify-around px-1 bg-[var(--bg)] border-t border-[var(--rule)] z-30"
+        aria-label="Primary navigation"
+      >
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className="w-9 h-9 rounded-md flex items-center justify-center text-[var(--accent-ink)] font-display font-bold text-sm"
+          style={{ background: 'var(--accent)' }}
+          aria-label="Stories"
+        >
+          K
+        </button>
+        {VIEWS.slice(0, 5).map((v) => {
+          const isActive = activeTab === v.id;
+          return (
+            <button
+              key={v.id}
+              onClick={() => onTabChange(v.id)}
+              aria-label={t(v.key, locale)}
+              aria-current={isActive ? 'page' : undefined}
+              className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors ${
+                isActive
+                  ? 'bg-[var(--surface-2)] text-[var(--accent)]'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--hover)]'
+              }`}
+            >
+              <v.icon className="w-[18px] h-[18px]" />
+            </button>
+          );
+        })}
+        <button
+          onClick={onOpenSettings}
+          aria-label="Settings"
+          className="w-9 h-9 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
+        >
+          <Settings className="w-[18px] h-[18px]" />
         </button>
       </nav>
 

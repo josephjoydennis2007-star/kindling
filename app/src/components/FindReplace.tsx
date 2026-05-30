@@ -104,64 +104,78 @@ export default function FindReplace() {
 
   return (
     <AnimatePresence>
+      {/* Responsive: pinned to the top, max width never exceeds the
+          viewport. On phones (<sm) the inputs stack vertically and the
+          two rows of controls collapse into a single tidy column. */}
       {open && (
         <motion.div
           initial={{ y: -16, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -16, opacity: 0 }}
-          className="fixed top-3 left-1/2 -translate-x-1/2 z-[280] bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg p-1.5 flex items-center gap-1.5"
+          className="fixed top-3 left-1/2 -translate-x-1/2 z-[280] bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg p-1.5 flex flex-col sm:flex-row sm:items-center gap-1.5 w-[min(96vw,720px)]"
         >
-          <Search className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1" />
-          <input
-            ref={findRef}
-            value={find}
-            onChange={(e) => setFind(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') (e.shiftKey ? prev() : next()); }}
-            placeholder="Find"
-            className="bg-[var(--card)] border border-[var(--border)] rounded-md px-2 py-1.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)] w-44"
-          />
-          <Replace className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-          <input
-            value={replace}
-            onChange={(e) => setReplace(e.target.value)}
-            placeholder="Replace"
-            className="bg-[var(--card)] border border-[var(--border)] rounded-md px-2 py-1.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)] w-44"
-          />
-          <button
-            onClick={() => setCaseSensitive((v) => !v)}
-            title="Case sensitive"
-            aria-pressed={caseSensitive}
-            className={`p-1.5 rounded-md transition-all ${caseSensitive ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-muted)] hover:bg-[var(--hover)]'}`}
-          >
-            <CaseSensitive className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setUseRegex((v) => !v)}
-            title="Regex"
-            aria-pressed={useRegex}
-            className={`p-1.5 rounded-md transition-all ${useRegex ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-muted)] hover:bg-[var(--hover)]'}`}
-          >
-            <Regex className="w-3.5 h-3.5" />
-          </button>
-          <span className="text-[10px] text-[var(--text-muted)] tabular-nums px-1">
-            {matches.length === 0 ? 'none' : `${matchIdx + 1} / ${matches.length}`}
-          </span>
-          <button onClick={prev} title="Previous" className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--hover)]" aria-label="Previous match">
-            <ArrowUp className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={next} title="Next" className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--hover)]" aria-label="Next match">
-            <ArrowDown className="w-3.5 h-3.5" />
-          </button>
-          <div className="w-px h-5 bg-[var(--border)]" />
-          <button onClick={replaceOne} title="Replace" className="px-2 py-1 rounded-md text-[11px] bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]">
-            Replace
-          </button>
-          <button onClick={replaceAll} title="Replace all" className="px-2 py-1 rounded-md text-[11px] bg-[var(--accent)] text-[var(--bg)] font-semibold hover:brightness-110">
-            All
-          </button>
-          <button onClick={() => setOpen(false)} title="Close" className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--hover)]" aria-label="Close find and replace">
-            <X className="w-3.5 h-3.5" />
-          </button>
+          {/* Inputs row — stacked on sm and below */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <Search className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1 flex-shrink-0" />
+              <input
+                ref={findRef}
+                value={find}
+                onChange={(e) => setFind(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.shiftKey ? prev() : next()); }}
+                placeholder="Find"
+                className="bg-[var(--card)] border border-[var(--border)] rounded-md px-2 py-1.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)] flex-1 min-w-0 sm:max-w-[180px]"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <Replace className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1 sm:ml-0 flex-shrink-0" />
+              <input
+                value={replace}
+                onChange={(e) => setReplace(e.target.value)}
+                placeholder="Replace"
+                className="bg-[var(--card)] border border-[var(--border)] rounded-md px-2 py-1.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)] flex-1 min-w-0 sm:max-w-[180px]"
+              />
+            </div>
+          </div>
+
+          {/* Controls row — stays inline on all sizes */}
+          <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
+            <button
+              onClick={() => setCaseSensitive((v) => !v)}
+              title="Case sensitive"
+              aria-pressed={caseSensitive}
+              className={`p-1.5 rounded-md transition-all ${caseSensitive ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-muted)] hover:bg-[var(--hover)]'}`}
+            >
+              <CaseSensitive className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setUseRegex((v) => !v)}
+              title="Regex"
+              aria-pressed={useRegex}
+              className={`p-1.5 rounded-md transition-all ${useRegex ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'text-[var(--text-muted)] hover:bg-[var(--hover)]'}`}
+            >
+              <Regex className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[10px] text-[var(--text-muted)] tabular-nums px-1 min-w-[44px] text-center">
+              {matches.length === 0 ? '0/0' : `${matchIdx + 1}/${matches.length}`}
+            </span>
+            <button onClick={prev} title="Previous" className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--hover)]" aria-label="Previous match">
+              <ArrowUp className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={next} title="Next" className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--hover)]" aria-label="Next match">
+              <ArrowDown className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-5 bg-[var(--rule)]" />
+            <button onClick={replaceOne} title="Replace" className="px-2 py-1 rounded-md text-[11px] bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]">
+              Replace
+            </button>
+            <button onClick={replaceAll} title="Replace all" className="px-2 py-1 rounded-md text-[11px] bg-[var(--accent)] text-[var(--accent-ink)] font-semibold hover:brightness-110">
+              All
+            </button>
+            <button onClick={() => setOpen(false)} title="Close" className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--hover)]" aria-label="Close find and replace">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

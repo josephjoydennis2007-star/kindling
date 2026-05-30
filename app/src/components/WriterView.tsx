@@ -512,12 +512,13 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
         onDeleteSection={deleteSection}
       />
 
-      {/* Rich Text Toolbar */}
-      <div className="min-h-10 bg-[var(--panel)] border-b border-[var(--border)] flex items-center px-3 gap-1 flex-shrink-0 flex-wrap py-1.5">
-        <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mr-3 px-1.5 py-1 rounded bg-[var(--card)] border border-[var(--border)]">
+      {/* Rich Text Toolbar — single row, horizontal-scroll on overflow so
+          buttons never wrap onto a second line and lose their order. */}
+      <div className="h-9 bg-[var(--panel)] border-b border-[var(--rule)] flex items-center px-2 gap-0.5 flex-shrink-0 overflow-x-auto no-scrollbar">
+        <span className="text-[9px] uppercase tracking-wider text-[var(--text-muted)] font-bold mr-2 px-1.5 py-0.5 rounded bg-[var(--card)] border border-[var(--rule)] flex-shrink-0">
           {currentFormat}
         </span>
-        <div className="w-px h-5 bg-[var(--border)] mr-1" />
+        <div className="w-px h-4 bg-[var(--rule)] mr-1 flex-shrink-0" />
         <RichButton icon={Bold} onClick={() => editor?.chain().focus().toggleBold().run()} active={!!editor?.isActive('bold')} title="Bold" />
         <RichButton icon={Italic} onClick={() => editor?.chain().focus().toggleItalic().run()} active={!!editor?.isActive('italic')} title="Italic" />
         <RichButton icon={UnderlineIcon} onClick={() => editor?.chain().focus().toggleUnderline().run()} active={!!editor?.isActive('underline')} title="Underline" />
@@ -613,48 +614,56 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
             import('sonner').then(({ toast }) => toast.success('New page created!'));
           }}
           title="Add a new page / named section"
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--card)] border border-[var(--border)] rounded-md text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all"
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] transition-colors flex-shrink-0"
         >
-          <FilePlus2 className="w-3.5 h-3.5" />
-          Add Page
+          <FilePlus2 className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="hidden lg:inline">Add Page</span>
         </button>
         <button
           onClick={() => setPagesOpen((v) => !v)}
           title={pagesOpen ? 'Hide page previews' : 'Show page previews'}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--card)] border border-[var(--border)] rounded-md text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all"
+          className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors flex-shrink-0 ${
+            pagesOpen
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+              : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+          }`}
         >
-          {pagesOpen ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeftOpen className="w-3.5 h-3.5" />}
-          Pages
+          {pagesOpen ? <PanelLeftClose className="w-3.5 h-3.5 flex-shrink-0" /> : <PanelLeftOpen className="w-3.5 h-3.5 flex-shrink-0" />}
+          <span className="hidden lg:inline">Pages</span>
         </button>
+
+        <div className="w-px h-4 bg-[var(--rule)] mx-1 flex-shrink-0" />
 
         <button
           onClick={() => setReadingMode((v) => !v)}
           title={readingMode ? 'Exit reading mode' : 'Reading mode (read-only)'}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-all border ${
+          aria-pressed={readingMode}
+          className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors flex-shrink-0 ${
             readingMode
-              ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)]'
-              : 'bg-[var(--card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+              : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
           }`}
         >
-          <BookOpen className="w-3.5 h-3.5" />
-          Read
+          <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="hidden lg:inline">Read</span>
         </button>
 
         <button
           onClick={() => setFocusTyping((v) => !v)}
           title={focusTyping ? 'Exit focus typing' : 'Focus typing (dim other paragraphs)'}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-all border ${
+          aria-pressed={focusTyping}
+          className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors flex-shrink-0 ${
             focusTyping
-              ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)]'
-              : 'bg-[var(--card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+              : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
           }`}
         >
-          <Eye className="w-3.5 h-3.5" />
-          Focus
+          <Eye className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="hidden lg:inline">Focus</span>
         </button>
 
-        <div className="flex-1" />
-        <span className="text-[10px] text-[var(--text-muted)] whitespace-nowrap">Tab cycles formats</span>
+        <div className="flex-1 min-w-2" />
+        <span className="hidden xl:inline text-[10px] text-[var(--text-muted)] whitespace-nowrap flex-shrink-0">Tab cycles formats</span>
       </div>
 
       <div className="flex-1 overflow-hidden flex relative">

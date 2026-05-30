@@ -137,14 +137,19 @@ function WriterFormatRow({ onAddSection }: { onAddSection?: () => void }) {
   const stories = useAppStore((s) => s.stories);
   const activeStory = stories.find((s) => s.id === activeStoryId);
   const template = getTemplate(activeStory?.type);
+  // Horizontal-scroll track instead of flex-wrap — on narrow widths the
+  // buttons stay in one row and the user can swipe/scroll horizontally to
+  // reach them, like Chrome's tab bar or VS Code's tab strip. flex-wrap was
+  // crashing buttons onto a second line which made the layout feel broken.
   return (
-    <div className="flex items-center gap-2 animate-fade-in flex-wrap">
+    <div className="flex items-center gap-1.5 animate-fade-in min-w-0 flex-1 overflow-x-auto no-scrollbar">
       <span
-        className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mr-2 px-1.5 py-0.5 bg-[var(--card)] rounded-md border border-[var(--border)]"
+        className="text-[9px] uppercase tracking-wider text-[var(--text-muted)] font-bold px-1.5 py-0.5 bg-[var(--card)] rounded-md border border-[var(--rule)] flex-shrink-0"
         title={`Format buttons tuned for: ${template.label}`}
       >
         {template.label.split(' ')[0]}
       </span>
+      <div className="w-px h-4 bg-[var(--rule)] flex-shrink-0" />
       {template.toolbarFormats.map((f) => (
         <ToolButton
           key={f.label}
@@ -155,14 +160,14 @@ function WriterFormatRow({ onAddSection }: { onAddSection?: () => void }) {
       ))}
       {onAddSection && (
         <>
-          <div className="w-px h-5 bg-[var(--border)] mx-1" />
+          <div className="w-px h-4 bg-[var(--rule)] flex-shrink-0" />
           <button
             onClick={onAddSection}
             title="Add a new writer section / page"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--card)] border border-[var(--border)] rounded-lg text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all font-medium"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--accent)] transition-colors font-medium flex-shrink-0"
           >
             <BookmarkPlus className="w-3.5 h-3.5" />
-            Add Section
+            <span className="hidden sm:inline">Add Section</span>
           </button>
         </>
       )}
@@ -207,14 +212,14 @@ function ToolButton({ icon: Icon, label, format }: { icon: any; label: string; f
     <button
       onClick={applyFormat}
       title={`Apply ${label} format`}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-all font-medium border ${
+      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors font-medium flex-shrink-0 ${
         isActive
-          ? 'bg-[var(--accent)]/15 border-[var(--accent)] text-[var(--accent)] shadow-sm'
-          : 'bg-[var(--card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text)]'
-      } ${justApplied ? 'ring-2 ring-[var(--accent)]/40 scale-[1.03]' : ''}`}
+          ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+          : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+      } ${justApplied ? 'ring-1 ring-[var(--accent)]/40' : ''}`}
     >
-      <Icon className="w-3.5 h-3.5" />
-      {label}
+      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+      <span className="hidden md:inline">{label}</span>
     </button>
   );
 }

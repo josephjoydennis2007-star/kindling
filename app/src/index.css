@@ -166,6 +166,16 @@
   ::-webkit-scrollbar-thumb:hover {
     background: var(--border-light);
   }
+
+  /* Utility class used by horizontal-scroll tracks (toolbar, scene lists,
+     etc.) — visually hides the scrollbar while keeping scroll functionality.
+     Standard pattern for tab strips. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @layer components {
@@ -401,12 +411,24 @@
     transform: translateX(0);
   }
 
-  /* Mobile: full-width sheet from the bottom of the TopBar */
+  /* Mobile: full-width sheet from the bottom of the TopBar.
+     Account for the 48px bottom nav by pushing the panel up. */
   @media (max-width: 768px) {
     .right-panel {
       width: 100%;
       top: 44px;
       bottom: 28px;
+    }
+  }
+
+  /* Phone (<sm): the IconRail becomes a horizontal bottom nav floating
+     above the StatusLine, so the main app area needs to keep clear of it. */
+  @media (max-width: 639px) {
+    .app-container {
+      padding-bottom: 48px;        /* room for the bottom nav */
+    }
+    .right-panel {
+      bottom: calc(28px + 48px);    /* clear bottom nav + status line */
     }
   }
 

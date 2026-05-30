@@ -47,7 +47,7 @@ export default function ContextPanel({ activeTab, rightPanel, onTogglePanel }: P
 
   return (
     <aside
-      className="w-[240px] flex-shrink-0 flex flex-col bg-[var(--bg)] border-r border-[var(--rule)] min-h-0"
+      className="hidden md:flex w-[240px] flex-shrink-0 flex-col bg-[var(--bg)] border-r border-[var(--rule)] min-h-0"
       aria-label="Context panel"
     >
       {/* View-specific header */}
