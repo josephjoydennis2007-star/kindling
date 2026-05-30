@@ -73,7 +73,7 @@ export default function IconRail({
           bottom (above the StatusLine), exactly like iOS tab bar. The
           drawer + Settings cog + avatar are reachable via the same icons. */}
       <nav
-        className="hidden sm:flex flex-col items-center py-2 gap-1 bg-[var(--bg)] border-r border-[var(--rule)] flex-shrink-0 w-14 z-30"
+        className="hidden sm:flex flex-col items-center py-2 gap-1 bg-[var(--rail-bg)] border-r border-[var(--rule)] flex-shrink-0 w-14 z-30"
         aria-label="Primary navigation"
       >
         {/* Logo — opens the stories drawer */}
@@ -148,7 +148,7 @@ export default function IconRail({
 
       {/* Mobile bottom nav (< sm) — same icons, horizontal layout */}
       <nav
-        className="sm:hidden fixed bottom-7 left-0 right-0 h-12 flex items-center justify-around px-1 bg-[var(--bg)] border-t border-[var(--rule)] z-30"
+        className="sm:hidden fixed bottom-7 left-0 right-0 h-12 flex items-center justify-around px-1 bg-[var(--rail-bg)] border-t border-[var(--rule)] z-30"
         aria-label="Primary navigation"
       >
         <button

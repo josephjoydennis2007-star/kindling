@@ -40,6 +40,11 @@
     --hover:        #1F2236;
     --active:       #232742;
 
+    /* Rail surface — a tint distinct from --bg so the rail reads as
+       navigation chrome. Subtle enough to stay professional. Each accent
+       palette overrides this with its own warm/cool variant below. */
+    --rail-bg:      #0E0F1A;   /* slightly more navy than --bg */
+
     /* Script paper — does NOT flip in light mode (paper is always paper) */
     --paper:        #F7F4EC;
     --ink:          #0A0A0A;
@@ -96,6 +101,7 @@
     --surface-2:    #2A2230;
     --hover:        #322839;
     --active:       #3D2F43;
+    --rail-bg:      #1A141F;   /* warm tint distinct from --bg */
     --text:           #F0EAE8;
     --text-secondary: #C9BAB6;
     --text-muted:     #A6938F;
@@ -121,6 +127,7 @@
     --surface-2:    #1A2A24;
     --hover:        #20332D;
     --active:       #26403A;
+    --rail-bg:      #0F1A16;   /* slightly olive-tinted */
     --text:           #E8F0EC;
     --text-secondary: #B1C3BA;
     --text-muted:     #8AA39A;
@@ -145,6 +152,7 @@
     --surface-2:    #261A30;
     --hover:        #2E2138;
     --active:       #382A48;
+    --rail-bg:      #160F1F;   /* slightly more purple than --bg */
     --text:           #ECE6F2;
     --text-secondary: #BFB0D0;
     --text-muted:     #A292B3;
@@ -168,6 +176,7 @@
     --surface-2:    #F4F4F9;
     --hover:        #EFEFF5;
     --active:       #E8E8F0;
+    --rail-bg:      #F0F0F7;   /* tinted band reads as chrome */
 
     --text:           #14151F;
     --text-secondary: #4A4D62;
@@ -309,6 +318,40 @@
       radial-gradient(circle at center,
         color-mix(in oklab, var(--accent) 18%, transparent) 0%,
         transparent 75%);
+  }
+
+  /* ── Workspace category gradient palette ──────────────────────────────
+     5 distinct gradient tiles, each derived from the active --accent and
+     --accent-pair via HSL rotation. Used for the WorkspaceView category
+     icons + LinkCard avatars. Rotates by category index so each section
+     reads distinct without ever feeling chaotic. Switching accents
+     restyles the whole grid coherently. */
+  .ws-tile-1 {
+    background: linear-gradient(135deg, var(--accent), var(--accent-pair));
+  }
+  .ws-tile-2 {
+    background: linear-gradient(135deg,
+      color-mix(in oklab, var(--accent) 70%, #34D399 30%),
+      color-mix(in oklab, var(--accent-pair) 60%, #06B6D4 40%));
+  }
+  .ws-tile-3 {
+    background: linear-gradient(135deg,
+      color-mix(in oklab, var(--accent) 65%, #F472B6 35%),
+      color-mix(in oklab, var(--accent-pair) 65%, #FB7185 35%));
+  }
+  .ws-tile-4 {
+    background: linear-gradient(135deg,
+      color-mix(in oklab, var(--accent) 60%, #818CF8 40%),
+      color-mix(in oklab, var(--accent-pair) 70%, #38BDF8 30%));
+  }
+  .ws-tile-5 {
+    background: linear-gradient(135deg,
+      color-mix(in oklab, var(--accent) 65%, #F59E0B 35%),
+      color-mix(in oklab, var(--accent-pair) 55%, #FBBF24 45%));
+  }
+  /* Slightly raised feel on hover for any ws-tile */
+  [class*="ws-tile-"] {
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 2px 8px rgba(0,0,0,0.18);
   }
 }
 

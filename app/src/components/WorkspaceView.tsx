@@ -15,12 +15,15 @@ import {
 import { useAppStore } from '@/store/useAppStore';
 import type { WorkspaceLink } from '@/types';
 
-const CATEGORIES: { id: WorkspaceLink['category']; label: string; description: string; icon: any; gradient: string }[] = [
-  { id: 'video',    label: 'Video Editing',    description: 'DaVinci Resolve, CapCut, Premiere…', icon: Film,     gradient: 'from-blue-500 to-indigo-600' },
-  { id: 'audio',    label: 'Audio · SFX · Music · Ambience', description: 'Freesound, Pixabay, Mixkit…', icon: Music2, gradient: 'from-emerald-500 to-teal-600' },
-  { id: 'voice',    label: 'Voice Over',       description: 'ElevenLabs, Fish Audio, Murf…',      icon: Mic,      gradient: 'from-pink-500 to-rose-600' },
-  { id: 'ai-video', label: 'AI Video Creation',description: 'Runway, Pika, Luma, HeyGen, Kling…', icon: Sparkles, gradient: 'from-purple-500 to-fuchsia-600' },
-  { id: 'custom',   label: 'Custom Links',     description: 'Your own tools',                     icon: Briefcase,gradient: 'from-amber-500 to-orange-600' },
+// Categories are assigned `tileClass` from the accent-derived palette
+// (defined in index.css as .ws-tile-1 through .ws-tile-5). Switching the
+// app accent retunes every tile coherently — no hardcoded colors here.
+const CATEGORIES: { id: WorkspaceLink['category']; label: string; description: string; icon: any; tileClass: string }[] = [
+  { id: 'video',    label: 'Video Editing',    description: 'DaVinci Resolve, CapCut, Premiere…', icon: Film,     tileClass: 'ws-tile-1' },
+  { id: 'audio',    label: 'Audio · SFX · Music · Ambience', description: 'Freesound, Pixabay, Mixkit…', icon: Music2, tileClass: 'ws-tile-2' },
+  { id: 'voice',    label: 'Voice Over',       description: 'ElevenLabs, Fish Audio, Murf…',      icon: Mic,      tileClass: 'ws-tile-3' },
+  { id: 'ai-video', label: 'AI Video Creation',description: 'Runway, Pika, Luma, HeyGen, Kling…', icon: Sparkles, tileClass: 'ws-tile-4' },
+  { id: 'custom',   label: 'Custom Links',     description: 'Your own tools',                     icon: Briefcase,tileClass: 'ws-tile-5' },
 ];
 
 export default function WorkspaceView() {
@@ -80,8 +83,8 @@ export default function WorkspaceView() {
             >
               <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center">
-                    <cat.icon className="w-5 h-5 text-[var(--text-secondary)]" />
+                  <div className={`${cat.tileClass} w-9 h-9 rounded-md flex items-center justify-center`}>
+                    <cat.icon className="w-5 h-5 text-white drop-shadow" />
                   </div>
                   <div>
                     <div className="text-sm font-bold text-[var(--text)]">{cat.label}</div>
@@ -147,7 +150,7 @@ export default function WorkspaceView() {
                   </div>
                 )}
                 {items.map((l) => (
-                  <LinkCard key={l.id} link={l} gradient={cat.gradient} onDelete={() => deleteLink(l.id)} />
+                  <LinkCard key={l.id} link={l} tileClass={cat.tileClass} onDelete={() => deleteLink(l.id)} />
                 ))}
               </div>
             </motion.section>
@@ -158,15 +161,15 @@ export default function WorkspaceView() {
   );
 }
 
-function LinkCard({ link, onDelete }: { link: WorkspaceLink; gradient?: string; onDelete: () => void }) {
+function LinkCard({ link, tileClass, onDelete }: { link: WorkspaceLink; tileClass?: string; onDelete: () => void }) {
   const open = () => window.open(link.url, '_blank', 'noopener,noreferrer');
   return (
     <motion.div
       whileHover={{ y: -2 }}
       className="group flex items-center gap-3 p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg hover:border-[var(--accent)] transition-all"
     >
-      <div className="w-9 h-9 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center flex-shrink-0">
-        <ExternalLink className="w-4 h-4 text-[var(--text-secondary)]" />
+      <div className={`${tileClass || 'bg-[var(--surface-2)] border border-[var(--border)]'} w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0`}>
+        <ExternalLink className="w-4 h-4 text-white drop-shadow" />
       </div>
       <button onClick={open} className="flex-1 text-left min-w-0">
         <div className="text-xs font-semibold text-[var(--text)] truncate group-hover:text-[var(--accent)]">
