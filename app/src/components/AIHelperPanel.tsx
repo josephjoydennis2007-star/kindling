@@ -221,30 +221,32 @@ export default function AIHelperPanel({ onClose }: Props) {
       exit={{ opacity: 0, x: 20 }}
       className="h-full flex flex-col bg-[var(--panel)]"
     >
-      {/* Header */}
-      <div className="relative p-4 border-b border-[var(--border)] overflow-hidden">
-        <div className="absolute inset-0 opacity-30 pointer-events-none bg-[radial-gradient(circle_at_top_left,_#a78bfa_0%,_transparent_60%)]" />
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shadow">
-              <Bot className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-[var(--text)]">AI Co-writer</div>
-              <div className="text-[10px] text-[var(--text-muted)]">{settings.aiApiKey ? 'Connected' : 'No API key set'}</div>
+      {/* Header — flat, hairline rule, single accent on the icon tile */}
+      <div className="flex items-center justify-between px-4 h-11 border-b border-[var(--rule)] bg-[var(--bg)] flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-7 h-7 rounded-md bg-[var(--accent-soft)] border border-[var(--accent)]/40 flex items-center justify-center flex-shrink-0">
+            <Bot className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-[var(--text)] truncate">AI Co-writer</div>
+            <div className="text-[10px] text-[var(--text-muted)] truncate">
+              {settings.aiApiKey ? 'Connected' : 'No API key set'}
             </div>
           </div>
-          <div className="flex gap-1">
-            <button onClick={() => setShowSettings((v) => !v)} className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]">
-              <Settings2 className="w-4 h-4" />
-            </button>
-            <button onClick={() => { setMessages([]); }} className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10" title="Clear">
-              <Trash2 className="w-4 h-4" />
-            </button>
-            <button onClick={onClose} className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+        </div>
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button onClick={() => setShowSettings((v) => !v)} title="AI settings"
+            className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]">
+            <Settings2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setMessages([]); }} title="Clear conversation"
+            className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={onClose} title="Close panel"
+            className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]">
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
