@@ -4,33 +4,42 @@
  * The visual design is ONE coherent system. The user controls two knobs:
  *
  *   1. Mode  — Light / Dark / System
- *   2. Accent — one of four professionally-tuned metals
+ *   2. Accent — one of four professionally-tuned palettes
  *
- * Everything else (typography, spacing, radii, borders, elevation) is fixed
- * by the brand. No "custom" mode, no color pickers — that's how the previous
- * iteration ended up looking like a kid's app.
+ * Each accent carries TWO colors:
+ *   - The solid `--accent`  — used flatly everywhere (active tab, Save,
+ *     revision badge, primary CTAs, icon highlights).
+ *   - The `--accent-pair`   — used in exactly four sanctioned gradients:
+ *       1. Dashboard hero card halo
+ *       2. AuthWall background blob
+ *       3. FAB on hover
+ *       4. Active IconRail icon background (subtle radial)
+ *
+ * Anywhere else, gradients are forbidden by policy. Flat solid only.
  *
  * The applier (in App.tsx) sets `data-accent="<id>"` on <html> and toggles
  * the `theme-light` class. CSS variables in index.css do the rest.
  */
 
-export type AccentId = 'tobacco' | 'bronze' | 'verdigris' | 'slate-blue';
+export type AccentId = 'indigo' | 'salmon' | 'forest' | 'violet';
 export type ThemeMode = 'system' | 'light' | 'dark';
 
 export interface AccentDef {
   id: AccentId;
   label: string;
-  /** Hex used for the chip in Settings. */
+  /** Hex of the solid accent — the swatch in Settings. */
   swatch: string;
+  /** Hex of the gradient pair color — shown as a small split chip. */
+  pair: string;
   /** One-line voice cue. */
   description: string;
 }
 
 export const ACCENTS: AccentDef[] = [
-  { id: 'tobacco',    label: 'Tobacco Gold', swatch: '#C99B5E', description: 'Warm, classical, our default.' },
-  { id: 'bronze',     label: 'Bronze',       swatch: '#B5765B', description: 'Warmer, autumnal, lit by lamplight.' },
-  { id: 'verdigris',  label: 'Verdigris',    swatch: '#5C8B7E', description: 'Cool, archival, leather-bound.' },
-  { id: 'slate-blue', label: 'Slate Blue',   swatch: '#6B7DA0', description: 'Cool, editorial, after-hours.' },
+  { id: 'indigo', label: 'Indigo Dusk',     swatch: '#818CF8', pair: '#C084FC', description: 'Cool, modern, software-grade. Default.' },
+  { id: 'salmon', label: 'Sunset Salmon',   swatch: '#FB7185', pair: '#F59E0B', description: 'Warm, intimate, sunset bay.' },
+  { id: 'forest', label: 'Forest Calm',     swatch: '#34D399', pair: '#06B6D4', description: 'Mint + cyan — calm, organic, daytime.' },
+  { id: 'violet', label: 'Violet Theatre',  swatch: '#C084FC', pair: '#F472B6', description: 'Stage lighting energy. Theatrical.' },
 ];
 
 export const THEME_MODES: { id: ThemeMode; label: string }[] = [

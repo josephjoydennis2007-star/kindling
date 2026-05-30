@@ -516,7 +516,7 @@ function App() {
       document.body.classList.add(mode === 'light' ? 'theme-light' : 'theme-dark');
 
       const accent = (settings as any).accent;
-      if (accent && accent !== 'tobacco') {
+      if (accent && accent !== 'indigo') {
         root.setAttribute('data-accent', accent);
       } else {
         root.removeAttribute('data-accent');

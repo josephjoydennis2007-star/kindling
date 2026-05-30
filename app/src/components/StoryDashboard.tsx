@@ -131,7 +131,7 @@ export default function StoryDashboard() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="bg-[var(--surface)] border border-[var(--border)] rounded-lg p-6 mb-6 relative overflow-hidden"
+          className="hero-halo bg-[var(--surface)] border border-[var(--border)] rounded-lg p-6 mb-6 relative overflow-hidden"
         >
           <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full bg-purple-500/20 blur-3xl pointer-events-none" />
           <div className="relative flex items-start justify-between flex-wrap gap-4">

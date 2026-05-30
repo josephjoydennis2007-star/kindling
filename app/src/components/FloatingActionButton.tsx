@@ -61,12 +61,13 @@ export default function FloatingActionButton({ actions, isFocusMode }: FloatingA
           )}
         </AnimatePresence>
 
-        {/* Main FAB button */}
+        {/* Main FAB button. Sanctioned gradient #3 — fills accent → accent-pair
+            on hover. Solid accent when idle so it reads correctly at rest. */}
         <motion.button
           onClick={() => setIsOpen(!isOpen)}
-          whileHover={{ scale: 1.1 }}
+          whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.95 }}
-          className="w-14 h-14 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] shadow-lg hover:shadow-xl flex items-center justify-center transition-all"
+          className="fab-gradient w-14 h-14 rounded-full text-[var(--accent-ink)] shadow-lg hover:shadow-xl flex items-center justify-center transition-all"
         >
           <motion.div
             animate={{ rotate: isOpen ? 45 : 0 }}

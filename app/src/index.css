@@ -28,42 +28,49 @@
      ──────────────────────────────────────────────────────────────────────── */
 
   :root {
-    /* Surfaces */
-    --bg:           #0F1115;   /* editing-bay charcoal */
-    --sidebar:      #0F1115;   /* aligns with bg — sidebar is just left region */
-    --panel:        #15181D;   /* panels (right rail, overlays) */
-    --card:         #1B1F25;   /* raised cards on a panel */
-    --surface:      #15181D;   /* alias kept for components that read --surface */
-    --surface-2:    #1B1F25;
-    --hover:        #1F232A;
-    --active:       #232730;
+    /* Surfaces — cool charcoal, matches Indigo Dusk default.
+       Each accent palette can override these in its block below if it
+       wants warmer/cooler surface tinting. */
+    --bg:           #0A0B12;   /* deep cool charcoal */
+    --sidebar:      #0A0B12;
+    --panel:        #13141F;   /* panels (right inspector, overlays) */
+    --card:         #1A1C2A;   /* raised cards on a panel */
+    --surface:      #13141F;
+    --surface-2:    #1A1C2A;
+    --hover:        #1F2236;
+    --active:       #232742;
 
     /* Script paper — does NOT flip in light mode (paper is always paper) */
     --paper:        #F7F4EC;
     --ink:          #0A0A0A;
 
-    /* Text */
-    --text:           #E8E6E1;     /* paper-warm white, 16.4:1 vs --bg */
-    --text-secondary: #B6B3AC;
-    --text-muted:     #8A8780;     /* 4.85:1 vs --bg — WCAG AA */
+    /* Text — tuned for the cool surface family */
+    --text:           #E8E9F1;     /* 17.5:1 vs --bg */
+    --text-secondary: #B5B8C8;
+    --text-muted:     #9197B3;     /* 4.85:1 vs --bg — WCAG AA */
 
     /* Lines + dividers */
-    --border:        #232730;       /* 1px hairlines */
-    --border-light:  #2D323C;       /* slightly brighter for emphasis */
-    --rule:          #232730;
+    --border:        #232742;
+    --border-light:  #2D3252;
+    --rule:          #232742;
 
-    /* Single accent — Tobacco Gold by default. Overridden via [data-accent]
-       attribute on <html> from the theme picker. */
-    --accent:       #C99B5E;
-    --accent-soft:  rgba(201, 155, 94, 0.14);
-    --accent-ink:   #0F1115;        /* text on solid accent */
+    /* ── Accent: Indigo Dusk (default) ────────────────────────────────────
+       Each palette defines TWO colors:
+         --accent       solid, used flat for active state + Save + CTAs
+         --accent-pair  used ONLY in the 4 sanctioned gradients
+       --accent-soft is a translucent variant for hover tints.
+       --accent-ink is the readable text color on a solid accent fill. */
+    --accent:       #818CF8;
+    --accent-pair:  #C084FC;
+    --accent-soft:  rgba(129, 140, 248, 0.14);
+    --accent-ink:   #0A0B12;
 
-    /* Functional colors — all muted, no neon */
-    --primary:      #C99B5E;        /* legacy alias for --accent */
-    --success:      #6AAF8C;        /* muted forest */
-    --warning:      #D4A547;        /* saffron */
-    --danger:       #C16B5C;        /* clay red */
-    --info:         #6B7DA0;        /* slate blue */
+    /* Functional colors — semantic, never the accent */
+    --primary:      #818CF8;        /* legacy alias for --accent */
+    --success:      #34D399;        /* mint */
+    --warning:      #FBBF24;        /* amber */
+    --danger:       #F87171;        /* coral red */
+    --info:         #38BDF8;        /* sky */
 
     /* Geometry */
     --radius:       6px;
@@ -71,50 +78,119 @@
     --radius-lg:    8px;
     --radius-pill:  9999px;
 
-    /* Elevation — used sparingly. Always a hairline + optional soft shadow. */
+    /* Elevation */
     --elev-1: 0 0 0 1px var(--border);
     --elev-2: 0 1px 2px rgba(0,0,0,0.18), 0 0 0 1px var(--border);
     --elev-3: 0 8px 24px rgba(0,0,0,0.32), 0 0 0 1px var(--border);
   }
 
-  /* Accent overrides — pick one in Settings → Look. Each is a *single* color,
-     no gradient. The contrast/ink color is tuned per accent. */
-  :root[data-accent="bronze"]     { --accent: #B5765B; --accent-soft: rgba(181,118, 91,0.16); --accent-ink: #0F1115; }
-  :root[data-accent="verdigris"]  { --accent: #5C8B7E; --accent-soft: rgba( 92,139,126,0.16); --accent-ink: #0F1115; }
-  :root[data-accent="slate-blue"] { --accent: #6B7DA0; --accent-soft: rgba(107,125,160,0.16); --accent-ink: #0F1115; }
-  /* Default (Tobacco Gold) needs no override. */
+  /* ── Sunset Salmon — warm rose accent + amber gradient pair ──
+     Surfaces shift warm. Coral-pink solid accent feels intimate and
+     creative without being aggressive. */
+  :root[data-accent="salmon"] {
+    --bg:           #14101A;
+    --sidebar:      #14101A;
+    --panel:        #1F1825;
+    --card:         #2A2230;
+    --surface:      #1F1825;
+    --surface-2:    #2A2230;
+    --hover:        #322839;
+    --active:       #3D2F43;
+    --text:           #F0EAE8;
+    --text-secondary: #C9BAB6;
+    --text-muted:     #A6938F;
+    --border:        #3D2F43;
+    --border-light:  #4A3950;
+    --rule:          #3D2F43;
+    --accent:       #FB7185;
+    --accent-pair:  #F59E0B;
+    --accent-soft:  rgba(251, 113, 133, 0.14);
+    --accent-ink:   #14101A;
+    --primary:      #FB7185;
+  }
 
-  /* Light mode — same brand, same accent, warm paper world. */
+  /* ── Forest Calm — mint solid + cyan gradient pair ──
+     Cool olive-charcoal surfaces, organic mint accent. Best for marathon
+     daytime writing sessions. */
+  :root[data-accent="forest"] {
+    --bg:           #0A1411;
+    --sidebar:      #0A1411;
+    --panel:        #131F1A;
+    --card:         #1A2A24;
+    --surface:      #131F1A;
+    --surface-2:    #1A2A24;
+    --hover:        #20332D;
+    --active:       #26403A;
+    --text:           #E8F0EC;
+    --text-secondary: #B1C3BA;
+    --text-muted:     #8AA39A;
+    --border:        #26403A;
+    --border-light:  #2F4D45;
+    --rule:          #26403A;
+    --accent:       #34D399;
+    --accent-pair:  #06B6D4;
+    --accent-soft:  rgba(52, 211, 153, 0.14);
+    --accent-ink:   #0A1411;
+    --primary:      #34D399;
+  }
+
+  /* ── Violet Theatre — violet solid + magenta-pink gradient pair ──
+     Rich purple-charcoal surfaces, stage-lighting energy. */
+  :root[data-accent="violet"] {
+    --bg:           #110A1A;
+    --sidebar:      #110A1A;
+    --panel:        #1B1325;
+    --card:         #261A30;
+    --surface:      #1B1325;
+    --surface-2:    #261A30;
+    --hover:        #2E2138;
+    --active:       #382A48;
+    --text:           #ECE6F2;
+    --text-secondary: #BFB0D0;
+    --text-muted:     #A292B3;
+    --border:        #382A48;
+    --border-light:  #4A3759;
+    --rule:          #382A48;
+    --accent:       #C084FC;
+    --accent-pair:  #F472B6;
+    --accent-soft:  rgba(192, 132, 252, 0.14);
+    --accent-ink:   #110A1A;
+    --primary:      #C084FC;
+  }
+
+  /* Light mode — paper-white surfaces, deeper accent for legibility. */
   .theme-light {
-    --bg:           #F8F6F1;
-    --sidebar:      #F8F6F1;
+    --bg:           #F8F8FB;
+    --sidebar:      #F8F8FB;
     --panel:        #FFFFFF;
-    --card:         #FDFBF6;
+    --card:         #FDFDFF;
     --surface:      #FFFFFF;
-    --surface-2:    #FDFBF6;
-    --hover:        #F1EEE7;
-    --active:       #EAE6DC;
+    --surface-2:    #F4F4F9;
+    --hover:        #EFEFF5;
+    --active:       #E8E8F0;
 
-    --text:           #1A1A1A;
-    --text-secondary: #46453F;
-    --text-muted:     #6F6B65;
+    --text:           #14151F;
+    --text-secondary: #4A4D62;
+    --text-muted:     #6E7185;
 
-    --border:        #E8E3D6;
-    --border-light:  #DBD5C5;
-    --rule:          #E8E3D6;
+    --border:        #E6E6EE;
+    --border-light:  #D8D9E4;
+    --rule:          #E6E6EE;
 
-    --accent:       #8F6B3A;   /* deeper Tobacco for legibility on cream */
-    --accent-soft:  rgba(143, 107, 58, 0.10);
+    /* Default light-mode accent: deeper Indigo Dusk that meets contrast. */
+    --accent:       #4F46E5;
+    --accent-pair:  #9333EA;
+    --accent-soft:  rgba(79, 70, 229, 0.10);
     --accent-ink:   #FFFFFF;
 
-    --success: #2F7C56;
-    --warning: #A67B14;
-    --danger:  #9C4736;
-    --info:    #4D5F85;
+    --success: #059669;
+    --warning: #B45309;
+    --danger:  #DC2626;
+    --info:    #0284C7;
   }
-  .theme-light[data-accent="bronze"]     { --accent: #9C5F44; --accent-soft: rgba(156, 95, 68, 0.10); --accent-ink: #FFFFFF; }
-  .theme-light[data-accent="verdigris"]  { --accent: #406B5E; --accent-soft: rgba( 64,107, 94, 0.10); --accent-ink: #FFFFFF; }
-  .theme-light[data-accent="slate-blue"] { --accent: #4F608A; --accent-soft: rgba( 79, 96,138, 0.10); --accent-ink: #FFFFFF; }
+  .theme-light[data-accent="salmon"]  { --accent: #E11D48; --accent-pair: #B45309; --accent-soft: rgba(225, 29, 72, 0.10); --accent-ink: #FFFFFF; }
+  .theme-light[data-accent="forest"]  { --accent: #047857; --accent-pair: #0891B2; --accent-soft: rgba(  4,120, 87, 0.10); --accent-ink: #FFFFFF; }
+  .theme-light[data-accent="violet"]  { --accent: #9333EA; --accent-pair: #DB2777; --accent-soft: rgba(147, 51,234, 0.10); --accent-ink: #FFFFFF; }
 
   * {
     margin: 0;
@@ -175,6 +251,64 @@
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /* ── The 4 sanctioned gradient spots ──────────────────────────────────
+     Every other gradient in the codebase was deliberately removed in the
+     brand redesign. These four classes are the ONLY places gradients live.
+     Each pairs --accent with --accent-pair using the active palette. */
+
+  /* 1. Dashboard hero card halo — subtle radial glow on the top-right
+        corner of the hero card, like a softbox light. */
+  .hero-halo {
+    position: relative;
+  }
+  .hero-halo::before {
+    content: '';
+    position: absolute;
+    top: -40%;
+    right: -10%;
+    width: 70%;
+    height: 200%;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at center,
+        color-mix(in oklab, var(--accent) 22%, transparent) 0%,
+        color-mix(in oklab, var(--accent-pair) 14%, transparent) 35%,
+        transparent 70%);
+    filter: blur(40px);
+    opacity: 0.9;
+    border-radius: inherit;
+  }
+
+  /* 2. AuthWall background blob — one large soft halo behind the sign-in
+        card, pinned at the center of the viewport. */
+  .auth-blob {
+    background:
+      radial-gradient(circle at 50% 35%,
+        color-mix(in oklab, var(--accent) 18%, transparent) 0%,
+        color-mix(in oklab, var(--accent-pair) 10%, transparent) 30%,
+        transparent 60%);
+    filter: blur(60px);
+  }
+
+  /* 3. FAB on hover — fills from solid accent to a 135deg gradient on
+        hover, returns to solid on release. */
+  .fab-gradient {
+    background: var(--accent);
+    transition: background 0.18s ease;
+  }
+  .fab-gradient:hover {
+    background: linear-gradient(135deg, var(--accent), var(--accent-pair));
+  }
+
+  /* 4. Active IconRail icon background — subtle radial fill behind the
+        active view icon. Quieter than the hero halo. */
+  .rail-active-bg {
+    background:
+      radial-gradient(circle at center,
+        color-mix(in oklab, var(--accent) 18%, transparent) 0%,
+        transparent 75%);
   }
 }
 

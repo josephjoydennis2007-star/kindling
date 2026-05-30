@@ -283,8 +283,10 @@ export interface AppSettings {
   /** Show the compact scene heat strip above the writer paper.
    *  Defaults to true. */
   showHeatStrip?: boolean;
-  /** Brand accent — one of four metals. Drives the single accent variable. */
-  accent?: 'tobacco' | 'bronze' | 'verdigris' | 'slate-blue';
+  /** Brand accent — one of four palettes. Drives both the solid --accent
+   *  variable and the --accent-pair variable used in the 4 sanctioned
+   *  gradients. */
+  accent?: 'indigo' | 'salmon' | 'forest' | 'violet';
 }
 
 export type AssetKind = 'image' | 'audio' | 'reference';

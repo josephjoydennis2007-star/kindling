@@ -109,7 +109,7 @@ export default function IconRail({
                   aria-current={isActive ? 'page' : undefined}
                   className={`w-10 h-10 rounded-md flex items-center justify-center transition-colors ${
                     isActive
-                      ? 'bg-[var(--surface-2)] text-[var(--accent)]'
+                      ? 'rail-active-bg text-[var(--accent)]'
                       : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
                   }`}
                 >
@@ -169,7 +169,7 @@ export default function IconRail({
               aria-current={isActive ? 'page' : undefined}
               className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors ${
                 isActive
-                  ? 'bg-[var(--surface-2)] text-[var(--accent)]'
+                  ? 'rail-active-bg text-[var(--accent)]'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--hover)]'
               }`}
             >
@@ -240,7 +240,7 @@ export default function IconRail({
                       onClick={() => { onStoryChange(story.id); setDrawerOpen(false); }}
                       className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
                         isActive
-                          ? 'bg-[var(--surface-2)] text-[var(--accent)]'
+                          ? 'rail-active-bg text-[var(--accent)]'
                           : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
                       }`}
                     >

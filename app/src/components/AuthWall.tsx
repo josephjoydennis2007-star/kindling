@@ -91,10 +91,9 @@ export default function AuthWall({ onSignedIn }: Props) {
   return (
     <div className="min-h-screen w-full bg-[var(--bg)] flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute inset-0 pointer-events-none">
-        {/* A single very subtle accent halo behind the card — the dark base
-            does the heavy visual lift. No multi-colored blobs. */}
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full opacity-[0.04] blur-3xl"
-             style={{ background: 'var(--accent)' }} />
+        {/* Sanctioned gradient #2 — soft accent → accent-pair halo behind
+            the sign-in card. Single blob, never multi-colored. */}
+        <div className="auth-blob absolute inset-0 pointer-events-none" />
       </div>
 
       <motion.div
