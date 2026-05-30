@@ -66,7 +66,26 @@ import { db, auth } from '@/firebase';
  * `disableNetwork` + `enableNetwork`, then retry. The user never sees the
  * spurious failure.
  */
-async function withRecovery<T>(fn: () => Promise<T>): Promise<T> {
+// Build signature — visible in DevTools so you can confirm the new bundle
+// is actually loaded (vs. the service worker serving a cached old one).
+// eslint-disable-next-line no-console
+console.log('[Kindling] cloudStories build v3 — multi-retry offline recovery active');
+
+// Wait for an awaited auth state. Firestore calls before the token is
+// attached can be silently rejected as "offline" — this awaits one tick
+// of the auth listener so the token is present.
+function waitForAuthSettled(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!auth) { resolve(); return; }
+    if (auth.currentUser) { resolve(); return; }
+    const stop = setTimeout(resolve, 1500); // safety net
+    const unsub = auth.onAuthStateChanged(() => {
+      clearTimeout(stop); unsub(); resolve();
+    });
+  });
+}
+
+async function withRecovery<T>(fn: () => Promise<T>, attempt = 0): Promise<T> {
   try {
     return await fn();
   } catch (err: any) {
@@ -75,13 +94,21 @@ async function withRecovery<T>(fn: () => Promise<T>): Promise<T> {
       err?.code === 'failed-precondition' ||
       /client is offline/i.test(err?.message || '');
     if (!offlineLike) throw err;
+    if (attempt >= 3) {
+      // eslint-disable-next-line no-console
+      console.error('[cloudStories] Firestore still offline after 3 reconnect attempts. Check DevTools → Network for blocked firestore.googleapis.com requests, or DevTools → Application → Service Workers to unregister any stale worker.');
+      throw err;
+    }
     // eslint-disable-next-line no-console
-    console.warn('[cloudStories] Firestore in stuck-offline state — forcing reconnect…', err?.code || err?.message);
+    console.warn(`[cloudStories] Firestore offline (attempt ${attempt + 1}/3) — forcing reconnect…`, err?.code || err?.message);
     try {
       await disableNetwork(db);
+      // Small delay so the SDK fully tears down before reopening.
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
       await enableNetwork(db);
-    } catch {/* swallow — the retry below will surface a clearer error if reconnect didn't help */}
-    return await fn();
+      await waitForAuthSettled();
+    } catch {/* fall through to retry */}
+    return withRecovery(fn, attempt + 1);
   }
 }
 

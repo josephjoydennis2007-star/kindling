@@ -2,7 +2,6 @@ import type { HistoryEntry } from '@/types';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
   getFirestore,
-  enableIndexedDbPersistence,
   collection,
   doc,
   setDoc,
@@ -91,10 +90,14 @@ try {
   _storage = getStorage(app);
   _auth = getAuth(app);
   setPersistence(_auth, browserLocalPersistence).catch(() => {});
-  enableIndexedDbPersistence(_db).catch((err) => {
-    if (err.code === 'failed-precondition') console.warn('Multiple tabs open, persistence enabled in first tab only');
-    else if (err.code === 'unimplemented') console.warn('Browser does not support offline persistence');
-  });
+  // NOTE: We deliberately do NOT call enableIndexedDbPersistence(_db) here.
+  // It was the root cause of a chronic "Failed to get document because the
+  // client is offline" error — the Firestore Web SDK races the IndexedDB
+  // tab-lock against the auth token settle and can get permanently stuck
+  // in offline mode until the tab is closed. Our per-story IndexedDB layer
+  // in useIndexedDB already handles offline reads + manual-save writes, so
+  // we don't lose any user-visible offline ability by dropping the Firestore
+  // SDK's own disk cache.
 } catch (e) {
   console.warn('Firebase failed to initialize — running in local-only mode.', e);
 }

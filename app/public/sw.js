@@ -2,17 +2,22 @@
  * Kindling service worker.
  *
  * Strategy:
- *   - On install: pre-cache the app shell (index + manifest + icon).
+ *   - On install: pre-cache the app shell.
  *   - On fetch:
- *       - Same-origin GET requests use stale-while-revalidate so the app
- *         stays fully usable offline after one successful load.
- *       - Everything else (POST, third-party APIs like OpenAI / Firebase /
+ *       - Navigation requests (HTML) use NETWORK-FIRST so a fresh deploy is
+ *         picked up on the next refresh, not after a second one. Cached
+ *         shell is the fallback only when offline.
+ *       - Same-origin hashed assets (CSS / JS bundles, fonts, images) use
+ *         stale-while-revalidate — they have unique hashes in their names
+ *         so collisions don't happen.
+ *       - Everything else (POST, third-party APIs like Firebase / OpenAI /
  *         GitHub) is passed straight through to the network.
  *
- * Bump CACHE_NAME when shipping breaking changes.
+ * Bump CACHE_NAME when shipping breaking changes — the activate handler
+ * deletes any cache that does not match the current name.
  */
 
-const CACHE_NAME = 'kindling-shell-v1';
+const CACHE_NAME = 'kindling-shell-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -37,6 +42,27 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // pass-through
 
+  // Network-first for HTML navigations: the app shell must always reflect
+  // the latest deploy. We only fall back to cache if the network truly fails.
+  const isNavigation = req.mode === 'navigate' ||
+    req.destination === 'document' ||
+    (req.headers.get('accept') || '').includes('text/html');
+  if (isNavigation) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(req, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((c) => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for everything else (hashed assets).
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
       const cached = await cache.match(req);
