@@ -1,8 +1,5 @@
 import { useMemo } from 'react';
-import {
-  Lightbulb, StickyNote, Users, History as HistoryIcon, Users2, Bot,
-  Image as ImageIcon, ChevronDown, Clapperboard, LayoutGrid,
-} from 'lucide-react';
+import { ChevronDown, Clapperboard, LayoutGrid, Users } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
 /**
@@ -17,19 +14,23 @@ import { useAppStore } from '@/store/useAppStore';
  *   - Calendar  → Date navigator
  *   - Workspace → Story tools quick-access
  *
- * Always shows a small set of "Story Tools" toggles at the bottom — the same
- * right-panel toggles the old sidebar had (Notes / Characters / History /
- * Collaborate / AI / Assets), but now they open the Inspector on the right
- * instead of taking over the page.
+ * Story Tools (Notes / Characters / History / Collaborate / AI / Assets /
+ * Instructions) used to live in a footer here too, but they were duplicated
+ * by the TopBar "Tools" dropdown which works on every tab including Writer.
+ * The footer was removed so there is one place — the top bar — to open the
+ * right-side Inspector. The body of this panel now holds only the view-
+ * specific outline (scenes, acts, etc.).
  */
 
 interface Props {
   activeTab: string;
-  rightPanel: string | null;
-  onTogglePanel: (panel: string) => void;
+  // rightPanel/onTogglePanel kept on the prop type for backward compatibility
+  // with any caller still passing them, but no longer used internally.
+  rightPanel?: string | null;
+  onTogglePanel?: (panel: string) => void;
 }
 
-export default function ContextPanel({ activeTab, rightPanel, onTogglePanel }: Props) {
+export default function ContextPanel({ activeTab }: Props) {
   const scenes = useAppStore((s) => s.scenes);
   const setActiveDirectorScene = useAppStore((s) => s.setActiveDirectorScene);
   const activeDirectorSceneId = useAppStore((s) => s.activeDirectorSceneId);
@@ -87,19 +88,7 @@ export default function ContextPanel({ activeTab, rightPanel, onTogglePanel }: P
         )}
       </div>
 
-      {/* Story tools — opens the right inspector */}
-      <footer className="border-t border-[var(--rule)] py-2">
-        <div className="px-4 mb-1 text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
-          Story Tools
-        </div>
-        <ToolRow icon={Lightbulb} label="Instructions" active={rightPanel === 'instructions'} onClick={() => onTogglePanel('instructions')} />
-        <ToolRow icon={StickyNote} label="Notes" active={rightPanel === 'notes'} onClick={() => onTogglePanel('notes')} />
-        <ToolRow icon={Users} label="Characters" active={rightPanel === 'characters'} onClick={() => onTogglePanel('characters')} />
-        <ToolRow icon={HistoryIcon} label="History" active={rightPanel === 'history'} onClick={() => onTogglePanel('history')} />
-        <ToolRow icon={Users2} label="Collaborate" active={rightPanel === 'collab'} onClick={() => onTogglePanel('collab')} />
-        <ToolRow icon={Bot} label="AI Helper" active={rightPanel === 'ai'} onClick={() => onTogglePanel('ai')} />
-        <ToolRow icon={ImageIcon} label="Assets" active={rightPanel === 'assets'} onClick={() => onTogglePanel('assets')} />
-      </footer>
+      {/* Story Tools footer removed — use the TopBar "Tools" dropdown. */}
     </aside>
   );
 }
@@ -184,22 +173,6 @@ function ActsList({ acts, beats }: { acts: any[]; beats: Record<string, any> }) 
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
-
-function ToolRow({ icon: Icon, label, active, onClick }: { icon: any; label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-2 px-4 py-1.5 text-xs transition-colors text-left ${
-        active
-          ? 'bg-[var(--surface-2)] text-[var(--accent)]'
-          : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
-      }`}
-    >
-      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-      <span className="flex-1">{label}</span>
-    </button>
-  );
-}
 
 function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: number }) {
   return (

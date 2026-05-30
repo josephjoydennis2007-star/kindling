@@ -39,7 +39,17 @@ import {
   watchAccessRequests,
   approveAccessRequest,
   denyAccessRequest,
+  auth,
 } from '@/firebase';
+import {
+  listMyInvites,
+  acceptInvite,
+  declineInvite,
+  pullStory,
+  removeCollaborator,
+  type CloudInvite,
+  type CloudStory,
+} from '@/lib/cloudStories';
 
 interface Props {
   onClose: () => void;
@@ -69,13 +79,37 @@ export default function CollabPanel({ onClose }: Props) {
   const userName = settings.userDisplayName || 'You';
   const isAdmin = settings.userRole === 'admin';
 
-  const [tab, setTab] = useState<'chat' | 'people' | 'invite' | 'requests'>('chat');
+  const [tab, setTab] = useState<'studio' | 'chat' | 'people' | 'invite' | 'requests'>('studio');
   const [roomId, setRoomId] = useState<string | null>(null);
   const [cloudChat, setCloudChat] = useState<any[] | null>(null);
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
 
+  // Studio (Firestore) state — pending invites for current user + current
+  // story's cloud document (so we can render collaborators + owner badge).
+  const [pendingInvites, setPendingInvites] = useState<CloudInvite[]>([]);
+  const [cloudStory, setCloudStory] = useState<CloudStory | null>(null);
+  const [studioBusy, setStudioBusy] = useState<string | null>(null);
+  const firebaseUser = auth?.currentUser || null;
+  const isOwner = !!(firebaseUser && cloudStory && cloudStory.owner === firebaseUser.uid);
+
   // Online mode? requires Firebase + a logged-in user + a story
   const online = isFirebaseConfigured && activeStoryId && userId !== 'me';
+
+  // Load studio data on mount + when the active story changes. Both calls
+  // tolerate permission errors — if Firestore rules block them we just
+  // render the empty state and a helpful hint.
+  const refreshStudio = async () => {
+    if (!firebaseUser) { setPendingInvites([]); setCloudStory(null); return; }
+    try {
+      const invites = await listMyInvites();
+      setPendingInvites(invites);
+    } catch { setPendingInvites([]); }
+    if (activeStoryId) {
+      try { setCloudStory(await pullStory(activeStoryId)); }
+      catch { setCloudStory(null); }
+    } else { setCloudStory(null); }
+  };
+  useEffect(() => { refreshStudio(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeStoryId, firebaseUser?.uid]);
 
   // Ensure room & subscribe
   useEffect(() => {
@@ -193,17 +227,18 @@ export default function CollabPanel({ onClose }: Props) {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-[var(--border)] bg-[var(--sidebar)]">
+      <div className="flex border-b border-[var(--border)] bg-[var(--sidebar)] overflow-x-auto">
         {[
-          { id: 'chat' as const,   label: 'Chat',   icon: Send },
-          { id: 'people' as const, label: 'People', icon: Users2 },
-          ...(isAdmin ? [{ id: 'requests' as const, label: 'Requests', icon: ClipboardList }] : []),
-          { id: 'invite' as const, label: 'Invite', icon: UserPlus },
+          { id: 'studio' as const, label: 'Studio', icon: Crown, badge: pendingInvites.length },
+          { id: 'chat' as const,   label: 'Chat',   icon: Send,  badge: 0 },
+          { id: 'people' as const, label: 'People', icon: Users2, badge: 0 },
+          ...(isAdmin ? [{ id: 'requests' as const, label: 'Requests', icon: ClipboardList, badge: 0 }] : []),
+          { id: 'invite' as const, label: 'Invite', icon: UserPlus, badge: 0 },
         ].map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id as any)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[11px] font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[11px] font-semibold transition-all whitespace-nowrap ${
               tab === t.id ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
             }`}
           >
@@ -214,9 +249,58 @@ export default function CollabPanel({ onClose }: Props) {
                 {accessRequests.filter((r) => r.status === 'pending').length}
               </span>
             )}
+            {t.id === 'studio' && t.badge > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/30 text-[var(--accent)]">
+                {t.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
+
+      {tab === 'studio' && (
+        <StudioTab
+          firebaseUser={firebaseUser}
+          activeStoryId={activeStoryId}
+          cloudStory={cloudStory}
+          isOwner={isOwner}
+          pendingInvites={pendingInvites}
+          busy={studioBusy}
+          onAccept={async (inviteId) => {
+            setStudioBusy(inviteId);
+            try {
+              await acceptInvite(inviteId);
+              toast.success('Invite accepted — you are now a collaborator');
+              await refreshStudio();
+            } catch (err: any) {
+              toast.error(err?.message || 'Could not accept invite');
+            } finally { setStudioBusy(null); }
+          }}
+          onDecline={async (inviteId) => {
+            setStudioBusy(inviteId);
+            try {
+              await declineInvite(inviteId);
+              toast.success('Invite declined');
+              await refreshStudio();
+            } catch (err: any) {
+              toast.error(err?.message || 'Could not decline invite');
+            } finally { setStudioBusy(null); }
+          }}
+          onRemoveCollaborator={async (uid) => {
+            if (!activeStoryId) return;
+            setStudioBusy(uid);
+            try {
+              await removeCollaborator(activeStoryId, uid);
+              toast.success('Collaborator removed');
+              await refreshStudio();
+            } catch (err: any) {
+              toast.error(err?.message || 'Could not remove collaborator');
+            } finally { setStudioBusy(null); }
+          }}
+          onInvite={() => document.dispatchEvent(new CustomEvent('app:invite'))}
+          onShare={() => document.dispatchEvent(new CustomEvent('app:shareStory'))}
+        />
+      )}
 
       {tab === 'chat' && (
         <ChatTab
@@ -727,6 +811,183 @@ function RequestsTab({ requests, onApprove, onDeny }: {
             </div>
           ))}
         </>
+      )}
+    </div>
+  );
+}
+
+// ----- STUDIO TAB (Firestore-backed) -----
+//
+// This is the "real" multi-user surface that pairs with the Share / Invite
+// dialogs in the TopBar ⋯ menu. It shows:
+//
+//   1. Pending invites — anything sent to YOUR email that you haven't
+//      accepted or declined. Big Accept / Decline buttons.
+//   2. Collaborators on this story — owner badge + collaborator list
+//      pulled from the Firestore doc. Owner sees a Remove button per
+//      collaborator.
+//   3. Quick actions — Share story + Invite collaborator (route to the
+//      same dialogs as the TopBar ⋯ menu).
+
+function StudioTab({
+  firebaseUser, activeStoryId, cloudStory, isOwner, pendingInvites, busy,
+  onAccept, onDecline, onRemoveCollaborator, onInvite, onShare,
+}: {
+  firebaseUser: any;
+  activeStoryId: string | null;
+  cloudStory: CloudStory | null;
+  isOwner: boolean;
+  pendingInvites: CloudInvite[];
+  busy: string | null;
+  onAccept: (id: string) => void;
+  onDecline: (id: string) => void;
+  onRemoveCollaborator: (uid: string) => void;
+  onInvite: () => void;
+  onShare: () => void;
+}) {
+  if (!firebaseUser) {
+    return (
+      <div className="flex-1 overflow-y-auto p-6 text-center text-[var(--text-muted)] text-xs">
+        <Crown className="w-8 h-8 mx-auto opacity-40 mb-3" style={{ color: 'var(--accent)' }} />
+        <p className="text-[var(--text)] font-semibold text-sm">Sign in to collaborate</p>
+        <p className="text-[10px] mt-1.5">Cloud collaboration uses your Firebase account.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      {/* Pending invites — only shown when there's at least one */}
+      {pendingInvites.length > 0 && (
+        <section>
+          <div className="px-1 mb-2 text-[10px] uppercase tracking-widest text-[var(--accent)] font-bold flex items-center gap-1.5">
+            <UserPlus className="w-3 h-3" />
+            Pending invites ({pendingInvites.length})
+          </div>
+          <ul className="space-y-2">
+            {pendingInvites.map((inv) => (
+              <li key={inv.id} className="p-3 bg-[var(--card)] border border-[var(--accent)]/30 rounded-lg">
+                <div className="text-[11px] font-bold text-[var(--text)]">{inv.storyTitle}</div>
+                <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                  Invited by <span className="text-[var(--text-secondary)]">{inv.fromName}</span>
+                </div>
+                <div className="mt-2 flex gap-1.5">
+                  <button
+                    onClick={() => onAccept(inv.id)}
+                    disabled={busy === inv.id}
+                    className="flex-1 px-2 py-1.5 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[11px] font-semibold hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    <Check className="w-3 h-3" /> Accept
+                  </button>
+                  <button
+                    onClick={() => onDecline(inv.id)}
+                    disabled={busy === inv.id}
+                    className="flex-1 px-2 py-1.5 rounded-md bg-[var(--surface-2)] text-[var(--text-secondary)] text-[11px] font-semibold border border-[var(--rule)] hover:bg-[var(--hover)] disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    <X className="w-3 h-3" /> Decline
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Collaborators on this story (owner + collaborators array) */}
+      <section>
+        <div className="px-1 mb-2 text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+          On this story
+        </div>
+        {!activeStoryId || !cloudStory ? (
+          <div className="p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg text-[11px] text-[var(--text-muted)]">
+            {!activeStoryId
+              ? 'Open a story to see its collaborators.'
+              : 'This story has not been pushed to the cloud yet — press Ctrl+S to sync.'}
+          </div>
+        ) : (
+          <ul className="space-y-1.5">
+            {/* Owner */}
+            <li className="flex items-center gap-2.5 p-2.5 bg-[var(--card)] border border-[var(--border)] rounded-md">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                style={{ background: stringToColor(cloudStory.owner) }}
+              >
+                {(cloudStory.ownerName || '?').charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-semibold text-[var(--text)] truncate">
+                  {cloudStory.ownerName || 'Owner'}
+                  {cloudStory.owner === firebaseUser.uid && <span className="text-[var(--text-muted)] font-normal"> (you)</span>}
+                </div>
+                <div className="text-[9.5px] text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1">
+                  <Crown className="w-2.5 h-2.5" style={{ color: 'var(--accent)' }} /> Owner
+                </div>
+              </div>
+            </li>
+
+            {/* Collaborators */}
+            {cloudStory.collaborators.map((uid) => (
+              <li key={uid} className="flex items-center gap-2.5 p-2.5 bg-[var(--card)] border border-[var(--border)] rounded-md">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                  style={{ background: stringToColor(uid) }}
+                >
+                  {uid.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] font-semibold text-[var(--text)] truncate">
+                    {uid === firebaseUser.uid ? 'You' : uid.slice(0, 8) + '…'}
+                  </div>
+                  <div className="text-[9.5px] text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1">
+                    <PenLine className="w-2.5 h-2.5" /> Collaborator
+                  </div>
+                </div>
+                {isOwner && uid !== firebaseUser.uid && (
+                  <button
+                    onClick={() => onRemoveCollaborator(uid)}
+                    disabled={busy === uid}
+                    title="Remove collaborator"
+                    className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
+              </li>
+            ))}
+
+            {cloudStory.collaborators.length === 0 && (
+              <li className="p-2.5 text-[10.5px] text-[var(--text-muted)] italic text-center">
+                No collaborators yet — invite someone below.
+              </li>
+            )}
+          </ul>
+        )}
+      </section>
+
+      {/* Quick actions */}
+      <section className="grid grid-cols-2 gap-2 pt-1">
+        <button
+          onClick={onShare}
+          disabled={!activeStoryId}
+          className="flex flex-col items-center gap-1 p-3 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <Share2 className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+          <span className="text-[10px] font-semibold text-[var(--text)]">Share story</span>
+        </button>
+        <button
+          onClick={onInvite}
+          disabled={!activeStoryId}
+          className="flex flex-col items-center gap-1 p-3 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)]/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <UserPlus className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+          <span className="text-[10px] font-semibold text-[var(--text)]">Invite by email</span>
+        </button>
+      </section>
+
+      {pendingInvites.length === 0 && cloudStory?.collaborators.length === 0 && (
+        <p className="text-[10px] text-[var(--text-muted)] text-center px-3 pt-2">
+          Tip: invites are stored privately. Only the person whose email matches will see them.
+        </p>
       )}
     </div>
   );
