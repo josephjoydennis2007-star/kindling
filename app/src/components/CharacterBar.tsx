@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Users, Plus } from 'lucide-react';
+import { Users } from 'lucide-react';
 import type { Character } from '@/types';
 
 interface CharacterBarProps {
@@ -8,11 +8,16 @@ interface CharacterBarProps {
    *  directly on that character's profile. Falls back to the panel-only
    *  toggle when no character is passed. */
   onCharacterClick: (id: string) => void;
-  onAddCharacter: () => void;
+  /** Kept in the props so callers don't have to change — adding a character
+   *  is now exclusively the job of the FloatingActionButton (which already
+   *  has a much more prominent "+ Character" affordance in the bottom-right
+   *  corner). The redundant dashed "Add" pill here was sitting BEHIND the
+   *  FAB and confused users — removed. */
+  onAddCharacter?: () => void;
   onOpenAllCharacters?: () => void;
 }
 
-export default function CharacterBar({ characters, onCharacterClick, onAddCharacter, onOpenAllCharacters }: CharacterBarProps) {
+export default function CharacterBar({ characters, onCharacterClick, onOpenAllCharacters }: CharacterBarProps) {
   return (
     <div className="character-bar">
       <button
@@ -49,12 +54,6 @@ export default function CharacterBar({ characters, onCharacterClick, onAddCharac
           </motion.button>
         ))}
       </div>
-      <button
-        onClick={onAddCharacter}
-        className="flex items-center gap-1 px-3 py-2 border-2 border-dashed border-[var(--border)] rounded-full text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all flex-shrink-0"
-      >
-        <Plus className="w-3.5 h-3.5" /> Add
-      </button>
     </div>
   );
 }
