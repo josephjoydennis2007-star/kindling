@@ -107,12 +107,17 @@ export default function FindReplace() {
       {/* Responsive: pinned to the top, max width never exceeds the
           viewport. On phones (<sm) the inputs stack vertically and the
           two rows of controls collapse into a single tidy column. */}
+      {/* Position: anchor to the right of the screen with a small inset.
+          That sidesteps the centered-vs-rail math (the rail is 56px on sm+,
+          0 on phones with bottom nav) and makes the panel always visible
+          regardless of the rail/inspector state. max-width caps it to
+          viewport minus 1.5rem so it can never overflow horizontally. */}
       {open && (
         <motion.div
-          initial={{ y: -16, opacity: 0 }}
+          initial={{ y: -12, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -16, opacity: 0 }}
-          className="fixed top-3 left-1/2 -translate-x-1/2 z-[280] bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg p-1.5 flex flex-col sm:flex-row sm:items-center gap-1.5 w-[min(96vw,720px)]"
+          exit={{ y: -12, opacity: 0 }}
+          className="fixed top-14 right-3 left-3 sm:left-auto z-[280] bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg p-1.5 flex flex-col sm:flex-row sm:items-center gap-1.5 max-w-[calc(100vw-1.5rem)] sm:w-[640px]"
         >
           {/* Inputs row — stacked on sm and below */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 flex-1 min-w-0">

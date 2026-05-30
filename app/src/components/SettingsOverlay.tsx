@@ -338,14 +338,10 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                   <Section title={`Line height — ${draft.lineHeight}`}>
                     <input type="range" min={0.8} max={2} step={0.1} value={draft.lineHeight} onChange={(e) => setDraft({ ...draft, lineHeight: Number(e.target.value) })} className="w-full accent-[var(--accent)]" />
                   </Section>
-                  <Section title="Auto-save">
-                    <Toggle value={draft.autoSave} onChange={(v) => setDraft({ ...draft, autoSave: v })} label={draft.autoSave ? 'On' : 'Off'} />
-                    {draft.autoSave && (
-                      <>
-                        <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mt-3">Interval — {draft.autoSaveInterval / 1000}s</div>
-                        <input type="range" min={10000} max={300000} step={10000} value={draft.autoSaveInterval} onChange={(e) => setDraft({ ...draft, autoSaveInterval: Number(e.target.value) })} className="w-full accent-[var(--accent)] mt-1" />
-                      </>
-                    )}
+                  <Section title="Saving">
+                    <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                      Kindling uses manual save (<kbd className="px-1 py-0.5 rounded bg-[var(--hover)] text-[10px]">Ctrl/⌘+S</kbd>) like a normal document editor. The status bar shows <span className="text-[var(--warning)] font-semibold">Unsaved</span> when you have changes that haven't been written. Closing the tab with unsaved work prompts you to confirm. Inside the script, <kbd className="px-1 py-0.5 rounded bg-[var(--hover)] text-[10px]">Ctrl/⌘+Z</kbd> undoes recent edits.
+                    </p>
                   </Section>
                   <Section title="Scene heat strip">
                     <Toggle

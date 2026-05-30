@@ -19,9 +19,12 @@ interface Props {
   screenplay: Screenplay;
   scenes: Scene[];
   onSave: () => void;
+  /** Word-style dirty flag — true when there are in-memory changes that
+   *  haven't been written to IndexedDB. Drives the "Unsaved" indicator. */
+  dirty?: boolean;
 }
 
-export default function StatusLine({ screenplay, scenes, onSave }: Props) {
+export default function StatusLine({ screenplay, scenes, onSave, dirty }: Props) {
   const words = countWords(screenplay);
   const pages = Math.max(1, Math.ceil(screenplay.elements.length / 55));
 
@@ -66,18 +69,21 @@ export default function StatusLine({ screenplay, scenes, onSave }: Props) {
 
       <button
         onClick={onSave}
-        title="Save now (Ctrl/Cmd+S)"
+        title={dirty ? 'Unsaved changes — save now (Ctrl/Cmd+S)' : 'Save now (Ctrl/Cmd+S)'}
         className={`flex items-center gap-1.5 transition-colors ${
           saveState === 'saving' ? 'text-[var(--text-muted)]'
+          : dirty ? 'text-[var(--warning)]'
           : saveState === 'saved' ? 'text-[var(--success)]'
           : 'text-[var(--accent)]'
         }`}
       >
         {saveState === 'saving'
           ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving</>
-          : saveState === 'saved'
-            ? <><Check className="w-3 h-3" /> Saved {agoLabel}</>
-            : <><Save className="w-3 h-3" /> Save</>}
+          : dirty
+            ? <><span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" aria-hidden /> Unsaved</>
+            : saveState === 'saved'
+              ? <><Check className="w-3 h-3" /> Saved {agoLabel}</>
+              : <><Save className="w-3 h-3" /> Save</>}
       </button>
     </footer>
   );

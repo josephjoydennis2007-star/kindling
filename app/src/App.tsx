@@ -35,7 +35,6 @@ import AltTakeOverlay from '@/components/AltTakeOverlay';
 import ExportDialog from '@/components/ExportDialog';
 import SettingsOverlay from '@/components/SettingsOverlay';
 import FloatingActionButton from '@/components/FloatingActionButton';
-import type { AppState } from '@/types';
 import './App.css';
 
 function App() {
@@ -170,29 +169,57 @@ function App() {
     }
   }, [ready, activeStoryId, stories.length, loadState]);
 
-  // Auto-save
+  // ── Manual-save model ──────────────────────────────────────────────────
+  //
+  // The previous timer-based autosave (a setInterval that wrote to IndexedDB
+  // every X seconds) was filling the browser's storage and slowing the app
+  // down. Replaced with a Word/Docs-style dirty tracker:
+  //
+  //   - The editor's built-in undo/redo (Ctrl+Z / Ctrl+Shift+Z) handles
+  //     in-document history — TipTap StarterKit ships the History extension.
+  //   - We subscribe to store mutations and mark a `dirty` flag. The
+  //     StatusLine renders an "Unsaved" dot when dirty.
+  //   - Manual save (Ctrl+S or clicking Save) is the ONLY thing that
+  //     writes to IndexedDB.
+  //   - A beforeunload guard prompts the user when they try to close the
+  //     tab with unsaved work so nothing is lost by accident.
+  //
+  // Auth-skip state stays in localStorage as before — that's a separate
+  // concern from per-story document persistence.
+  const [dirty, setDirty] = useState(false);
   useEffect(() => {
-    if (!settings.autoSave || !activeStoryId) return;
-    const interval = setInterval(() => {
-      document.dispatchEvent(new CustomEvent('writer:saving'));
-      addHistory('Auto-save', activeStoryId);
-      const next = useAppStore.getState();
-      const saveData: Partial<AppState> = {
-        screenplay: next.screenplay,
-        scenes: next.scenes,
-        shots: next.shots,
-        bRolls: next.bRolls,
-        characters: next.characters,
-        plotBoard: next.plotBoard,
-        beats: next.beats,
-        notes: next.notes,
-        history: next.history,
-      };
-      saveState(activeStoryId, saveData);
-      document.dispatchEvent(new CustomEvent('writer:saved'));
-    }, settings.autoSaveInterval);
-    return () => clearInterval(interval);
-  }, [settings.autoSave, settings.autoSaveInterval, activeStoryId, saveState, addHistory]);
+    if (!activeStoryId) return;
+    // Mark dirty whenever any of the persistable per-story fields change.
+    // Zustand's subscribe with a selector fires only when the slice changes.
+    const unsub = useAppStore.subscribe((s, prev) => {
+      if (s.activeStoryId !== activeStoryId) return; // ignore other stories
+      if (s.screenplay !== prev.screenplay ||
+          s.scenes !== prev.scenes ||
+          s.shots !== prev.shots ||
+          s.bRolls !== prev.bRolls ||
+          s.characters !== prev.characters ||
+          s.plotBoard !== prev.plotBoard ||
+          s.beats !== prev.beats ||
+          s.notes !== prev.notes) {
+        setDirty(true);
+      }
+    });
+    return unsub;
+  }, [activeStoryId]);
+
+  // beforeunload guard — only warns when there's actually unsaved work.
+  // Browsers ignore custom messages; just calling preventDefault triggers
+  // the native confirm dialog.
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Some browsers (older Chrome) still need returnValue set.
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
 
   // Handle new story creation
   const handleCreateStory = useCallback((title: string, type?: any) => {
@@ -223,6 +250,7 @@ function App() {
       notes: state.notes,
       history: state.history,
     });
+    setDirty(false); // mark clean — Ctrl+S succeeded
     toast.success('Story saved');
     document.dispatchEvent(new CustomEvent('writer:saved'));
 
@@ -757,6 +785,7 @@ function App() {
             screenplay={screenplay}
             scenes={scenes}
             onSave={handleManualSave}
+            dirty={dirty}
           />
         )}
 
