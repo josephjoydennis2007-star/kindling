@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Stethoscope, Loader2, Check, AlertCircle, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { auth, db } from '@/firebase';
-import { doc, setDoc, getDoc, deleteDoc, serverTimestamp, enableNetwork, disableNetwork } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp, enableNetwork, disableNetwork } from 'firebase/firestore';
 
 /**
  * CloudDiagnostic — in-app live test of Firebase config + Firestore round-trip.
@@ -84,17 +84,39 @@ export default function CloudDiagnostic() {
       done('fail', `${err?.code || ''} ${err?.message || err}`);
     }
 
-    // STEP 4: write probe doc
-    const probeRef = doc(db, 'diagnostic', user.uid);
-    add('Write test doc to /diagnostic/{uid}');
+    // Hard timeout helper — Firestore writes can hang forever when the
+    // path is denied by rules (the SDK queues + retries silently). We
+    // race every cloud call against a 12-second clock and surface the
+    // diagnosis automatically.
+    const withTimeout = <T,>(p: Promise<T>, ms: number, what: string): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<T>((_, reject) => setTimeout(() =>
+          reject(new Error(
+            `TIMEOUT after ${ms / 1000}s. Likely causes: ` +
+            `(1) a browser extension is blocking firestore.googleapis.com — try in an Incognito window with extensions disabled. ` +
+            `(2) the path "${what}" is denied by rules and the SDK is silently retrying. ` +
+            `(3) corporate network / firewall blocking Firestore.`,
+          )),
+        ms)),
+      ]);
+
+    // STEP 4: write to /profiles/{uid} — our rules ALLOW this for the
+    // signed-in user, so success here proves writes work end-to-end.
+    const probeRef = doc(db, 'profiles', user.uid);
+    add('Write test doc to /profiles/{uid}');
     try {
-      await setDoc(probeRef, {
-        uid: user.uid,
-        email: user.email,
-        at: serverTimestamp(),
-        userAgent: navigator.userAgent.slice(0, 80),
-      });
-      done('ok', 'Wrote document successfully');
+      await withTimeout(
+        setDoc(probeRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || 'You',
+          lastDiagnosticAt: serverTimestamp(),
+        }, { merge: true }),
+        12000,
+        'profiles/{uid}',
+      );
+      done('ok', 'Wrote /profiles/{uid} successfully — your writes work');
     } catch (err: any) {
       done('fail', `${err?.code || 'error'}: ${err?.message || err}`);
       setBusy(false);
@@ -102,22 +124,33 @@ export default function CloudDiagnostic() {
     }
 
     // STEP 5: read it back
-    add('Read /diagnostic/{uid} back');
+    add('Read /profiles/{uid} back');
     try {
-      const snap = await getDoc(probeRef);
+      const snap = await withTimeout(getDoc(probeRef), 12000, 'profiles/{uid}');
       done(snap.exists() ? 'ok' : 'fail',
-        snap.exists() ? 'Doc exists, round-trip succeeded' : 'Doc not found after write');
+        snap.exists() ? 'Doc exists, round-trip succeeded ✨' : 'Doc not found after write');
     } catch (err: any) {
       done('fail', `${err?.code || 'error'}: ${err?.message || err}`);
     }
 
-    // STEP 6: cleanup
-    add('Delete probe doc');
+    // STEP 6: verify the rules are actually published by writing to a
+    // path the catch-all denies. SUCCESS here means rules are NOT
+    // published (everything is allowed = bad). FAIL with permission-
+    // denied means rules ARE published (good).
+    add('Confirm rules deny /forbidden_test');
     try {
-      await deleteDoc(probeRef);
-      done('ok', 'Cleaned up');
+      await withTimeout(
+        setDoc(doc(db, 'forbidden_test', user.uid), { ok: true }),
+        8000,
+        'forbidden_test/{uid}',
+      );
+      done('fail', '⚠ Write to a denied path SUCCEEDED. Your rules are NOT published — the database is wide open. Paste firestore.rules into Firebase Console → Firestore → Rules → Publish.');
     } catch (err: any) {
-      done('fail', `${err?.code || 'error'}: ${err?.message || err}`);
+      if (err?.code === 'permission-denied') {
+        done('ok', 'Rules correctly denied the write — your security rules are live');
+      } else {
+        done('fail', `Unexpected: ${err?.code || 'error'}: ${err?.message || err}`);
+      }
     }
 
     setBusy(false);
