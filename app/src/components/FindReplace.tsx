@@ -109,7 +109,7 @@ export default function FindReplace() {
           initial={{ y: -16, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -16, opacity: 0 }}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[280] bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl p-2 flex items-center gap-2"
+          className="fixed top-3 left-1/2 -translate-x-1/2 z-[280] bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg p-1.5 flex items-center gap-1.5"
         >
           <Search className="w-3.5 h-3.5 text-[var(--text-muted)] ml-1" />
           <input

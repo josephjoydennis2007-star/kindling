@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  Focus,
   Plus,
   Film,
   Grid3X3,
@@ -12,7 +11,6 @@ import {
   MessageSquare,
   ArrowRight,
   Menu,
-  FileDown,
   Briefcase,
   BookmarkPlus,
   Sparkles,
@@ -21,11 +19,6 @@ import {
   Megaphone,
   Drama,
   ClipboardList,
-  MessageSquareQuote,
-  Mic2,
-  Wand2,
-  Search,
-  Shuffle,
   type LucideIcon,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
@@ -59,24 +52,24 @@ const ICON_FOR_LABEL: Record<string, LucideIcon> = {
 
 interface ToolbarProps {
   activeTab: string;
-  onToggleFocusMode: () => void;
-  isFocusMode: boolean;
+  /** Unused after the layout rewrite — kept for prop-compat with App.tsx. */
+  onToggleFocusMode?: () => void;
+  /** Unused — kept for prop-compat. */
+  isFocusMode?: boolean;
   onAddAct: () => void;
   onAddShot: () => void;
   onAddSection?: () => void;
   onOpenMobileSidebar: () => void;
-  onOpenExportDialog: () => void;
+  /** Unused after the layout rewrite — Export lives in the TopBar ⋯ menu. */
+  onOpenExportDialog?: () => void;
 }
 
 export default function Toolbar({
   activeTab,
-  onToggleFocusMode,
-  isFocusMode,
   onAddAct,
   onAddShot,
   onAddSection,
   onOpenMobileSidebar,
-  onOpenExportDialog,
 }: ToolbarProps) {
   return (
     <div className="toolbar">
@@ -129,74 +122,10 @@ export default function Toolbar({
 
       <div className="flex-1" />
 
-      {/* AI tool icons — only on the writer tab, where these apply.
-          Hidden on narrow screens to keep the row from overflowing. */}
-      {activeTab === 'writer' && (
-        <div className="hidden md:flex items-center gap-1 mr-1">
-          <ToolbarIconButton
-            icon={MessageSquareQuote}
-            label="Dialogue Coach"
-            shortcut="⇧⌘D"
-            onClick={() => document.dispatchEvent(new CustomEvent('writer:openCoach'))}
-          />
-          <ToolbarIconButton
-            icon={Mic2}
-            label="Table Read"
-            shortcut="⇧⌘R"
-            onClick={() => document.dispatchEvent(new CustomEvent('writer:openTableRead'))}
-          />
-          <ToolbarIconButton
-            icon={Wand2}
-            label="Style Assistant"
-            shortcut="⇧⌘S"
-            onClick={() => document.dispatchEvent(new CustomEvent('writer:openStyle'))}
-          />
-          <ToolbarIconButton
-            icon={Search}
-            label="Find & Replace"
-            shortcut="⌘F"
-            onClick={() => document.dispatchEvent(new CustomEvent('writer:findOpen'))}
-          />
-          <ToolbarIconButton
-            icon={Shuffle}
-            label="What if…?"
-            shortcut="⇧⌘W"
-            onClick={() => {
-              const sel = window.getSelection();
-              const text = sel?.toString().trim() || '';
-              if (!text) {
-                toast.error('Select a passage in the script first.');
-                return;
-              }
-              document.dispatchEvent(new CustomEvent('writer:openAltTake', {
-                detail: { text, label: 'Selection' },
-              }));
-            }}
-          />
-          <div className="w-px h-5 bg-[var(--border)] mx-1" />
-        </div>
-      )}
-
+      {/* Reports stays — opens the printable shot list / cast / location
+          report. Everything else (AI tools, Export, Focus) was moved into
+          the TopBar's ⋯ menu in the layout rewrite. */}
       <ReportsButton />
-
-      <button
-        onClick={onOpenExportDialog}
-        title="Export (PDF / Word / etc.)"
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--accent-soft)] border border-[var(--accent)]/40 rounded-lg text-xs text-[var(--accent)] hover:brightness-110 transition-all font-semibold"
-      >
-        <FileDown className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Export</span>
-      </button>
-
-
-      <button
-        onClick={onToggleFocusMode}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--card)] border border-[var(--border)] rounded-lg text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text)] transition-all"
-        title={isFocusMode ? 'Exit Focus Mode' : 'Focus Mode'}
-      >
-        <Focus className="w-3.5 h-3.5" />
-        {isFocusMode ? 'Exit' : 'Focus'}
-      </button>
     </div>
   );
 }
@@ -241,21 +170,7 @@ function WriterFormatRow({ onAddSection }: { onAddSection?: () => void }) {
   );
 }
 
-/** Compact icon button for the AI-tools row in the writer toolbar. */
-function ToolbarIconButton({
-  icon: Icon, label, shortcut, onClick,
-}: { icon: LucideIcon; label: string; shortcut?: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      title={shortcut ? `${label} (${shortcut})` : label}
-      aria-label={label}
-      className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-[var(--hover)] hover:text-[var(--accent)] transition-all"
-    >
-      <Icon className="w-4 h-4" />
-    </button>
-  );
-}
+// ToolbarIconButton removed — the AI tool icons moved to the TopBar ⋯ menu.
 
 function ToolButton({ icon: Icon, label, format }: { icon: any; label: string; format: string }) {
   const [activeFormat, setActiveFormat] = useState<string>('action');

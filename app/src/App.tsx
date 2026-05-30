@@ -14,6 +14,7 @@ import type { User as FirebaseUser } from 'firebase/auth';
 import IconRail from '@/components/IconRail';
 import ContextPanel from '@/components/ContextPanel';
 import StatusLine from '@/components/StatusLine';
+import TopBar from '@/components/TopBar';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
 import DirectorView from '@/components/DirectorView';
@@ -636,22 +637,46 @@ function App() {
       )}
 
       <div className="main-area" id="main-content" role="main">
-        <Toolbar
-          activeTab={activeTab}
-          onToggleFocusMode={toggleFocusMode}
-          isFocusMode={isFocusMode}
-          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
-          onOpenExportDialog={() => setShowExport(true)}
-          onAddAct={() => {
-            const state = useAppStore.getState();
-            state.addAct();
-          }}
-          onAddShot={() => {
-            const sceneId = useAppStore.getState().activeDirectorSceneId;
-            if (sceneId) useAppStore.getState().addShot(sceneId);
-          }}
-          onAddSection={() => useAppStore.getState().addSection()}
-        />
+        {/* New thin TopBar — story title + ⋯ menu. The Toolbar still
+            renders below for the writer-only format buttons row. */}
+        {!isFocusMode && (
+          <TopBar
+            activeTab={activeTab}
+            isFocusMode={isFocusMode}
+            onToggleFocusMode={toggleFocusMode}
+            onOpenExport={() => setShowExport(true)}
+            onOpenSettings={() => setShowSettings(true)}
+            onSignOut={user ? async () => {
+              const { signOutUser } = await import('@/firebase');
+              await signOutUser();
+              setUser(null);
+              setProfile(null);
+              setSkippedAuth(false);
+            } : undefined}
+            storyTitle={stories.find((s) => s.id === activeStoryId)?.title}
+          />
+        )}
+        {/* The original Toolbar now only renders on the Writer tab and only
+            for its format-button row — we strip the AI icons + Reports +
+            Export + Focus since the TopBar now owns those. */}
+        {!isFocusMode && activeTab === 'writer' && (
+          <Toolbar
+            activeTab={activeTab}
+            onToggleFocusMode={toggleFocusMode}
+            isFocusMode={isFocusMode}
+            onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+            onOpenExportDialog={() => setShowExport(true)}
+            onAddAct={() => {
+              const state = useAppStore.getState();
+              state.addAct();
+            }}
+            onAddShot={() => {
+              const sceneId = useAppStore.getState().activeDirectorSceneId;
+              if (sceneId) useAppStore.getState().addShot(sceneId);
+            }}
+            onAddSection={() => useAppStore.getState().addSection()}
+          />
+        )}
 
         <div className="view-container">
             {activeTab === 'writer' && (
