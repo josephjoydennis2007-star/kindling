@@ -151,8 +151,22 @@ export async function pushStory(input: {
   if (!user) throw new Error('Not signed in');
   return withRecovery(async () => {
     const ref = doc(db, 'stories', input.storyId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
+    // Determine whether the doc exists. If the rules deny the read
+    // (because the doc is non-existent and the rule references
+    // resource.data), treat it as not-exists and proceed to create.
+    let exists = false;
+    try {
+      const snap = await getDoc(ref);
+      exists = snap.exists();
+    } catch (err: any) {
+      if (err?.code !== 'permission-denied') throw err;
+      // Permission-denied on a non-existent doc → treat as not-exists.
+      // (If the doc DOES exist but is owned by someone else, the setDoc
+      //  below will fail with permission-denied from the create/update
+      //  rule, which is the correct outcome.)
+      exists = false;
+    }
+    if (!exists) {
       // First write — create with owner = current user.
       await setDoc(ref, {
         owner: user.uid,
@@ -193,9 +207,19 @@ export async function setShareable(storyId: string, shareable: boolean): Promise
 export async function pullStory(storyId: string): Promise<CloudStory | null> {
   return withRecovery(async () => {
     const ref = doc(db, 'stories', storyId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return null;
-    return hydrate(snap.id, snap.data());
+    try {
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return null;
+      return hydrate(snap.id, snap.data());
+    } catch (err: any) {
+      // permission-denied on a non-existent doc happens because the rule
+      // references resource.data which is null. Treat as not-found so the
+      // caller can render an empty state instead of a scary error banner.
+      // (For docs that DO exist but the user can't access, this is also
+      //  the correct UX — they just see "no such story".)
+      if (err?.code === 'permission-denied') return null;
+      throw err;
+    }
   });
 }
 

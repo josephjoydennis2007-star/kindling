@@ -31,7 +31,16 @@ service cloud.firestore {
     //   data        — the actual story payload (screenplay, scenes, ...)
     //   updatedAt   — serverTimestamp()
     match /stories/{storyId} {
+      // `resource == null` allows reads of stories that DON'T EXIST yet.
+      // Without this, getDoc() on a brand-new storyId returns
+      // permission-denied (because the conditions below reference
+      // resource.data which is null), breaking the standard "check exists,
+      // then create or update" pattern in client code. Allowing null reads
+      // is a sanctioned Firestore pattern — it leaks at most the existence
+      // of arbitrary IDs, not any actual data, and the client only ever
+      // looks up IDs it already knows from its local IndexedDB.
       allow read: if request.auth != null && (
+        resource == null ||
         resource.data.owner == request.auth.uid ||
         request.auth.uid in resource.data.collaborators ||
         resource.data.shareable == true
