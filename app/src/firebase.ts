@@ -1,7 +1,7 @@
 import type { HistoryEntry } from '@/types';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
-  getFirestore,
+  initializeFirestore,
   collection,
   doc,
   setDoc,
@@ -86,7 +86,30 @@ let _auth: Auth | null = null;
 
 try {
   app = initializeApp(firebaseConfig);
-  _db = getFirestore(app);
+  // ─── Firestore init with auto long-polling fallback ────────────────────
+  //
+  // By default, the Firestore Web SDK uses HTTP streaming (WebSocket-like
+  // long-lived connections) to talk to firestore.googleapis.com. Some
+  // browser extensions (uBlock, Privacy Badger, Brave Shields, AdBlock+),
+  // antivirus suites, corporate firewalls, mobile-tether MITM proxies, and
+  // ISP-level filters strip or block the long-lived connection — the
+  // result is writes that HANG FOREVER with no error rather than failing
+  // fast. This was the exact symptom we hit: diagnostic timeouts at the
+  // first Firestore write while config + auth + network-cycle all
+  // succeeded.
+  //
+  // experimentalAutoDetectLongPolling tells the SDK: try the fast streaming
+  // path first, and if anything looks fishy fall back to plain HTTP long-
+  // polling. Long-polling works on every network because it's just regular
+  // POST requests. We also set useFetchStreams: false to avoid the
+  // ReadableStream code path that some proxies also break.
+  //
+  // initializeFirestore MUST be called before any other getFirestore() in
+  // the bundle — otherwise the default-initialized instance wins and our
+  // settings are ignored.
+  _db = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+  } as any);
   _storage = getStorage(app);
   _auth = getAuth(app);
   setPersistence(_auth, browserLocalPersistence).catch(() => {});
