@@ -4,17 +4,20 @@ import { Toaster, toast } from 'sonner';
 import { Users, Zap } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { useIndexedDB } from '@/hooks/useIndexedDB';
-import { watchAuth, getProfile, upsertProfile, signOutUser, type UserProfile } from '@/firebase';
+import { watchAuth, getProfile, upsertProfile, type UserProfile } from '@/firebase';
 import AuthWall from '@/components/AuthWall';
 import ProfileEditor from '@/components/ProfileEditor';
 import type { User as FirebaseUser } from 'firebase/auth';
-import Sidebar from '@/components/Sidebar';
+// Sidebar / CharacterBar / StatusBar / SocialBar replaced by IconRail +
+// ContextPanel + StatusLine in the layout rewrite. Old files kept on disk
+// for reference but no longer mounted anywhere.
+import IconRail from '@/components/IconRail';
+import ContextPanel from '@/components/ContextPanel';
+import StatusLine from '@/components/StatusLine';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
 import DirectorView from '@/components/DirectorView';
 import PlotBoardView from '@/components/PlotBoardView';
-import CharacterBar from '@/components/CharacterBar';
-import StatusBar from '@/components/StatusBar';
 import RightPanel from '@/components/RightPanel';
 import StorySelector from '@/components/StorySelector';
 import WorkspaceView from '@/components/WorkspaceView';
@@ -29,7 +32,6 @@ import DialogueCoach from '@/components/DialogueCoach';
 import TableRead from '@/components/TableRead';
 import AltTakeOverlay from '@/components/AltTakeOverlay';
 import ExportDialog from '@/components/ExportDialog';
-import SocialBar from '@/components/SocialBar';
 import SettingsOverlay from '@/components/SettingsOverlay';
 import FloatingActionButton from '@/components/FloatingActionButton';
 import type { AppState } from '@/types';
@@ -270,6 +272,9 @@ function App() {
     } catch {/* network or import error — silent, local save already succeeded */}
   }, [activeStoryId, addHistory, saveState, updateSettings]);
 
+  // Kept exported via a custom event so the Command Palette + Settings can
+  // call it. The rail/context layout no longer surfaces an "Import" button
+  // directly; the user reaches it via Cmd+K or Settings → Files.
   const handleImport = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -289,6 +294,14 @@ function App() {
     };
     input.click();
   }, []);
+
+  // Re-route the legacy `app:import` custom event to the same handler so the
+  // Command Palette / Settings can trigger it without prop-drilling.
+  useEffect(() => {
+    const onImport = () => handleImport();
+    document.addEventListener('app:import', onImport);
+    return () => document.removeEventListener('app:import', onImport);
+  }, [handleImport]);
 
   // Live-sync poller — when settings.liveSync is on AND a cloud provider is
   // configured, pull every 15 seconds. Cheap polling-based "collab" without a
@@ -598,31 +611,27 @@ function App() {
         <div className="mobile-backdrop md:hidden" onClick={() => setMobileSidebarOpen(false)} />
       )}
 
+      {/* New layout: 56px IconRail + (in production modes) a 240px ContextPanel.
+          The Writer view gets Focus Paper mode — neither show, only the
+          editor breathes. */}
       {!isFocusMode && (
-        <Sidebar
+        <IconRail
           activeTab={activeTab}
-          onTabChange={setTab}
-          onTogglePanel={togglePanel}
-          rightPanel={rightPanel}
+          onTabChange={(tab) => setTab(tab as any)}
           stories={stories}
           activeStoryId={activeStoryId}
           onStoryChange={handleSelectStory}
-          onShowStorySelector={() => setShowStorySelector(true)}
-          collapsed={settings.sidebarCollapsed}
-          onToggleCollapse={toggleSidebar}
-          mobileOpen={mobileSidebarOpen}
-          onCloseMobile={() => setMobileSidebarOpen(false)}
-          onExport={() => setShowExport(true)}
-          onImport={handleImport}
+          onNewStory={() => setShowStorySelector(true)}
           onOpenSettings={() => setShowSettings(true)}
-          user={user ? { displayName: profile?.displayName || user.displayName, photoURL: profile?.avatar || user.photoURL, email: user.email } : null}
           onOpenProfile={() => setShowProfile(true)}
-          onSignOut={async () => {
-            await signOutUser();
-            setUser(null);
-            setProfile(null);
-            setSkippedAuth(false);
-          }}
+          user={user ? { displayName: profile?.displayName || user.displayName, photoURL: profile?.avatar || user.photoURL, email: user.email } : null}
+        />
+      )}
+      {!isFocusMode && activeTab !== 'writer' && (
+        <ContextPanel
+          activeTab={activeTab}
+          rightPanel={rightPanel}
+          onTogglePanel={(p) => togglePanel(p as any)}
         />
       )}
 
@@ -715,20 +724,16 @@ function App() {
             )}
         </div>
 
-        {!isFocusMode && activeTab === 'writer' && (
-          <CharacterBar
-            characters={characters}
-            onCharacterClick={(id) => useAppStore.getState().focusCharacter(id)}
-            onAddCharacter={() => togglePanel('characters')}
-            onOpenAllCharacters={() => useAppStore.setState({ rightPanel: 'characters' })}
+        {/* Replaced the heavy CharacterBar + StatusBar + SocialBar pill stack
+            with a single thin StatusLine. Character access lives in the
+            right-side inspector (Story Tools → Characters). */}
+        {!isFocusMode && (
+          <StatusLine
+            screenplay={screenplay}
+            scenes={scenes}
+            onSave={handleManualSave}
           />
         )}
-
-        {!isFocusMode && <StatusBar
-          screenplay={screenplay}
-          scenes={scenes}
-          onSave={handleManualSave}
-        />}
 
         <RightPanel
           panel={rightPanel}
@@ -750,16 +755,8 @@ function App() {
         />
       </div>
 
-      {!isFocusMode && (
-        <SocialBar
-          enabled={settings.socialBarEnabled}
-          onActivity={(site) => {
-            // Hook for admin notification — wire to a backend later.
-            // eslint-disable-next-line no-console
-            console.log('[social-activity]', site);
-          }}
-        />
-      )}
+      {/* SocialBar removed in the layout rewrite — its functionality is
+          consolidated into the rail's user menu + the Workspace tab. */}
 
       {!isFocusMode && !showStorySelector && (
         <FloatingActionButton
