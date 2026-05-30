@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Environment / secrets — NEVER commit these. .env.example is the
+# committed template; .env is your private copy with the real keys.
+.env
+.env.*
+!.env.example
+
 # Playwright
 test-results/
 playwright-report/

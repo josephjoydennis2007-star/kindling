@@ -58,6 +58,28 @@ const firebaseConfig = {
 
 export const isFirebaseConfigured = !!env.VITE_FIREBASE_API_KEY;
 
+// Friendlier dev-console hint when only SOME of the 6 keys are set.
+// Helps spot copy-paste mistakes (e.g. forgot to fill in appId).
+if (typeof window !== 'undefined' && env.DEV) {
+  const required = [
+    'VITE_FIREBASE_API_KEY',
+    'VITE_FIREBASE_AUTH_DOMAIN',
+    'VITE_FIREBASE_PROJECT_ID',
+    'VITE_FIREBASE_STORAGE_BUCKET',
+    'VITE_FIREBASE_MESSAGING_SENDER_ID',
+    'VITE_FIREBASE_APP_ID',
+  ];
+  const set = required.filter((k) => !!env[k]);
+  if (set.length > 0 && set.length < required.length) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[Kindling] Firebase env is partially configured (${set.length}/${required.length}). ` +
+      `Missing: ${required.filter((k) => !env[k]).join(', ')}. ` +
+      `Open app/.env and paste the missing values from the Firebase console.`
+    );
+  }
+}
+
 let app: FirebaseApp | null = null;
 let _db: Firestore | null = null;
 let _storage: FirebaseStorage | null = null;
