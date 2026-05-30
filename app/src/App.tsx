@@ -16,6 +16,8 @@ import ContextPanel from '@/components/ContextPanel';
 import StatusLine from '@/components/StatusLine';
 import TopBar from '@/components/TopBar';
 import UserMenu from '@/components/UserMenu';
+import ShareDialog from '@/components/ShareDialog';
+import InviteDialog from '@/components/InviteDialog';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
 import DirectorView from '@/components/DirectorView';
@@ -177,6 +179,45 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Share-link handler — when the URL contains `?s=<storyId>`, pull that
+  // story from Firestore + import it locally. Only fires after auth has
+  // resolved (so the read attempt is authenticated). Strips the query
+  // param afterwards so refreshing doesn't re-import.
+  useEffect(() => {
+    if (!authChecked) return;
+    const params = new URLSearchParams(window.location.search);
+    const sharedId = params.get('s');
+    if (!sharedId) return;
+
+    (async () => {
+      try {
+        const { pullStory } = await import('@/lib/cloudStories');
+        const cloudStory = await pullStory(sharedId);
+        if (!cloudStory) {
+          toast.error('That shared story could not be found or you don\'t have access.');
+          return;
+        }
+        // Import the JSON payload into the local store.
+        const state = useAppStore.getState();
+        state.importStory(cloudStory.data);
+        toast.success(`Opened "${cloudStory.title}" — shared by ${cloudStory.ownerName || 'someone'}`);
+      } catch (err: any) {
+        // eslint-disable-next-line no-console
+        console.warn('[Kindling] Failed to load shared story:', err);
+        if (err?.code === 'permission-denied') {
+          toast.error('You\'re not authorized to read this story. Ask the owner to share it with you.');
+        } else if (!user) {
+          toast.error('Sign in to open shared stories.');
+        }
+      } finally {
+        // Strip ?s=… so a refresh doesn't try to re-import.
+        const url = new URL(window.location.href);
+        url.searchParams.delete('s');
+        window.history.replaceState({}, '', url.toString());
+      }
+    })();
+  }, [authChecked, user]);
+
   // Load story data
   useEffect(() => {
     if (!ready) return;
@@ -285,6 +326,28 @@ function App() {
     setDirty(false); // mark clean — Ctrl+S succeeded
     toast.success('Story saved');
     document.dispatchEvent(new CustomEvent('writer:saved'));
+
+    // Push to Firestore IF the user is signed in. Errors don't block the
+    // local save (which always succeeds first). The story doc id matches
+    // the local storyId so re-opens find it cleanly.
+    if (user) {
+      try {
+        const { pushStory } = await import('@/lib/cloudStories');
+        const story = state.stories.find((st) => st.id === activeStoryId);
+        await pushStory({
+          storyId: activeStoryId,
+          title: story?.title || state.screenplay.title || 'Untitled',
+          data: state.exportStory(),
+        });
+      } catch (err: any) {
+        // eslint-disable-next-line no-console
+        console.warn('[Kindling] Cloud save failed (local copy was saved):', err);
+        // Only surface to user if it's likely a config problem.
+        if (err?.code === 'permission-denied') {
+          toast.error('Cloud sync blocked — check Firestore rules in Firebase Console.');
+        }
+      }
+    }
 
     // Record today's word count for the streak tracker.
     try {
@@ -886,6 +949,11 @@ function App() {
 
       <ExportDialog open={showExport} onClose={() => setShowExport(false)} />
       <SettingsOverlay open={showSettings} onClose={() => setShowSettings(false)} />
+      {/* Share & invite dialogs — opened via TopBar ⋯ menu via custom events.
+          Both adapt to local-vs-signed-in state and route through onOpenAuth
+          (flip skippedAuth back to false to re-mount the AuthWall). */}
+      <ShareDialog user={user} onOpenAuth={() => setSkippedAuth(false)} />
+      <InviteDialog user={user} onOpenAuth={() => setSkippedAuth(false)} />
       <Onboarding />
       <FindReplace />
       <StylePane />

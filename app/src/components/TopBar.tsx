@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   MoreHorizontal, FileDown, Upload, MessageSquareQuote, Mic2, Wand2,
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
-  LogOut, UserCircle2,
+  LogOut, UserCircle2, Share2, UserPlus,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -185,6 +185,19 @@ export default function TopBar({
                     label="Command palette"
                     shortcut={`${FMT_MOD}K`}
                     onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('writer:openPalette')); }}
+                  />
+                </Group>
+
+                <Group title="Share & collaborate">
+                  <Item
+                    icon={Share2}
+                    label="Share story…"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:shareStory')); }}
+                  />
+                  <Item
+                    icon={UserPlus}
+                    label="Invite collaborator…"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:invite')); }}
                   />
                 </Group>
 

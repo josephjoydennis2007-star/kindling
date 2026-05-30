@@ -1,0 +1,99 @@
+rules_version = '2';
+
+// Kindling Studio — Firestore security rules.
+//
+// Paste this entire file into Firebase Console:
+//   1. Go to https://console.firebase.google.com → kindling-1d29d
+//   2. Left sidebar → Firestore Database
+//   3. Top tab → Rules
+//   4. Replace everything with the contents of this file
+//   5. Click "Publish"
+//
+// What these rules guarantee:
+//   - A story document can only be READ by its owner OR users on the
+//     story's `collaborators` array OR (if it's marked `shareable: true`)
+//     any signed-in user.
+//   - A story can only be WRITTEN by its owner OR users on the
+//     `collaborators` array. Adding/removing collaborators is owner-only.
+//   - Profiles are public-readable so collaborators can see each other's
+//     names + avatars, but only the owner can write their own.
+//   - The /presence collection (used in Round 3 for who's-online) lets
+//     each signed-in user write their own presence doc.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Stories ──────────────────────────────────────────────────────
+    // Doc id is the story's id. Fields:
+    //   owner       — uid of the creator
+    //   collaborators — array of uids (can write)
+    //   shareable   — bool: if true, any signed-in user can read
+    //   data        — the actual story payload (screenplay, scenes, ...)
+    //   updatedAt   — serverTimestamp()
+    match /stories/{storyId} {
+      allow read: if request.auth != null && (
+        resource.data.owner == request.auth.uid ||
+        request.auth.uid in resource.data.collaborators ||
+        resource.data.shareable == true
+      );
+      // Anyone signed in can CREATE a story they own.
+      allow create: if request.auth != null
+                    && request.resource.data.owner == request.auth.uid;
+      // Owner OR a collaborator can update the `data` slice.
+      // Only the owner can change `owner`, `collaborators`, `shareable`.
+      allow update: if request.auth != null && (
+        resource.data.owner == request.auth.uid ||
+        (request.auth.uid in resource.data.collaborators
+         && request.resource.data.owner == resource.data.owner
+         && request.resource.data.collaborators == resource.data.collaborators
+         && request.resource.data.shareable == resource.data.shareable)
+      );
+      // Only the owner can delete.
+      allow delete: if request.auth != null
+                    && resource.data.owner == request.auth.uid;
+    }
+
+    // ── Invites ──────────────────────────────────────────────────────
+    // Doc id = autogen. Fields: storyId, fromUid, toEmail, status,
+    // createdAt. Used so an owner can "invite by email" before the
+    // invitee has signed up.
+    match /invites/{inviteId} {
+      allow read: if request.auth != null && (
+        resource.data.fromUid == request.auth.uid ||
+        resource.data.toEmail == request.auth.token.email
+      );
+      allow create: if request.auth != null
+                    && request.resource.data.fromUid == request.auth.uid
+                    && request.resource.data.status == 'pending';
+      allow update: if request.auth != null && (
+        // Inviter can cancel
+        resource.data.fromUid == request.auth.uid ||
+        // Invitee can accept/decline
+        resource.data.toEmail == request.auth.token.email
+      );
+      allow delete: if request.auth != null
+                    && resource.data.fromUid == request.auth.uid;
+    }
+
+    // ── Profiles ─────────────────────────────────────────────────────
+    // Doc id = uid. Public-readable so collaborators see each other's
+    // names + avatars; only the owner can write.
+    match /profiles/{uid} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Presence (Round 3) ───────────────────────────────────────────
+    // Each user writes their own presence doc inside a story.
+    // Path: /stories/{storyId}/presence/{uid}
+    match /stories/{storyId}/presence/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Default deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
