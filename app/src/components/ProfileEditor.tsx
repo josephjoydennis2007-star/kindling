@@ -117,8 +117,8 @@ export default function ProfileEditor({ open, initial, onClose, onSaved }: Props
                           active ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:border-[var(--text-muted)]'
                         }`}
                       >
-                        <div className={`w-8 h-8 rounded-md bg-gradient-to-br ${r.gradient} flex items-center justify-center mb-2 shadow`}>
-                          <r.icon className="w-4 h-4 text-white" />
+                        <div className={`w-8 h-8 rounded-md flex items-center justify-center mb-2 ${active ? 'bg-[var(--accent-soft)] border border-[var(--accent)]/40' : 'bg-[var(--surface-2)] border border-[var(--border)]'}`}>
+                          <r.icon className={`w-4 h-4 ${active ? '' : 'text-[var(--text-secondary)]'}`} style={active ? { color: 'var(--accent)' } : undefined} />
                         </div>
                         <div className={`text-xs font-bold ${active ? 'text-[var(--accent)]' : 'text-[var(--text)]'}`}>{r.label}</div>
                       </button>

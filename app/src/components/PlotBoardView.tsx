@@ -233,7 +233,7 @@ function BeatSheetPicker() {
       <button
         onClick={() => setOpen((v) => !v)}
         title="Apply a famous beat structure"
-        className="w-[140px] flex-shrink-0 flex flex-col items-center justify-center gap-2 px-3 py-4 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 border-2 border-dashed border-[var(--border)] rounded-xl text-[var(--accent)] hover:border-[var(--accent)] transition-all"
+        className="w-[140px] flex-shrink-0 flex flex-col items-center justify-center gap-2 px-3 py-4 bg-[var(--accent-soft)] border-2 border-dashed border-[var(--border)] rounded-xl text-[var(--accent)] hover:border-[var(--accent)] transition-all"
       >
         <Wand2 className="w-6 h-6" />
         <span className="text-xs font-bold whitespace-nowrap">Apply a Beat Sheet</span>

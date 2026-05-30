@@ -131,7 +131,7 @@ export default function StoryDashboard() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="bg-gradient-to-br from-blue-500/20 via-purple-500/15 to-pink-500/15 border border-[var(--border)] rounded-2xl p-6 mb-6 relative overflow-hidden"
+          className="bg-[var(--surface)] border border-[var(--border)] rounded-lg p-6 mb-6 relative overflow-hidden"
         >
           <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full bg-purple-500/20 blur-3xl pointer-events-none" />
           <div className="relative flex items-start justify-between flex-wrap gap-4">
@@ -185,7 +185,7 @@ export default function StoryDashboard() {
             </div>
             <div className="mt-2 h-2 rounded-full bg-[var(--border)] overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all"
+                className="h-full bg-[var(--accent)] transition-all"
                 style={{ width: `${pageProgress}%` }}
               />
             </div>
@@ -245,7 +245,7 @@ export default function StoryDashboard() {
                     <span className="text-[var(--text-secondary)] truncate flex-1">{a.title}</span>
                     <div className="flex-1 h-1.5 rounded-full bg-[var(--border)] overflow-hidden max-w-[120px]">
                       <div
-                        className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
+                        className="h-full bg-[var(--accent)]"
                         style={{ width: `${a.count ? Math.round((a.filled / a.count) * 100) : 0}%` }}
                       />
                     </div>

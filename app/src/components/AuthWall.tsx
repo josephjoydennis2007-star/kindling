@@ -91,9 +91,10 @@ export default function AuthWall({ onSignedIn }: Props) {
   return (
     <div className="min-h-screen w-full bg-[var(--bg)] flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-orange-500/20 blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-blue-500/20 blur-3xl" />
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-purple-500/10 blur-3xl" />
+        {/* A single very subtle accent halo behind the card — the dark base
+            does the heavy visual lift. No multi-colored blobs. */}
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full opacity-[0.04] blur-3xl"
+             style={{ background: 'var(--accent)' }} />
       </div>
 
       <motion.div
@@ -107,7 +108,7 @@ export default function AuthWall({ onSignedIn }: Props) {
             initial={{ scale: 0.8, rotate: -8 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ delay: 0.1, type: 'spring' }}
-            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 flex items-center justify-center mx-auto mb-4 shadow-2xl shadow-orange-500/40"
+            className="w-16 h-16 rounded-md bg-[var(--accent)] flex items-center justify-center mx-auto mb-4"
           >
             <Flame className="w-8 h-8 text-white" />
           </motion.div>
@@ -167,7 +168,7 @@ export default function AuthWall({ onSignedIn }: Props) {
             <button
               disabled={busy || !email || !password}
               onClick={doEmail}
-              className="w-full mt-1 py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-bold shadow hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              className="w-full mt-1 py-2.5 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-sm font-semibold hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               {busy && <Loader2 className="w-4 h-4 animate-spin" />}
               {mode === 'signin' ? 'Sign in' : 'Create account'}

@@ -92,12 +92,12 @@ export default function AssetsPanel({ onClose }: { onClose: () => void }) {
               <img src={a.data} alt={a.name} className="w-full h-24 object-cover" />
             )}
             {a.kind === 'audio' && (
-              <div className="h-24 flex items-center justify-center bg-gradient-to-br from-blue-500/20 to-purple-500/20">
+              <div className="h-24 flex items-center justify-center bg-[var(--accent-soft)]">
                 <Music className="w-8 h-8 text-[var(--text-secondary)]" />
               </div>
             )}
             {a.kind === 'reference' && (
-              <div className="h-24 flex items-center justify-center bg-gradient-to-br from-amber-500/20 to-rose-500/20">
+              <div className="h-24 flex items-center justify-center bg-[var(--accent-soft)]">
                 <FileText className="w-8 h-8 text-[var(--text-secondary)]" />
               </div>
             )}

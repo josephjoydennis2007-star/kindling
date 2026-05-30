@@ -1,51 +1,120 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Courier+Prime:wght@400;700&display=swap');
+/* Kindling Studio — typography stack
+   - Inter: every UI element (body, buttons, status bar, sidebar).
+     Includes the 'cv11' OpenType feature for the more humanist 'a'.
+   - Inter Tight: same family, tighter optical setting, used for headlines.
+   - Source Serif 4: editorial copy in Settings descriptions + onboarding.
+   - Courier Prime: the screenplay itself, 12pt, industry-spec spacing. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Courier+Prime:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* ────────────────────────────────────────────────────────────────────────
+     Kindling Studio — brand design tokens.
+
+     Single source of truth. Every color, radius and elevation in the app
+     reads from these variables. No gradients exist anywhere in the system.
+
+     PALETTE THEORY:
+     - One accent (default: Tobacco Gold). Used sparingly — for active state,
+       primary buttons, save confirmation, revision badges.
+     - Surface scale: bg → surface → surface-2 (3 layers, never deeper).
+     - Rule color is a true 1px hairline, never a thicker border.
+     - Script paper is its own warm off-white that survives both themes.
+
+     User can override the accent in Settings → Look (4 metals available).
+     ──────────────────────────────────────────────────────────────────────── */
+
   :root {
-    --primary: #3b82f6;
-    --accent: #f4a261;
-    --bg: #0a0a0f;
-    --sidebar: #111118;
-    --panel: #16161f;
-    --card: #1c1c26;
-    --hover: #252530;
-    --active: #2e2e3a;
-    --border: #2a2a3a;
-    --border-light: #3a3a4a;
-    --text: #e8e8e8;
-    --text-secondary: #a0a0a0;
-    --text-muted: #8a8a99; /* bumped from #6b6b7b for WCAG 4.5:1 against --bg */
-    --danger: #e76f51;
-    --success: #2a9d8f;
-    --info: #4cc9f0;
-    --warning: #e9c46a;
-    --radius: 8px;
-    --radius-lg: 12px;
+    /* Surfaces */
+    --bg:           #0F1115;   /* editing-bay charcoal */
+    --sidebar:      #0F1115;   /* aligns with bg — sidebar is just left region */
+    --panel:        #15181D;   /* panels (right rail, overlays) */
+    --card:         #1B1F25;   /* raised cards on a panel */
+    --surface:      #15181D;   /* alias kept for components that read --surface */
+    --surface-2:    #1B1F25;
+    --hover:        #1F232A;
+    --active:       #232730;
+
+    /* Script paper — does NOT flip in light mode (paper is always paper) */
+    --paper:        #F7F4EC;
+    --ink:          #0A0A0A;
+
+    /* Text */
+    --text:           #E8E6E1;     /* paper-warm white, 16.4:1 vs --bg */
+    --text-secondary: #B6B3AC;
+    --text-muted:     #8A8780;     /* 4.85:1 vs --bg — WCAG AA */
+
+    /* Lines + dividers */
+    --border:        #232730;       /* 1px hairlines */
+    --border-light:  #2D323C;       /* slightly brighter for emphasis */
+    --rule:          #232730;
+
+    /* Single accent — Tobacco Gold by default. Overridden via [data-accent]
+       attribute on <html> from the theme picker. */
+    --accent:       #C99B5E;
+    --accent-soft:  rgba(201, 155, 94, 0.14);
+    --accent-ink:   #0F1115;        /* text on solid accent */
+
+    /* Functional colors — all muted, no neon */
+    --primary:      #C99B5E;        /* legacy alias for --accent */
+    --success:      #6AAF8C;        /* muted forest */
+    --warning:      #D4A547;        /* saffron */
+    --danger:       #C16B5C;        /* clay red */
+    --info:         #6B7DA0;        /* slate blue */
+
+    /* Geometry */
+    --radius:       6px;
+    --radius-sm:    4px;
+    --radius-lg:    8px;
+    --radius-pill:  9999px;
+
+    /* Elevation — used sparingly. Always a hairline + optional soft shadow. */
+    --elev-1: 0 0 0 1px var(--border);
+    --elev-2: 0 1px 2px rgba(0,0,0,0.18), 0 0 0 1px var(--border);
+    --elev-3: 0 8px 24px rgba(0,0,0,0.32), 0 0 0 1px var(--border);
   }
 
+  /* Accent overrides — pick one in Settings → Look. Each is a *single* color,
+     no gradient. The contrast/ink color is tuned per accent. */
+  :root[data-accent="bronze"]     { --accent: #B5765B; --accent-soft: rgba(181,118, 91,0.16); --accent-ink: #0F1115; }
+  :root[data-accent="verdigris"]  { --accent: #5C8B7E; --accent-soft: rgba( 92,139,126,0.16); --accent-ink: #0F1115; }
+  :root[data-accent="slate-blue"] { --accent: #6B7DA0; --accent-soft: rgba(107,125,160,0.16); --accent-ink: #0F1115; }
+  /* Default (Tobacco Gold) needs no override. */
+
+  /* Light mode — same brand, same accent, warm paper world. */
   .theme-light {
-    --primary: #2563eb;
-    --accent: #d4853a;
-    --bg: #f5f5f7;
-    --sidebar: #e8e8ec;
-    --panel: #ffffff;
-    --card: #f0f0f3;
-    --hover: #eaeaea;
-    --active: #e0e0e5;
-    --border: #d0d0d5;
-    --border-light: #e0e0e5;
-    --text: #1a1a1f;
-    --text-secondary: #555560;
-    --text-muted: #888890;
-    --danger: #dc2626;
-    --success: #059669;
-    --info: #0284c7;
-    --warning: #d97706;
+    --bg:           #F8F6F1;
+    --sidebar:      #F8F6F1;
+    --panel:        #FFFFFF;
+    --card:         #FDFBF6;
+    --surface:      #FFFFFF;
+    --surface-2:    #FDFBF6;
+    --hover:        #F1EEE7;
+    --active:       #EAE6DC;
+
+    --text:           #1A1A1A;
+    --text-secondary: #46453F;
+    --text-muted:     #6F6B65;
+
+    --border:        #E8E3D6;
+    --border-light:  #DBD5C5;
+    --rule:          #E8E3D6;
+
+    --accent:       #8F6B3A;   /* deeper Tobacco for legibility on cream */
+    --accent-soft:  rgba(143, 107, 58, 0.10);
+    --accent-ink:   #FFFFFF;
+
+    --success: #2F7C56;
+    --warning: #A67B14;
+    --danger:  #9C4736;
+    --info:    #4D5F85;
   }
+  .theme-light[data-accent="bronze"]     { --accent: #9C5F44; --accent-soft: rgba(156, 95, 68, 0.10); --accent-ink: #FFFFFF; }
+  .theme-light[data-accent="verdigris"]  { --accent: #406B5E; --accent-soft: rgba( 64,107, 94, 0.10); --accent-ink: #FFFFFF; }
+  .theme-light[data-accent="slate-blue"] { --accent: #4F608A; --accent-soft: rgba( 79, 96,138, 0.10); --accent-ink: #FFFFFF; }
 
   * {
     margin: 0;
@@ -61,10 +130,25 @@
 
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03', 'tnum';
     background: var(--bg);
     color: var(--text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.005em;
+  }
+
+  /* Display class for headlines — Inter Tight is the optically-tuned cousin
+     of Inter for display sizes. Pair with semibold + tight tracking. */
+  .font-display {
+    font-family: 'Inter Tight', 'Inter', -apple-system, sans-serif;
+    letter-spacing: -0.018em;
+    font-weight: 600;
+  }
+
+  .font-serif-editorial {
+    font-family: 'Source Serif 4', Charter, Georgia, serif;
+    letter-spacing: -0.005em;
   }
 
   /* Custom scrollbar */

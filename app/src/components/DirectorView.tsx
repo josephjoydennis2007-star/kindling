@@ -243,7 +243,7 @@ export default function DirectorView({
               key="empty"
               className="flex flex-col items-center justify-center h-full text-center"
             >
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-orange-600 flex items-center justify-center mb-4 shadow-xl">
+              <div className="w-20 h-20 rounded-2xl bg-[var(--accent)] flex items-center justify-center mb-4 shadow-xl">
                 <Clapperboard className="w-10 h-10 text-white" />
               </div>
               <h3 className="text-lg font-bold text-[var(--text)] mb-2">No Scene Selected</h3>
@@ -615,7 +615,7 @@ function SceneBreakdownButton({ scene, onUpdateScene }: {
     <button
       onClick={onClick}
       title="AI breakdown of this scene — characters, props, mood"
-      className="text-[10px] px-2 py-1 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white font-semibold hover:brightness-110 flex items-center gap-1"
+      className="text-[10px] px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-white font-semibold hover:brightness-110 flex items-center gap-1"
     >
       ✨ Break down
     </button>

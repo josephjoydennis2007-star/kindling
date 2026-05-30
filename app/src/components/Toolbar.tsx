@@ -182,7 +182,7 @@ export default function Toolbar({
       <button
         onClick={onOpenExportDialog}
         title="Export (PDF / Word / etc.)"
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500/15 to-purple-500/15 border border-[var(--accent)]/40 rounded-lg text-xs text-[var(--accent)] hover:brightness-110 transition-all font-semibold"
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--accent-soft)] border border-[var(--accent)]/40 rounded-lg text-xs text-[var(--accent)] hover:brightness-110 transition-all font-semibold"
       >
         <FileDown className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Export</span>

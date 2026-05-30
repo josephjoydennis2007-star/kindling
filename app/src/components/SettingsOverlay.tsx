@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import { fsSupported, pickFolder, saveFolderHandle, clearFolderHandle } from '@/lib/folderHandle';
 import { gistPush, gistPull, jsonbinPush, jsonbinPull, dropboxPush, dropboxPull, supabasePush, supabasePull, webdavPush, webdavPull, pastebinPush, isOnline } from '@/lib/cloudSync';
-import { THEME_PRESETS } from '@/lib/themePresets';
+import { ACCENTS, THEME_MODES } from '@/lib/themePresets';
 import { LOCALES, localeName, type Locale } from '@/lib/i18n';
 import { CURRENCY_OPTIONS } from '@/lib/money';
 import type { AppSettings, StoryType, Story } from '@/types';
@@ -196,7 +196,7 @@ export default function SettingsOverlay({ open, onClose }: Props) {
             {/* Header */}
             <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow">
+                <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shadow">
                   <Sparkles className="w-4 h-4 text-white" />
                 </div>
                 <div>
@@ -240,10 +240,49 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                 <div className="space-y-4">
                   <Section title="Theme">
                     <div className="grid grid-cols-3 gap-2">
-                      <ThemeBtn icon={Moon} label="Dark" active={draft.theme === 'dark'} onClick={() => setDraft({ ...draft, theme: 'dark' })} />
-                      <ThemeBtn icon={Sun} label="Light" active={draft.theme === 'light'} onClick={() => setDraft({ ...draft, theme: 'light' })} />
-                      <ThemeBtn icon={Palette} label="Custom" active={draft.theme === 'custom'} onClick={() => setDraft({ ...draft, theme: 'custom' })} />
+                      {THEME_MODES.map((m) => {
+                        const Icon = m.id === 'light' ? Sun : m.id === 'dark' ? Moon : Monitor;
+                        const active = (draft.theme || 'dark') === m.id;
+                        return (
+                          <ThemeBtn key={m.id} icon={Icon} label={m.label} active={active} onClick={() => setDraft({ ...draft, theme: m.id as any })} />
+                        );
+                      })}
                     </div>
+                    <p className="text-[10px] text-[var(--text-muted)] mt-2">
+                      Dark mode is the studio default. System follows your OS preference.
+                    </p>
+                  </Section>
+
+                  <Section title="Accent">
+                    <div className="grid grid-cols-4 gap-2">
+                      {ACCENTS.map((a) => {
+                        const active = ((draft as any).accent || 'tobacco') === a.id;
+                        return (
+                          <button
+                            key={a.id}
+                            onClick={() => setDraft({ ...(draft as any), accent: a.id })}
+                            title={a.description}
+                            className={`flex flex-col items-center gap-2 px-2 py-3 rounded-md border transition-all ${
+                              active
+                                ? 'border-[var(--accent)] bg-[var(--surface-2)]'
+                                : 'border-[var(--border)] hover:border-[var(--border-light)]'
+                            }`}
+                          >
+                            <span
+                              className="w-6 h-6 rounded-full"
+                              style={{ background: a.swatch, boxShadow: active ? `0 0 0 2px var(--bg), 0 0 0 4px ${a.swatch}` : 'none' }}
+                              aria-hidden
+                            />
+                            <span className={`text-[10px] font-semibold ${active ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
+                              {a.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-[var(--text-muted)] mt-2">
+                      One accent, used sparingly — for the active tab, the save state, and revision badges. Tobacco Gold is the default.
+                    </p>
                   </Section>
 
                   <Section title="Budget currency">
@@ -276,48 +315,6 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                     </div>
                   </Section>
 
-                  <Section title="Quick presets">
-                    <div className="grid grid-cols-3 gap-2">
-                      {THEME_PRESETS.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => setDraft({ ...draft, ...p.patch })}
-                          title={p.description}
-                          className="rounded-lg overflow-hidden border border-[var(--border)] hover:border-[var(--accent)] transition-all bg-[var(--bg)]"
-                        >
-                          <div
-                            className="h-14 flex items-end p-1.5"
-                            style={{
-                              background: `linear-gradient(135deg, ${p.preview.bg}, ${p.preview.accent}40)`,
-                            }}
-                          >
-                            <span
-                              className="w-4 h-4 rounded-full border border-white/40 shadow"
-                              style={{ background: p.preview.accent }}
-                            />
-                          </div>
-                          <div className="px-2 py-1.5 text-left">
-                            <div className="text-[11px] font-bold" style={{ color: p.preview.text === '#0f172a' ? 'var(--text)' : undefined }}>
-                              {p.label}
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </Section>
-
-                  {draft.theme === 'custom' && (
-                    <Section title="Custom colors">
-                      <ColorRow label="Primary"  value={draft.primaryColor}  onChange={(v) => setDraft({ ...draft, primaryColor: v })} />
-                      <ColorRow label="Accent"   value={draft.accentColor}   onChange={(v) => setDraft({ ...draft, accentColor: v })} />
-                      <ColorRow label="Background" value={draft.bgColor}     onChange={(v) => setDraft({ ...draft, bgColor: v })} />
-                      <ColorRow label="Sidebar"  value={draft.sidebarColor}  onChange={(v) => setDraft({ ...draft, sidebarColor: v })} />
-                      <ColorRow label="Panel"    value={draft.panelColor}    onChange={(v) => setDraft({ ...draft, panelColor: v })} />
-                      <ColorRow label="Text"     value={draft.textColor}     onChange={(v) => setDraft({ ...draft, textColor: v })} />
-                      <ColorRow label="Text (muted)" value={draft.textSecondaryColor} onChange={(v) => setDraft({ ...draft, textSecondaryColor: v })} />
-                      <ColorRow label="Border"   value={draft.borderColor}   onChange={(v) => setDraft({ ...draft, borderColor: v })} />
-                    </Section>
-                  )}
                 </div>
               )}
 
@@ -824,17 +821,8 @@ function ThemeBtn({ icon: Icon, label, active, onClick }: { icon: any; label: st
   );
 }
 
-function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="mb-2 last:mb-0">
-      <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-1">{label}</div>
-      <div className="flex items-center gap-2">
-        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="w-8 h-8 rounded cursor-pointer border border-[var(--border)]" />
-        <input value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 px-3 py-1.5 bg-[var(--bg)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]" />
-      </div>
-    </div>
-  );
-}
+// ColorRow removed — the new disciplined design system uses an Accent picker
+// (4 metals) instead of raw color editing.
 
 /**
  * Read-only reference list of every keyboard shortcut wired in App.tsx

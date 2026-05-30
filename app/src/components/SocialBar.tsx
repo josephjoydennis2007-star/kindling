@@ -160,7 +160,7 @@ export default function SocialBar({ enabled, onActivity }: Props) {
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setExpanded((v) => (v === 'hidden' ? 'mini' : v === 'mini' ? 'full' : 'hidden'))}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gradient-to-r from-pink-500 via-fuchsia-500 to-purple-600 text-white text-[10px] font-bold shadow-lg uppercase tracking-wider"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-secondary)] text-[10px] font-semibold uppercase tracking-wider hover:border-[var(--accent)] hover:text-[var(--text)] transition-colors"
         >
           <ChevronUp className={`w-3 h-3 transition-transform ${expanded !== 'hidden' ? 'rotate-180' : ''}`} />
           {expanded === 'full' ? 'Close' : 'Social'}
@@ -186,8 +186,8 @@ export default function SocialBar({ enabled, onActivity }: Props) {
             >
               {/* Header */}
               <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-pink-500 via-fuchsia-500 to-purple-600 flex items-center justify-center shadow">
-                  <Compass className="w-5 h-5 text-white" />
+                <div className="w-9 h-9 rounded-md bg-[var(--accent-soft)] border border-[var(--accent)]/40 flex items-center justify-center">
+                  <Compass className="w-5 h-5" style={{ color: 'var(--accent)' }} />
                 </div>
                 <div className="flex-1">
                   <div className="text-sm font-bold text-[var(--text)]">Social Explorer</div>
@@ -218,8 +218,8 @@ export default function SocialBar({ enabled, onActivity }: Props) {
                   return (
                     <section key={g.id}>
                       <div className="flex items-center gap-2 mb-2">
-                        <div className={`w-7 h-7 rounded-md bg-gradient-to-br ${g.color} flex items-center justify-center shadow-sm`}>
-                          <g.icon className="w-4 h-4 text-white" />
+                        <div className="w-7 h-7 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center">
+                          <g.icon className="w-4 h-4 text-[var(--text-secondary)]" />
                         </div>
                         <div className="text-xs font-bold text-[var(--text)] uppercase tracking-wider">{g.label}</div>
                         <div className="text-[10px] text-[var(--text-muted)]">{items.length}</div>

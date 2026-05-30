@@ -114,7 +114,7 @@ export default function CollabPanel({ onClose }: Props) {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="h-full flex flex-col bg-gradient-to-b from-[var(--panel)] via-[var(--panel)] to-[var(--sidebar)]"
+      className="h-full flex flex-col bg-[var(--panel)]"
     >
       {/* Header — custom design */}
       <div className="relative px-4 py-3 border-b border-[var(--border)] overflow-hidden">
@@ -122,7 +122,7 @@ export default function CollabPanel({ onClose }: Props) {
         <div className="relative flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 flex items-center justify-center shadow-lg">
+              <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shadow-lg">
                 <Users2 className="w-4 h-4 text-white" />
               </div>
               <div>
@@ -164,10 +164,10 @@ export default function CollabPanel({ onClose }: Props) {
 
         {/* Call action row */}
         <div className="relative mt-3 flex gap-2">
-          <CallButton icon={VideoIcon} label="Video" color="bg-gradient-to-br from-blue-500 to-indigo-600" onClick={() => toast.info('Video call needs a signaling backend (Firebase/WebRTC) — UI ready.')} />
-          <CallButton icon={Phone}     label="Voice" color="bg-gradient-to-br from-emerald-500 to-teal-600" onClick={() => toast.info('Voice call needs a signaling backend — UI ready.')} />
-          <CallButton icon={Share2}    label="Share Link" color="bg-gradient-to-br from-amber-500 to-orange-600" onClick={() => copyInviteLink()} />
-          <CallButton icon={Bell}      label="Ping" color="bg-gradient-to-br from-rose-500 to-pink-600" onClick={() => toast.success('Ping sent to active coworkers')} />
+          <CallButton icon={VideoIcon} label="Video" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => toast.info('Video call needs a signaling backend (Firebase/WebRTC) — UI ready.')} />
+          <CallButton icon={Phone}     label="Voice" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => toast.info('Voice call needs a signaling backend — UI ready.')} />
+          <CallButton icon={Share2}    label="Share Link" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => copyInviteLink()} />
+          <CallButton icon={Bell}      label="Ping" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => toast.success('Ping sent to active coworkers')} />
         </div>
 
         {/* Live sync — uses the cloud provider you've already set up to poll
@@ -303,7 +303,7 @@ function ChatTab({ chat, authorId, onSend }: {
             <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${
                 mine
-                  ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-br-sm'
+                  ? 'bg-[var(--accent)] text-[var(--accent-ink)] text-white rounded-br-sm'
                   : 'bg-[var(--card)] border border-[var(--border)] text-[var(--text)] rounded-bl-sm'
               }`}>
                 {!mine && <div className="text-[10px] font-bold text-[var(--accent)] mb-0.5">{m.authorName}</div>}
@@ -378,7 +378,7 @@ function ChatTab({ chat, authorId, onSend }: {
           <button
             onClick={send}
             disabled={!text.trim()}
-            className="p-2 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow disabled:opacity-50"
+            className="p-2 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-white shadow disabled:opacity-50"
           >
             <Send className="w-3.5 h-3.5" />
           </button>
@@ -447,7 +447,7 @@ function CoworkerCard({ coworker, onUpdate, onRemove }: {
     <div className="relative p-3 bg-[var(--card)] border border-[var(--border)] rounded-xl">
       <div className="flex items-center gap-3">
         <div className="relative">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-sm font-bold text-white overflow-hidden">
+          <div className="w-10 h-10 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center text-sm font-bold text-white overflow-hidden">
             {coworker.avatar ? <img src={coworker.avatar} className="w-full h-full object-cover" /> : coworker.name.charAt(0).toUpperCase()}
           </div>
           <Circle className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 ${statusColor}`} strokeWidth={3} />
@@ -550,7 +550,7 @@ function InviteTab({ onAdd }: { onAdd: (info: Partial<CoworkerInfo>) => void }) 
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      <div className="p-4 rounded-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 border border-[var(--border)]">
+      <div className="p-4 rounded-xl bg-[var(--accent-soft)] border border-[var(--border)]">
         <div className="flex items-center gap-2 mb-2 text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">
           <Share2 className="w-3 h-3" /> Private invite link
         </div>
@@ -679,7 +679,7 @@ function RequestsTab({ requests, onApprove, onDeny }: {
           {pending.map((req) => (
             <div key={req.id} className="p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg">
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white">
+                <div className="w-8 h-8 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center text-xs font-bold text-white">
                   {req.requesterName.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">

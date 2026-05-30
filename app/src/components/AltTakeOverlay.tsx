@@ -123,7 +123,7 @@ export default function AltTakeOverlay() {
           >
             {/* Header */}
             <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] bg-[var(--card)]">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 via-pink-500 to-purple-600 flex items-center justify-center shadow">
+              <div className="w-8 h-8 rounded-md bg-[var(--accent-soft)] border border-[var(--accent)]/40 flex items-center justify-center" style={{ color: 'var(--accent)' }}>
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
               <div className="flex-1 min-w-0">
@@ -150,7 +150,7 @@ export default function AltTakeOverlay() {
                       title={a.hint}
                       className={`px-2 py-2 rounded-lg border text-[11px] font-semibold transition-all text-left ${
                         angleId === a.id
-                          ? 'bg-gradient-to-br from-orange-500 to-pink-600 border-transparent text-white shadow'
+                          ? 'bg-[var(--accent)] border-transparent text-[var(--accent-ink)]'
                           : 'bg-[var(--card)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
                       }`}
                     >
@@ -217,7 +217,7 @@ export default function AltTakeOverlay() {
                   <button
                     onClick={run}
                     disabled={busy}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-gradient-to-r from-orange-500 to-pink-600 text-white text-xs font-bold shadow hover:brightness-110 disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-xs font-semibold hover:brightness-110 disabled:opacity-50"
                   >
                     <Sparkles className="w-3.5 h-3.5" /> Generate
                   </button>

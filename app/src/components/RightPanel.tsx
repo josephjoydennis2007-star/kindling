@@ -1343,7 +1343,7 @@ function AIGenerateCharacterButton({ character, onUpdate }: {
       disabled={busy}
       title="Fill missing fields with AI"
       aria-label="Generate character profile with AI"
-      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white text-[11px] font-semibold hover:brightness-110 disabled:opacity-50"
+      className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-white text-[11px] font-semibold hover:brightness-110 disabled:opacity-50"
     >
       {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
       {busy ? 'Generating…' : 'AI fill'}

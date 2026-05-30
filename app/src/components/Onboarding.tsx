@@ -117,8 +117,8 @@ export default function Onboarding({ force }: { force?: boolean }) {
                 transition={{ duration: 0.25 }}
                 className="p-8"
               >
-                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${SLIDES[idx].gradient} flex items-center justify-center shadow-xl mb-5`}>
-                  {(() => { const Icon = SLIDES[idx].icon; return <Icon className="w-8 h-8 text-white" />; })()}
+                <div className="w-16 h-16 rounded-md bg-[var(--accent-soft)] border border-[var(--accent)]/40 flex items-center justify-center mb-5">
+                  {(() => { const Icon = SLIDES[idx].icon; return <Icon className="w-8 h-8" style={{ color: 'var(--accent)' }} />; })()}
                 </div>
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-1.5">
                   <Sparkles className="w-3 h-3" /> Welcome to Kindling — {idx + 1} / {SLIDES.length}

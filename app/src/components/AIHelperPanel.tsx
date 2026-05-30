@@ -226,7 +226,7 @@ export default function AIHelperPanel({ onClose }: Props) {
         <div className="absolute inset-0 opacity-30 pointer-events-none bg-[radial-gradient(circle_at_top_left,_#a78bfa_0%,_transparent_60%)]" />
         <div className="relative flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 flex items-center justify-center shadow">
+            <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shadow">
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div>
@@ -369,7 +369,7 @@ export default function AIHelperPanel({ onClose }: Props) {
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
         {messages.length === 0 && (
           <div className="text-center py-8">
-            <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 flex items-center justify-center shadow-xl">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shadow-xl">
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <p className="text-xs text-[var(--text-secondary)] font-semibold">Your co-writer is ready.</p>
@@ -393,7 +393,7 @@ export default function AIHelperPanel({ onClose }: Props) {
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`group max-w-[88%] rounded-2xl px-3 py-2 ${
               m.role === 'user'
-                ? 'bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white rounded-br-sm'
+                ? 'bg-[var(--accent)] text-[var(--accent-ink)] text-white rounded-br-sm'
                 : 'bg-[var(--card)] border border-[var(--border)] text-[var(--text)] rounded-bl-sm'
             }`}>
               <div
@@ -494,7 +494,7 @@ export default function AIHelperPanel({ onClose }: Props) {
               setBusy(false);
             }
           }}
-          className="text-[10px] px-2 py-1 rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white hover:brightness-110 flex items-center gap-1"
+          className="text-[10px] px-2 py-1 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-white hover:brightness-110 flex items-center gap-1"
           title="Rewrite the selected text in-place, streaming"
         >
           <Sparkles className="w-3 h-3" /> Inline rewrite
@@ -525,7 +525,7 @@ export default function AIHelperPanel({ onClose }: Props) {
             <button
               onClick={() => send()}
               disabled={busy || !text.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white text-xs font-bold shadow hover:brightness-110 disabled:opacity-40 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] text-white text-xs font-bold shadow hover:brightness-110 disabled:opacity-40 transition-all"
             >
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               Send

@@ -69,9 +69,9 @@ export default function StorySelector({ stories, onSelectStory, onCreateStory }:
             initial={{ scale: 0.8 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: 'spring' }}
-            className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mx-auto mb-4 shadow-2xl"
+            className="w-16 h-16 rounded-md bg-[var(--accent)] flex items-center justify-center mx-auto mb-4"
           >
-            <Film className="w-8 h-8 text-white" />
+            <Film className="w-8 h-8 text-[var(--accent-ink)]" />
           </motion.div>
           <h1 className="text-3xl font-bold mb-2">Kindling</h1>
           <p className="text-sm text-[var(--text-muted)]">Choose a story to continue, or start a new one</p>
@@ -126,8 +126,8 @@ export default function StorySelector({ stories, onSelectStory, onCreateStory }:
                         : 'border-[var(--border)] bg-[var(--bg)] hover:border-[var(--text-muted)]'
                     }`}
                   >
-                    <div className={`w-8 h-8 rounded-md bg-gradient-to-br ${t.gradient} flex items-center justify-center mb-2 shadow`}>
-                      <t.icon className="w-4 h-4 text-white" />
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center mb-2 ${active ? 'bg-[var(--accent-soft)] border border-[var(--accent)]/40' : 'bg-[var(--surface-2)] border border-[var(--border)]'}`}>
+                      <t.icon className={`w-4 h-4 ${active ? '' : 'text-[var(--text-secondary)]'}`} style={active ? { color: 'var(--accent)' } : undefined} />
                     </div>
                     <div className={`text-xs font-semibold ${active ? 'text-[var(--accent)]' : 'text-[var(--text)]'}`}>
                       {t.label}
@@ -175,8 +175,8 @@ export default function StorySelector({ stories, onSelectStory, onCreateStory }:
                     onClick={() => onSelectStory(story.id)}
                     className="w-full p-4 bg-[var(--card)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] transition-all flex items-center gap-4 text-left group"
                   >
-                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${meta.gradient} flex items-center justify-center flex-shrink-0 shadow-lg`}>
-                      <meta.icon className="w-6 h-6 text-white" />
+                    <div className="w-12 h-12 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center flex-shrink-0 group-hover:border-[var(--accent)] transition-colors">
+                      <meta.icon className="w-6 h-6 text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition-colors" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-[var(--text)] truncate group-hover:text-[var(--accent)] transition-colors">

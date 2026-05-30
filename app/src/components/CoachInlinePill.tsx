@@ -98,7 +98,7 @@ export default function CoachInlinePill({ enabled }: Props) {
       onMouseDown={(e) => e.preventDefault()} // don't steal editor focus
       onClick={onClick}
       title={`Coach this ${pos.speaker} line (${navigator.platform.startsWith('Mac') ? '⇧⌘L' : 'Ctrl+Shift+L'})`}
-      className="fixed z-50 flex items-center gap-1 px-2 py-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white text-[10px] font-bold shadow-lg ring-1 ring-white/20 hover:brightness-110 transition-all animate-fade-in"
+      className="fixed z-50 flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-[10px] font-semibold hover:brightness-110 transition-all animate-fade-in"
       style={{ top: pos.top, left: pos.left }}
     >
       <Sparkles className="w-3 h-3" />

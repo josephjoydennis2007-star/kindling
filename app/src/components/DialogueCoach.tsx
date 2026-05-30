@@ -302,7 +302,7 @@ export default function DialogueCoach({ onClose }: Props) {
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-fuchsia-500 to-purple-600 flex items-center justify-center shadow-lg">
+        <div className="w-8 h-8 rounded-md bg-[var(--accent-soft)] border border-[var(--accent)]/40 flex items-center justify-center" style={{ color: 'var(--accent)' }}>
           <MessageSquareQuote className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
@@ -343,7 +343,7 @@ export default function DialogueCoach({ onClose }: Props) {
                 <button
                   onClick={runFull}
                   disabled={dialogue.length === 0}
-                  className="w-full py-3 rounded-lg bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white text-sm font-semibold shadow hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full py-3 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-sm font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
                   {dialogue.length === 0

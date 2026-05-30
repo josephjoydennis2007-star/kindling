@@ -132,7 +132,7 @@ export default function StylePane() {
             <button
               onClick={runDoctor}
               disabled={busy}
-              className="ml-auto flex items-center gap-1 px-2 py-1 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white normal-case tracking-normal text-[10px] font-bold hover:brightness-110 disabled:opacity-50"
+              className="ml-auto flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-white normal-case tracking-normal text-[10px] font-bold hover:brightness-110 disabled:opacity-50"
               title="Ask the AI for a script-doctor pass"
             >
               {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}

@@ -283,6 +283,8 @@ export interface AppSettings {
   /** Show the compact scene heat strip above the writer paper.
    *  Defaults to true. */
   showHeatStrip?: boolean;
+  /** Brand accent — one of four metals. Drives the single accent variable. */
+  accent?: 'tobacco' | 'bronze' | 'verdigris' | 'slate-blue';
 }
 
 export type AssetKind = 'image' | 'audio' | 'reference';

@@ -97,8 +97,8 @@ export default function Sidebar({
       {/* Header */}
       <div className="p-3 border-b border-[var(--border)]">
         <div className={`flex items-center gap-3 mb-3 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0">
-            <PenLine className="w-5 h-5 text-white" />
+          <div className="w-9 h-9 rounded-md bg-[var(--accent)] flex items-center justify-center flex-shrink-0">
+            <PenLine className="w-5 h-5 text-[var(--accent-ink)]" />
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
@@ -175,12 +175,11 @@ export default function Sidebar({
                 key={tab.id}
                 onClick={() => handleNav(() => onTabChange(tab.id))}
                 title={label}
-                whileHover={{ y: -2 }}
-                whileTap={{ scale: 0.95 }}
-                className={`flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl text-[11px] font-semibold uppercase tracking-wider transition-all whitespace-nowrap ${
+                whileTap={{ scale: 0.98 }}
+                className={`flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-md text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors whitespace-nowrap border ${
                   activeTab === tab.id
-                    ? 'bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white shadow-lg ring-2 ring-offset-2 ring-offset-[var(--bg)] ring-purple-400'
-                    : 'text-[var(--text-secondary)] bg-[var(--card)]/60 hover:bg-[var(--card)] border border-[var(--border)]/50 hover:border-[var(--accent)]/50'
+                    ? 'bg-[var(--surface-2)] border-[var(--accent)] text-[var(--accent)]'
+                    : 'text-[var(--text-secondary)] bg-transparent border-[var(--border)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
                 }`}
               >
                 <tab.icon className="w-4 h-4 flex-shrink-0" />
@@ -364,7 +363,7 @@ export default function Sidebar({
           className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-[var(--hover)] transition-all ${collapsed ? 'justify-center' : ''}`}
           title={user?.displayName || user?.email || 'You'}
         >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 flex items-center justify-center text-xs font-bold text-white overflow-hidden flex-shrink-0 ring-2 ring-[var(--bg)] shadow">
+          <div className="w-8 h-8 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-xs font-semibold text-[var(--text)] overflow-hidden flex-shrink-0">
             {user?.photoURL
               ? <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
               : (user?.displayName || user?.email || 'Y').charAt(0).toUpperCase()}

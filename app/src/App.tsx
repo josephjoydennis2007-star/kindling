@@ -456,43 +456,47 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [handleManualSave, toggleSidebar, toggleFocusMode]);
 
-  // Apply theme
-  useEffect(() => {
-    document.body.classList.remove('theme-light', 'theme-dark', 'theme-custom');
-    if (settings.theme === 'light') {
-      document.body.classList.add('theme-light');
-    } else if (settings.theme === 'dark') {
-      document.body.classList.add('theme-dark');
-    } else {
-      document.body.classList.add('theme-custom');
-    }
-  }, [settings.theme]);
-
-  // Apply custom CSS variables (only in custom theme; otherwise let the
-  // stylesheet themes drive colors so custom values don't bleed into dark/light)
+  // Apply theme (mode + accent) — single source of truth.
+  //
+  // We set `theme-light` on documentElement when light is chosen (the dark
+  // palette is the default, so dark needs no class). The accent is exposed
+  // as a `data-accent` attribute the index.css palette overrides read from.
+  // System mode listens to prefers-color-scheme and re-applies.
   useEffect(() => {
     const root = document.documentElement;
-    const customVars: Record<string, string> = {
-      '--primary': settings.primaryColor,
-      '--accent': settings.accentColor,
-      '--bg': settings.bgColor,
-      '--sidebar': settings.sidebarColor,
-      '--panel': settings.panelColor,
-      '--card': settings.panelColor,
-      '--hover': settings.borderColor,
-      '--active': settings.borderColor,
-      '--border-light': settings.borderColor,
-      '--text': settings.textColor,
-      '--text-secondary': settings.textSecondaryColor,
-      '--text-muted': settings.textSecondaryColor,
-      '--border': settings.borderColor,
+    const apply = () => {
+      const mode = settings.theme === 'light' ? 'light'
+        : settings.theme === 'dark' ? 'dark'
+        : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      root.classList.toggle('theme-light', mode === 'light');
+      // Legacy classes left for any components still keying off them.
+      document.body.classList.remove('theme-light', 'theme-dark', 'theme-custom');
+      document.body.classList.add(mode === 'light' ? 'theme-light' : 'theme-dark');
+
+      const accent = (settings as any).accent;
+      if (accent && accent !== 'tobacco') {
+        root.setAttribute('data-accent', accent);
+      } else {
+        root.removeAttribute('data-accent');
+      }
     };
-    if (settings.theme === 'custom') {
-      Object.entries(customVars).forEach(([key, value]) => root.style.setProperty(key, value));
-    } else {
-      Object.keys(customVars).forEach((key) => root.style.removeProperty(key));
-    }
-  }, [settings]);
+    apply();
+    // Re-apply when the system theme changes (only relevant when mode === 'system').
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = () => { if (!settings.theme || (settings.theme as string) === 'auto' || (settings.theme as string) === 'system') apply(); };
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, [settings.theme, (settings as any).accent]);
+
+  // Sweep away any legacy custom CSS variables that may linger from older
+  // settings shapes. The new design system reads from index.css only.
+  useEffect(() => {
+    const root = document.documentElement;
+    ['--primary', '--bg', '--sidebar', '--panel', '--card', '--hover', '--active',
+     '--text', '--text-secondary', '--text-muted', '--border', '--border-light'].forEach((k) => {
+      root.style.removeProperty(k);
+    });
+  }, []);
 
   // Focus mode: allow exit via the Escape key
   useEffect(() => {
@@ -512,7 +516,7 @@ function App() {
     return (
       <div className="flex items-center justify-center h-screen w-screen bg-[var(--bg)]">
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 mx-auto mb-3 shadow-2xl animate-pulse" />
+          <div className="w-12 h-12 rounded-md bg-[var(--accent)] mx-auto mb-3 animate-pulse" />
           <p className="text-xs text-[var(--text-muted)]">Lighting Kindling…</p>
         </motion.div>
       </div>
@@ -538,8 +542,8 @@ function App() {
           animate={{ opacity: 1, scale: 1 }}
           className="text-center"
         >
-          <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mx-auto mb-4 shadow-2xl">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="w-16 h-16 rounded-md bg-[var(--accent)] flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-[var(--accent-ink)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
           </div>
@@ -549,7 +553,7 @@ function App() {
             className="mt-4 w-48 h-1 bg-[var(--border)] rounded-full mx-auto overflow-hidden"
           >
             <motion.div
-              className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
+              className="h-full bg-[var(--accent)]"
               initial={{ width: 0 }}
               animate={{ width: '100%' }}
               transition={{ duration: 1, ease: 'easeInOut' }}
@@ -765,7 +769,7 @@ function App() {
               id: 'new-character',
               label: 'Add Character',
               icon: Users,
-              color: 'bg-gradient-to-br from-blue-500 to-cyan-600 text-white',
+              color: 'bg-[var(--accent)] text-[var(--accent-ink)]',
               onClick: () => {
                 useAppStore.getState().addCharacter({
                   name: 'New Character', displayName: 'New Character', description: '',
@@ -781,7 +785,7 @@ function App() {
               id: 'add-beat',
               label: 'Add Beat',
               icon: Zap,
-              color: 'bg-gradient-to-br from-purple-500 to-pink-600 text-white',
+              color: 'bg-[var(--accent)] text-[var(--accent-ink)]',
               onClick: () => {
                 const actId = plotBoard?.acts?.[0]?.id;
                 if (actId) {

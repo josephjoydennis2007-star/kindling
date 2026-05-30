@@ -249,7 +249,7 @@ export default function TableRead({ onClose }: Props) {
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] bg-[var(--card)]">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow">
+        <div className="w-8 h-8 rounded-md bg-[var(--accent-soft)] border border-[var(--accent)]/40 flex items-center justify-center" style={{ color: 'var(--accent)' }}>
           <Mic2 className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
@@ -312,7 +312,7 @@ export default function TableRead({ onClose }: Props) {
               <button
                 onClick={play}
                 disabled={items.length === 0}
-                className="flex-1 py-2 rounded-md bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-semibold shadow flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 hover:brightness-110 transition-all"
               >
                 <Play className="w-4 h-4" /> {paused ? t('tableread.resume') : t('tableread.read_aloud')}
               </button>

@@ -809,7 +809,7 @@ function TitlePage({
             style={{ fontFamily: 'Courier Prime, monospace' }}
           />
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onStart}
-            className="mt-8 mx-auto block px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-shadow flex items-center gap-2"
+            className="mt-8 mx-auto block px-8 py-3 bg-[var(--accent)] text-[var(--accent-ink)] text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-shadow flex items-center gap-2"
           >
             Start Writing
             <ArrowRight className="w-4 h-4" />

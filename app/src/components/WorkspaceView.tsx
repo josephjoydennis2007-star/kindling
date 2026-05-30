@@ -80,8 +80,8 @@ export default function WorkspaceView() {
             >
               <header className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
                 <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${cat.gradient} flex items-center justify-center shadow`}>
-                    <cat.icon className="w-5 h-5 text-white" />
+                  <div className="w-9 h-9 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center">
+                    <cat.icon className="w-5 h-5 text-[var(--text-secondary)]" />
                   </div>
                   <div>
                     <div className="text-sm font-bold text-[var(--text)]">{cat.label}</div>
@@ -158,15 +158,15 @@ export default function WorkspaceView() {
   );
 }
 
-function LinkCard({ link, gradient, onDelete }: { link: WorkspaceLink; gradient: string; onDelete: () => void }) {
+function LinkCard({ link, onDelete }: { link: WorkspaceLink; gradient?: string; onDelete: () => void }) {
   const open = () => window.open(link.url, '_blank', 'noopener,noreferrer');
   return (
     <motion.div
       whileHover={{ y: -2 }}
       className="group flex items-center gap-3 p-3 bg-[var(--card)] border border-[var(--border)] rounded-lg hover:border-[var(--accent)] transition-all"
     >
-      <div className={`w-9 h-9 rounded-md bg-gradient-to-br ${gradient} flex items-center justify-center shadow-sm flex-shrink-0`}>
-        <ExternalLink className="w-4 h-4 text-white" />
+      <div className="w-9 h-9 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center flex-shrink-0">
+        <ExternalLink className="w-4 h-4 text-[var(--text-secondary)]" />
       </div>
       <button onClick={open} className="flex-1 text-left min-w-0">
         <div className="text-xs font-semibold text-[var(--text)] truncate group-hover:text-[var(--accent)]">
