@@ -89,24 +89,41 @@ export default function CollabPanel({ onClose }: Props) {
   const [pendingInvites, setPendingInvites] = useState<CloudInvite[]>([]);
   const [cloudStory, setCloudStory] = useState<CloudStory | null>(null);
   const [studioBusy, setStudioBusy] = useState<string | null>(null);
+  // Surfaced Firestore error so the user can see why their data isn't loading.
+  // The most common cases:
+  //   - "unavailable" / "failed to get document because the client is offline"
+  //     → Firestore Database hasn't been enabled in the Firebase project yet.
+  //   - "permission-denied" → rules haven't been published yet (or the user
+  //     is not in the allowed set).
+  //   - "not-found" → no such project / wrong projectId.
+  const [studioError, setStudioError] = useState<{ code?: string; message: string } | null>(null);
   const firebaseUser = auth?.currentUser || null;
   const isOwner = !!(firebaseUser && cloudStory && cloudStory.owner === firebaseUser.uid);
 
   // Online mode? requires Firebase + a logged-in user + a story
   const online = isFirebaseConfigured && activeStoryId && userId !== 'me';
 
-  // Load studio data on mount + when the active story changes. Both calls
-  // tolerate permission errors — if Firestore rules block them we just
-  // render the empty state and a helpful hint.
+  // Load studio data on mount + when the active story changes. Errors are
+  // surfaced into `studioError` so the StudioTab can render a clear
+  // diagnostic banner instead of silently showing empty state.
   const refreshStudio = async () => {
-    if (!firebaseUser) { setPendingInvites([]); setCloudStory(null); return; }
+    if (!firebaseUser) { setPendingInvites([]); setCloudStory(null); setStudioError(null); return; }
+    setStudioError(null);
     try {
       const invites = await listMyInvites();
       setPendingInvites(invites);
-    } catch { setPendingInvites([]); }
+    } catch (err: any) {
+      setPendingInvites([]);
+      setStudioError({ code: err?.code, message: humanizeFirestoreError(err) });
+    }
     if (activeStoryId) {
       try { setCloudStory(await pullStory(activeStoryId)); }
-      catch { setCloudStory(null); }
+      catch (err: any) {
+        setCloudStory(null);
+        // Don't overwrite an existing error message — invites are usually
+        // hit first and the same underlying problem causes both failures.
+        setStudioError((prev) => prev || { code: err?.code, message: humanizeFirestoreError(err) });
+      }
     } else { setCloudStory(null); }
   };
   useEffect(() => { refreshStudio(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeStoryId, firebaseUser?.uid]);
@@ -266,6 +283,8 @@ export default function CollabPanel({ onClose }: Props) {
           isOwner={isOwner}
           pendingInvites={pendingInvites}
           busy={studioBusy}
+          error={studioError}
+          onRetry={refreshStudio}
           onAccept={async (inviteId) => {
             setStudioBusy(inviteId);
             try {
@@ -830,7 +849,7 @@ function RequestsTab({ requests, onApprove, onDeny }: {
 //      same dialogs as the TopBar ⋯ menu).
 
 function StudioTab({
-  firebaseUser, activeStoryId, cloudStory, isOwner, pendingInvites, busy,
+  firebaseUser, activeStoryId, cloudStory, isOwner, pendingInvites, busy, error, onRetry,
   onAccept, onDecline, onRemoveCollaborator, onInvite, onShare,
 }: {
   firebaseUser: any;
@@ -839,6 +858,8 @@ function StudioTab({
   isOwner: boolean;
   pendingInvites: CloudInvite[];
   busy: string | null;
+  error: { code?: string; message: string } | null;
+  onRetry: () => void;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
   onRemoveCollaborator: (uid: string) => void;
@@ -857,6 +878,72 @@ function StudioTab({
 
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      {/* Diagnostic banner — surfaces Firestore errors clearly. Most often this
+          is "database not enabled" or "rules not published". */}
+      {error && (
+        <div className="p-3 rounded-md bg-[var(--danger)]/10 border border-[var(--danger)]/30 space-y-2">
+          <div className="flex items-start gap-2">
+            <CircleAlert className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--danger)' }} />
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-bold text-[var(--danger)]">Cloud collaboration is not ready</div>
+              <p className="text-[10.5px] text-[var(--text-secondary)] mt-1 leading-relaxed">
+                {error.message}
+              </p>
+              {error.code === 'unavailable' && (
+                <ol className="mt-2 text-[10.5px] text-[var(--text-secondary)] space-y-1 list-decimal pl-4">
+                  <li>
+                    Open{' '}
+                    <a
+                      href="https://console.firebase.google.com/project/kindling-1d29d/firestore"
+                      target="_blank" rel="noreferrer"
+                      className="underline text-[var(--accent)]"
+                    >
+                      Firebase Console → Firestore Database
+                    </a>
+                  </li>
+                  <li>Click <strong>Create database</strong></li>
+                  <li>Pick <strong>Start in production mode</strong> + a region (any nearby one works)</li>
+                  <li>Wait ~30 seconds for it to provision</li>
+                  <li>
+                    Open the <strong>Rules</strong> tab and paste the contents of{' '}
+                    <code className="px-1 py-0.5 rounded bg-[var(--surface-2)] text-[10px]">firestore.rules</code>{' '}
+                    from your repo, then <strong>Publish</strong>
+                  </li>
+                  <li>Come back here and press <strong>Retry</strong></li>
+                </ol>
+              )}
+              {error.code === 'permission-denied' && (
+                <ol className="mt-2 text-[10.5px] text-[var(--text-secondary)] space-y-1 list-decimal pl-4">
+                  <li>
+                    Open{' '}
+                    <a
+                      href="https://console.firebase.google.com/project/kindling-1d29d/firestore/rules"
+                      target="_blank" rel="noreferrer"
+                      className="underline text-[var(--accent)]"
+                    >
+                      Firebase Console → Firestore → Rules
+                    </a>
+                  </li>
+                  <li>
+                    Paste the contents of{' '}
+                    <code className="px-1 py-0.5 rounded bg-[var(--surface-2)] text-[10px]">firestore.rules</code>{' '}
+                    from your repo
+                  </li>
+                  <li>Click <strong>Publish</strong></li>
+                  <li>Press <strong>Retry</strong> below</li>
+                </ol>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onRetry}
+            className="w-full px-3 py-1.5 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[11px] font-semibold hover:brightness-110"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Pending invites — only shown when there's at least one */}
       {pendingInvites.length > 0 && (
         <section>
@@ -1023,6 +1110,29 @@ async function copyInviteLink() {
   } catch {
     toast.error('Could not copy');
   }
+}
+
+// Map Firestore SDK error codes / messages to plain-English text. The
+// Firestore SDK reports "failed to get document because the client is
+// offline" for any unreachable backend — including the very common case
+// where the user has not yet created a Firestore database in their
+// Firebase project. We translate that into something actionable.
+function humanizeFirestoreError(err: any): string {
+  const code = err?.code as string | undefined;
+  const msg = (err?.message || '').toString();
+  if (code === 'unavailable' || /client is offline/i.test(msg)) {
+    return 'Firestore Database is not enabled for this project yet. Open Firebase Console and create the database (one-time, 30 seconds).';
+  }
+  if (code === 'permission-denied') {
+    return 'Firestore rules are blocking this request. Paste firestore.rules into the Firebase Console → Rules tab and publish.';
+  }
+  if (code === 'not-found') {
+    return 'The story document does not exist in the cloud yet. Save the story (Ctrl+S) to push it.';
+  }
+  if (code === 'unauthenticated') {
+    return 'Your session expired. Sign out and back in to refresh your token.';
+  }
+  return msg || 'Something went wrong talking to Firestore.';
 }
 
 // Deterministic colour from a string — used for avatar fallbacks so the
