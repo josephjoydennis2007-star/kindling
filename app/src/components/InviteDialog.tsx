@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, X, Loader2, AlertCircle, LogIn, Check, Mail, PenLine, Clapperboard, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
-import { inviteByEmail, pushStory, type StoryRole } from '@/lib/cloudStories';
+import { inviteByEmail, pushStory, lookupProfileByEmail, isInviteRoleCompatible, type StoryRole } from '@/lib/cloudStories';
 import type { User } from 'firebase/auth';
 
 /**
@@ -38,14 +38,51 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<Array<{ email: string; role: StoryRole }>>([]);
   const [error, setError] = useState<string | null>(null);
+  // Live profile preview of whoever the inviter is about to invite, fetched
+  // from /profilesByEmail when the email looks valid. Lets us show their
+  // role + photo and warn the inviter if the chosen invite role isn't
+  // compatible with the invitee's preference.
+  const [inviteePreview, setInviteePreview] = useState<{
+    uid: string;
+    displayName: string;
+    role: string;
+    acceptOppositeRole: boolean;
+    avatar?: string | null;
+  } | null>(null);
+  const [lookupBusy, setLookupBusy] = useState(false);
 
   useEffect(() => {
     const onOpen = () => {
-      setOpen(true); setEmail(''); setRole('both'); setSent([]); setError(null);
+      setOpen(true); setEmail(''); setRole('both'); setSent([]); setError(null); setInviteePreview(null);
     };
     document.addEventListener('app:invite', onOpen);
     return () => document.removeEventListener('app:invite', onOpen);
   }, []);
+
+  // Debounced profile lookup. Whenever the email looks valid we hit
+  // /profilesByEmail/{email} to fetch the person's role + display name.
+  // Inviter sees this preview card under the email field.
+  useEffect(() => {
+    const addr = email.trim().toLowerCase();
+    if (!EMAIL_RE.test(addr)) { setInviteePreview(null); return; }
+    let cancelled = false;
+    setLookupBusy(true);
+    const timer = setTimeout(async () => {
+      try {
+        const p = await lookupProfileByEmail(addr);
+        if (!cancelled) setInviteePreview(p);
+      } catch {
+        if (!cancelled) setInviteePreview(null);
+      } finally {
+        if (!cancelled) setLookupBusy(false);
+      }
+    }, 350);
+    return () => { cancelled = true; clearTimeout(timer); setLookupBusy(false); };
+  }, [email]);
+
+  // Live compatibility check — role chosen vs invitee's preference.
+  const roleCheck = isInviteRoleCompatible(role, inviteePreview);
+  const roleIncompatible = !roleCheck.ok;
 
   useEffect(() => {
     if (!open) return;
@@ -60,6 +97,10 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
     if (!EMAIL_RE.test(addr)) { setError("That doesn't look like a valid email."); return; }
     if (addr === user.email?.toLowerCase()) { setError("That's your own address."); return; }
     if (sent.some((s) => s.email === addr)) { setError('Already invited in this session.'); return; }
+    if (roleIncompatible) {
+      setError(roleCheck.ok ? '' : (roleCheck as any).reason);
+      return;
+    }
 
     setBusy(true); setError(null);
     try {
@@ -158,8 +199,8 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                       </div>
                       <button
                         onClick={send}
-                        disabled={busy || !email.trim()}
-                        className="px-3 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[11px] font-semibold hover:brightness-110 disabled:opacity-50 flex items-center gap-1.5"
+                        disabled={busy || !email.trim() || roleIncompatible}
+                        className="px-3 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[11px] font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                       >
                         {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
                         Send
@@ -168,6 +209,45 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                     <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">
                       They'll see the invite when they sign in with that email.
                     </p>
+
+                    {/* Invitee preview — appears when the email matches a
+                        registered Kindling user. Shows their name, role,
+                        and the avatar from their profile. */}
+                    {(lookupBusy || inviteePreview) && (
+                      <div className="mt-2 p-2.5 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center gap-2.5">
+                        {lookupBusy && !inviteePreview ? (
+                          <div className="text-[10.5px] text-[var(--text-muted)] flex items-center gap-1.5">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Checking…
+                          </div>
+                        ) : inviteePreview && (
+                          <>
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 overflow-hidden"
+                              style={{ background: `hsl(${(inviteePreview.uid.charCodeAt(0) * 7) % 360}, 60%, 50%)` }}
+                            >
+                              {inviteePreview.avatar
+                                ? <img src={inviteePreview.avatar} className="w-full h-full object-cover" alt="" />
+                                : (inviteePreview.displayName || '?').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[11px] font-semibold text-[var(--text)] truncate">
+                                {inviteePreview.displayName}
+                              </div>
+                              <div className="text-[9.5px] uppercase tracking-wider text-[var(--text-muted)] font-bold flex items-center gap-2">
+                                <span>
+                                  Signed up as <span className="text-[var(--accent)]">
+                                    {inviteePreview.role === 'writer' ? 'Writer' : inviteePreview.role === 'director' ? 'Director' : 'Writer + Director'}
+                                  </span>
+                                </span>
+                                {inviteePreview.acceptOppositeRole && (
+                                  <span className="text-[var(--text-muted)]">· accepts any role</span>
+                                )}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Role picker — what does the invitee get to edit? */}
@@ -185,6 +265,16 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                       {role === 'director' && 'They\'ll be able to edit scenes, shots, and the plot board. The Writer view is read-only for them.'}
                       {role === 'both' && 'Full collaborator — they can edit every part of the story like you can.'}
                     </p>
+
+                    {/* Role-compatibility warning. Appears when the chosen
+                        invite role doesn't match the invitee's signup role
+                        and they haven't opted into opposite-role invites. */}
+                    {roleIncompatible && (
+                      <div className="mt-2 p-2 rounded-md bg-[var(--warning)]/10 border border-[var(--warning)]/30 flex items-start gap-2 text-[10.5px] text-[var(--text-secondary)] leading-relaxed">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} />
+                        <span>{(roleCheck as { ok: false; reason: string }).reason}</span>
+                      </div>
+                    )}
                   </div>
 
                   {sent.length > 0 && (

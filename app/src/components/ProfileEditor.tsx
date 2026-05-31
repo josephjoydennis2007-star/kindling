@@ -127,6 +127,30 @@ export default function ProfileEditor({ open, initial, onClose, onSaved }: Props
                 </div>
               </div>
 
+              {/* Accept invites of opposite role — toggle */}
+              {(draft.role === 'writer' || draft.role === 'director') && (
+                <div className="p-3 rounded-md bg-[var(--surface-2)] border border-[var(--border)]">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!draft.acceptOppositeRole}
+                      onChange={(e) => setDraft({ ...draft, acceptOppositeRole: e.target.checked })}
+                      className="mt-0.5 accent-[var(--accent)]"
+                    />
+                    <div className="flex-1">
+                      <div className="text-[11px] font-semibold text-[var(--text)]">
+                        Accept invites from the opposite role
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                        {draft.role === 'writer'
+                          ? 'If on, directors can invite you to work on their director boards. If off, they can\'t invite you as a director — only as a writer.'
+                          : 'If on, writers can invite you to work on their scripts. If off, they can\'t invite you as a writer — only as a director.'}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              )}
+
               {draft.email && (
                 <div className="text-[10px] text-[var(--text-muted)]">
                   Signed in as <span className="text-[var(--accent)]">{draft.email}</span>

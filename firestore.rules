@@ -117,6 +117,18 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
+    // ── Profiles by email (lookup index for invites) ─────────────────
+    // Mirror of /profiles keyed by lowercased email so the InviteDialog
+    // can find a person by email and preview their role + accept-opposite
+    // preference. The owning user writes their own mirror via upsertProfile.
+    // Any signed-in user can read (so inviters can do the lookup), but only
+    // the matching uid can write their own row.
+    match /profilesByEmail/{email} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.data.uid == request.auth.uid;
+    }
+
     // ── Presence (Round 3) ───────────────────────────────────────────
     // Each user writes their own presence doc inside a story.
     // Path: /stories/{storyId}/presence/{uid}

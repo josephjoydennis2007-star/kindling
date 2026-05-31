@@ -395,12 +395,28 @@ export async function acceptInvite(inviteId: string): Promise<string | null> {
       throw new Error('Invite is for a different email address');
     }
     const role: StoryRole = (invite.role as StoryRole) || 'both';
+
     // Mark the invite accepted first (always allowed by invite update rule).
     await updateDoc(inviteRef, { status: 'accepted' });
+
+    // Short-circuit if we're already a collaborator on this story (e.g. the
+    // user is accepting a duplicate invite, or already accepted earlier and
+    // the UI is showing a stale row). The /stories update rule's self-join
+    // branch REQUIRES !(uid in collaborators) so trying to re-add would
+    // throw permission-denied — instead we just bail with success.
+    try {
+      const storySnap = await getDoc(doc(db, 'stories', invite.storyId));
+      if (storySnap.exists()) {
+        const storyData = storySnap.data() as any;
+        if ((storyData.collaborators || []).includes(user.uid)) {
+          return invite.storyId;
+        }
+      }
+    } catch {/* if the read fails (permission denied for non-existent doc), fall through to the write */}
+
     // Self-join the story: add ourselves to collaborators AND set our
-    // entry in collaboratorRoles. The /stories update rule's self-join
-    // branch verifies that collaboratorRoles[uid] matches invite.role so
-    // the invitee can't grant themselves a higher role than was given.
+    // entry in collaboratorRoles. The /stories update rule verifies the
+    // role matches invite.role so the invitee can't elevate themselves.
     await updateDoc(doc(db, 'stories', invite.storyId), {
       collaborators: arrayUnion(user.uid),
       [`collaboratorRoles.${user.uid}`]: role,
@@ -498,6 +514,66 @@ export interface CollaboratorProfile {
   email?: string;
   avatar?: string | null;
   role?: string;
+}
+
+/**
+ * Look up a registered user by their email — used by the InviteDialog to
+ * show the invitee's role + display name before sending. Returns null if
+ * no one has ever signed in with that email. Reads from /profilesByEmail
+ * (populated by upsertProfile).
+ */
+export async function lookupProfileByEmail(email: string): Promise<{
+  uid: string;
+  displayName: string;
+  role: StoryRole | 'admin' | 'viewer';
+  acceptOppositeRole: boolean;
+  avatar?: string | null;
+} | null> {
+  if (!email) return null;
+  const key = email.toLowerCase().trim();
+  return withRecovery(async () => {
+    try {
+      const snap = await getDoc(doc(db, 'profilesByEmail', key));
+      if (!snap.exists()) return null;
+      const d = snap.data() as any;
+      return {
+        uid: d.uid,
+        displayName: d.displayName || email,
+        role: d.role || 'both',
+        acceptOppositeRole: !!d.acceptOppositeRole,
+        avatar: d.avatar || null,
+      };
+    } catch {
+      return null;
+    }
+  });
+}
+
+/**
+ * Decide whether `inviteRole` can be sent to a person whose own preferred
+ * role is `inviteeRole`. Rules:
+ *   - 'both' invitees accept any invite (their account is flexible).
+ *   - 'both' invites are always accepted (full access).
+ *   - Same-role invites always accepted.
+ *   - Opposite-role invites need the invitee's acceptOppositeRole flag.
+ *
+ * Returns { ok: true } when allowed, { ok: false, reason } otherwise so the
+ * UI can render a tailored message.
+ */
+export function isInviteRoleCompatible(
+  inviteRole: StoryRole,
+  invitee: { role: string; acceptOppositeRole: boolean; displayName?: string } | null,
+): { ok: true } | { ok: false; reason: string } {
+  if (!invitee) return { ok: true }; // unknown email — let them send; the recipient signs up later
+  if (invitee.role === 'both' || inviteRole === 'both') return { ok: true };
+  if (invitee.role === inviteRole) return { ok: true };
+  if (invitee.acceptOppositeRole) return { ok: true };
+  const inviteeRoleLabel = invitee.role === 'writer' ? 'Writer' : 'Director';
+  const inviteRoleLabel = inviteRole === 'writer' ? 'Writer' : 'Director';
+  return {
+    ok: false,
+    reason: `${invitee.displayName || 'This person'} signed up as a ${inviteeRoleLabel} and doesn't accept ${inviteRoleLabel} invites. Pick the ${inviteeRoleLabel} role or invite someone else.`,
+  };
 }
 
 export async function getCollaboratorProfiles(uids: string[]): Promise<Record<string, CollaboratorProfile>> {

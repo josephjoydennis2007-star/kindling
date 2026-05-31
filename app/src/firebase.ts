@@ -211,6 +211,13 @@ export interface UserProfile {
   displayName: string;
   age?: string;
   role: 'writer' | 'director' | 'both' | 'admin' | 'viewer';
+  /**
+   * When false (default), this user will REJECT invites whose role does not
+   * match their own role. Inviters see a warning + the Send button is
+   * disabled. When true, the user accepts any invite role. 'both'-role users
+   * always accept any role regardless of this flag.
+   */
+  acceptOppositeRole?: boolean;
   avatar?: string | null;
   createdAt: number;
   updatedAt: number;
@@ -224,7 +231,26 @@ export async function getProfile(uid: string): Promise<UserProfile | null> {
 
 export async function upsertProfile(profile: UserProfile): Promise<void> {
   if (!_db) return;
-  await setDoc(doc(_db, 'profiles', profile.uid), { ...profile, updatedAt: Date.now() }, { merge: true });
+  const now = Date.now();
+  // Write the main profile doc (keyed by uid).
+  await setDoc(doc(_db, 'profiles', profile.uid), { ...profile, updatedAt: now }, { merge: true });
+  // Mirror a small "discovery" doc at /profilesByEmail/{lowercased email}
+  // so the InviteDialog can look up a person by email and show their
+  // role + acceptOppositeRole preference. Email is the natural lookup
+  // key when inviting. Without this mirror, profiles are unqueryable by
+  // email since the main doc is keyed by uid.
+  if (profile.email) {
+    const emailKey = profile.email.toLowerCase().trim();
+    await setDoc(doc(_db, 'profilesByEmail', emailKey), {
+      uid: profile.uid,
+      email: emailKey,
+      displayName: profile.displayName,
+      role: profile.role,
+      acceptOppositeRole: !!profile.acceptOppositeRole,
+      avatar: profile.avatar || null,
+      updatedAt: now,
+    }, { merge: true });
+  }
 }
 
 // ───────── STORIES (per-user cloud sync) ─────────
