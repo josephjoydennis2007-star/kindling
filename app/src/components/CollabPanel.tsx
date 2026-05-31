@@ -345,13 +345,15 @@ export default function CollabPanel({ onClose }: Props) {
               const storyId = await acceptInvite(inviteId);
               toast.success('Invite accepted — opening the story…');
               if (storyId) {
-                // Pull the cloud copy and import it into local state, then
-                // switch the app's active story to the freshly accepted one
-                // so the user immediately lands inside the shared script.
+                // Pull the cloud copy and import via importSharedStory so
+                // the accepter's local activeStoryId becomes the cloud
+                // storyId. That way subsequent pullStory / watchChat / Jitsi
+                // room lookups all use the SAME id as the inviter — chat,
+                // collaborator list, and calls work on both sides.
                 try {
                   const fresh = await pullStory(storyId);
                   if (fresh && fresh.data) {
-                    useAppStore.getState().importStory(fresh.data);
+                    useAppStore.getState().importSharedStory(storyId, fresh.title, fresh.data);
                     toast.success(`Opened "${fresh.title}"`);
                   }
                 } catch (err) {

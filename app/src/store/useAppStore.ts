@@ -242,6 +242,15 @@ interface AppActions {
   // Import/Export
   exportStory: () => string;
   importStory: (json: string) => boolean;
+  /**
+   * Import a story that came from the cloud (a Firestore /stories/{id} doc).
+   * Creates a local Story entry whose id matches the cloud id (so subsequent
+   * pullStory / watchChat / Jitsi room lookups use the SAME key on both
+   * sides of the share). If a local entry with that id already exists, it
+   * is updated in place. Sets activeStoryId to the cloud id so the writer
+   * lands inside the shared script immediately.
+   */
+  importSharedStory: (cloudId: string, title: string, json: string) => boolean;
 }
 
 export const useAppStore = create<AppState & AppActions>()(
@@ -812,6 +821,49 @@ export const useAppStore = create<AppState & AppActions>()(
             plotBoard: data.plotBoard || defaultState.plotBoard,
             beats: data.beats || {},
             notes: data.notes || [],
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+
+      importSharedStory: (cloudId, title, json) => {
+        try {
+          const data = JSON.parse(json);
+          if (!data.screenplay || !data.scenes) return false;
+          set((state) => {
+            // Upsert the local Story entry under the cloud id so both sides
+            // of the share use the same key.
+            const exists = state.stories.some((s) => s.id === cloudId);
+            const newStories: Story[] = exists
+              ? state.stories.map((s) =>
+                  s.id === cloudId
+                    ? { ...s, title: title || s.title, updatedAt: Date.now() }
+                    : s,
+                )
+              : [
+                  ...state.stories,
+                  {
+                    id: cloudId,
+                    title: title || 'Untitled',
+                    type: (data.screenplay?.type as Story['type']) || 'movie',
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  },
+                ];
+            return {
+              stories: newStories,
+              activeStoryId: cloudId,
+              screenplay: { ...defaultState.screenplay, ...data.screenplay },
+              scenes: data.scenes,
+              shots: data.shots || {},
+              bRolls: data.bRolls || {},
+              characters: data.characters || [],
+              plotBoard: data.plotBoard || defaultState.plotBoard,
+              beats: data.beats || {},
+              notes: data.notes || [],
+            };
           });
           return true;
         } catch {

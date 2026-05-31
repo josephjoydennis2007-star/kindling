@@ -198,9 +198,11 @@ function App() {
           toast.error('That shared story could not be found or you don\'t have access.');
           return;
         }
-        // Import the JSON payload into the local store.
+        // Use importSharedStory so the local Story entry's id matches the
+        // cloud storyId — keeps both sides of the share aligned for cloud
+        // chat, People list, and Jitsi room lookups.
         const state = useAppStore.getState();
-        state.importStory(cloudStory.data);
+        state.importSharedStory(cloudStory.id, cloudStory.title, cloudStory.data);
         toast.success(`Opened "${cloudStory.title}" — shared by ${cloudStory.ownerName || 'someone'}`);
       } catch (err: any) {
         // eslint-disable-next-line no-console
