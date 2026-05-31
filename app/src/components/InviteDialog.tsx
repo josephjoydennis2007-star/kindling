@@ -233,10 +233,13 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                               <div className="text-[11px] font-semibold text-[var(--text)] truncate">
                                 {inviteePreview.displayName}
                               </div>
-                              <div className="text-[9.5px] uppercase tracking-wider text-[var(--text-muted)] font-bold flex items-center gap-2">
+                              <div className="text-[9.5px] uppercase tracking-wider text-[var(--text-muted)] font-bold flex items-center gap-2 flex-wrap">
                                 <span>
                                   Signed up as <span className="text-[var(--accent)]">
-                                    {inviteePreview.role === 'writer' ? 'Writer' : inviteePreview.role === 'director' ? 'Director' : 'Writer + Director'}
+                                    {inviteePreview.role === 'writer' ? 'Writer'
+                                      : inviteePreview.role === 'director' ? 'Director'
+                                      : inviteePreview.role === 'producer' ? 'Producer'
+                                      : 'Writer + Director'}
                                   </span>
                                 </span>
                                 {inviteePreview.acceptOppositeRole && (

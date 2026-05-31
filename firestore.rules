@@ -144,6 +144,10 @@ service cloud.firestore {
     // array can read or post messages. Messages are immutable once
     // posted (no update / delete). The author field on each message
     // must match the current user's uid so nobody can spoof another.
+    //
+    // NOTE: we use .get('collaborators', []) so a story doc that
+    // somehow lost its collaborators field still evaluates safely
+    // (it just means only the owner can chat — fail-safe).
     match /stories/{storyId}/chat/{msgId} {
       function storyData() {
         return get(/databases/$(database)/documents/stories/$(storyId)).data;
@@ -151,7 +155,7 @@ service cloud.firestore {
       function isStoryMember() {
         let s = storyData();
         return s.owner == request.auth.uid
-            || request.auth.uid in s.collaborators;
+            || request.auth.uid in s.get('collaborators', []);
       }
       allow read: if request.auth != null && isStoryMember();
       allow create: if request.auth != null && isStoryMember()
@@ -172,7 +176,7 @@ service cloud.firestore {
       function isStoryMember() {
         let s = storyData();
         return s.owner == request.auth.uid
-            || request.auth.uid in s.collaborators;
+            || request.auth.uid in s.get('collaborators', []);
       }
       allow read: if request.auth != null && isStoryMember();
       allow create: if request.auth != null && isStoryMember()

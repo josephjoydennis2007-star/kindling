@@ -48,6 +48,7 @@ import {
   pullStory,
   removeCollaborator,
   transferOwnership,
+  setCollaboratorRole,
   watchChat as watchCloudChat,
   sendCloudChatMessage,
   getCollaboratorProfiles,
@@ -627,15 +628,24 @@ function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUp
   if (cloudStory) {
     const roles = cloudStory.collaboratorRoles || {};
     const viewerIsOwner = firebaseUserUid === cloudStory.owner;
-    const rows: Array<{ uid: string; isOwner: boolean; role: string; profile?: CollaboratorProfile }> = [
-      { uid: cloudStory.owner, isOwner: true, role: 'both', profile: cloudProfiles[cloudStory.owner] },
-      ...cloudStory.collaborators.map((uid) => ({
+    // Build rows with DEDUPE by uid. The collaborators array shouldn't
+    // contain the owner (and arrayUnion prevents duplicates) — but
+    // defensively skip any uid we've already added so the People tab
+    // never shows the same person twice.
+    const seen = new Set<string>();
+    const rows: Array<{ uid: string; isOwner: boolean; role: string; profile?: CollaboratorProfile }> = [];
+    rows.push({ uid: cloudStory.owner, isOwner: true, role: 'both', profile: cloudProfiles[cloudStory.owner] });
+    seen.add(cloudStory.owner);
+    for (const uid of cloudStory.collaborators) {
+      if (seen.has(uid)) continue;
+      seen.add(uid);
+      rows.push({
         uid,
         isOwner: false,
         role: roles[uid] || 'both',
         profile: cloudProfiles[uid],
-      })),
-    ];
+      });
+    }
     return (
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         <div className="px-1 mb-1 text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
@@ -752,9 +762,39 @@ function CloudCollabCard({ uid, isOwner, isMe, role, profile, fallbackName, view
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className="absolute right-0 top-full mt-1 w-40 bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg z-20 overflow-hidden"
+                className="absolute right-0 top-full mt-1 w-52 bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg z-20 overflow-hidden"
                 onMouseLeave={() => setMenuOpen(false)}
               >
+                <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+                  Change role
+                </div>
+                {(['writer', 'director', 'producer', 'both'] as const).map((r) => (
+                  <button
+                    key={r}
+                    onClick={async () => {
+                      setMenuOpen(false);
+                      if (role === r) return;
+                      try {
+                        await setCollaboratorRole(storyId!, uid, r);
+                        toast.success(`${name} is now a ${r === 'both' ? 'Writer + Director' : r.charAt(0).toUpperCase() + r.slice(1)}`);
+                        onChanged?.();
+                      } catch (err: any) { toast.error(err?.message || 'Could not change role'); }
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-[11px] flex items-center gap-2 ${
+                      role === r
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    {r === 'writer' && <PenLine className="w-3 h-3" />}
+                    {r === 'director' && <Clapperboard className="w-3 h-3" />}
+                    {r === 'producer' && <Users2 className="w-3 h-3" />}
+                    {r === 'both' && <Crown className="w-3 h-3" />}
+                    {r === 'writer' ? 'Writer' : r === 'director' ? 'Director' : r === 'producer' ? 'Producer' : 'Writer + Director'}
+                    {role === r && <Check className="w-3 h-3 ml-auto" />}
+                  </button>
+                ))}
+                <div className="border-t border-[var(--rule)]" />
                 <button
                   onClick={async () => {
                     setMenuOpen(false);
