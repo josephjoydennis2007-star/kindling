@@ -40,6 +40,7 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
+  deleteField,
   addDoc,
   orderBy,
   limit,
@@ -116,11 +117,16 @@ async function withRecovery<T>(fn: () => Promise<T>, attempt = 0): Promise<T> {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+export type StoryRole = 'writer' | 'director' | 'both';
+
 export interface CloudStory {
   id: string;
   owner: string;
   ownerName?: string;
   collaborators: string[];
+  /** Per-collaborator role on this story. Key = uid, value = role. Missing
+   *  entries default to 'both' (full access — legacy invites pre-roles). */
+  collaboratorRoles?: Record<string, StoryRole>;
   shareable: boolean;
   title: string;
   data: string;        // JSON payload (exportStory output)
@@ -135,8 +141,35 @@ export interface CloudInvite {
   fromUid: string;
   fromName: string;
   toEmail: string;
+  /** Role the inviter assigned. Determines what the invitee can edit on
+   *  the story. 'both' = full access (writer + director). */
+  role?: StoryRole;
   status: 'pending' | 'accepted' | 'declined' | 'cancelled';
   createdAt?: number;
+}
+
+/** Resolve the current user's role on a story.
+ *   - Owner          → 'both' (always full access)
+ *   - In collaborators → collaboratorRoles[uid] or 'both' if not set
+ *   - Anyone else    → null  (no access; UI should treat as read-only)
+ */
+export function resolveStoryRole(story: CloudStory | null, uid: string | undefined): StoryRole | null {
+  if (!story || !uid) return null;
+  if (story.owner === uid) return 'both';
+  if (story.collaborators.includes(uid)) {
+    return (story.collaboratorRoles?.[uid] as StoryRole) || 'both';
+  }
+  return null;
+}
+
+/** Convenience: can this user edit the writer view? */
+export function canEditWriter(role: StoryRole | null): boolean {
+  return role === 'writer' || role === 'both';
+}
+
+/** Convenience: can this user edit the director view? */
+export function canEditDirector(role: StoryRole | null): boolean {
+  return role === 'director' || role === 'both';
 }
 
 // ─── Write ──────────────────────────────────────────────────────────────────
@@ -273,7 +306,19 @@ export async function addCollaborator(storyId: string, uid: string): Promise<voi
 /** Owner-only: remove a uid from the collaborators array. */
 export async function removeCollaborator(storyId: string, uid: string): Promise<void> {
   return withRecovery(async () => {
-    await updateDoc(doc(db, 'stories', storyId), { collaborators: arrayRemove(uid) });
+    await updateDoc(doc(db, 'stories', storyId), {
+      collaborators: arrayRemove(uid),
+      [`collaboratorRoles.${uid}`]: deleteField(),
+    });
+  });
+}
+
+/** Owner-only: change a collaborator's role on this story. */
+export async function setCollaboratorRole(storyId: string, uid: string, role: StoryRole): Promise<void> {
+  return withRecovery(async () => {
+    await updateDoc(doc(db, 'stories', storyId), {
+      [`collaboratorRoles.${uid}`]: role,
+    });
   });
 }
 
@@ -285,16 +330,14 @@ export async function inviteByEmail(input: {
   storyId: string;
   storyTitle: string;
   toEmail: string;
+  role?: StoryRole;
 }): Promise<void> {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in');
   return withRecovery(async () => {
     // Use a DETERMINISTIC invite ID — "{storyId}__{lowercaseEmail}" — so the
     // /stories security rule can verify "does an invite exist for this user
-    // on this story?" via a known exists() path. Without a deterministic ID
-    // the invitee can never accept their own invite because the story's
-    // update rule requires them to already be a collaborator. Two underscores
-    // separate the parts so a normal storyId or email never collides.
+    // on this story?" via a known exists() path.
     const inviteId = inviteIdFor(input.storyId, input.toEmail);
     await setDoc(doc(db, 'invites', inviteId), {
       storyId: input.storyId,
@@ -302,6 +345,11 @@ export async function inviteByEmail(input: {
       fromUid: user.uid,
       fromName: user.displayName || user.email || 'Anonymous',
       toEmail: input.toEmail.toLowerCase().trim(),
+      // Role the inviter is granting. Default to 'both' — full access —
+      // because that's the safest assumption when the inviter didn't pick.
+      // The /stories self-join rule reads this back to enforce that the
+      // invitee can't elevate their own role on accept.
+      role: input.role || 'both',
       status: 'pending',
       createdAt: serverTimestamp(),
     });
@@ -346,14 +394,17 @@ export async function acceptInvite(inviteId: string): Promise<string | null> {
     if (invite.toEmail !== user.email?.toLowerCase()) {
       throw new Error('Invite is for a different email address');
     }
-    // Mark accepted FIRST. This succeeds because the invite rule allows the
-    // invitee to update their own invites. Then add ourselves to the story's
-    // collaborators — the /stories update rule allows this self-join when a
-    // matching invite exists at the deterministic /invites/{storyId}__{email}
-    // path. Old-style invites (random auto-IDs) won't satisfy the exists
-    // check, so they need to be resent in the new format.
+    const role: StoryRole = (invite.role as StoryRole) || 'both';
+    // Mark the invite accepted first (always allowed by invite update rule).
     await updateDoc(inviteRef, { status: 'accepted' });
-    await addCollaborator(invite.storyId, user.uid);
+    // Self-join the story: add ourselves to collaborators AND set our
+    // entry in collaboratorRoles. The /stories update rule's self-join
+    // branch verifies that collaboratorRoles[uid] matches invite.role so
+    // the invitee can't grant themselves a higher role than was given.
+    await updateDoc(doc(db, 'stories', invite.storyId), {
+      collaborators: arrayUnion(user.uid),
+      [`collaboratorRoles.${user.uid}`]: role,
+    });
     return invite.storyId;
   });
 }
@@ -483,6 +534,7 @@ function hydrate(id: string, raw: DocumentData): CloudStory {
     owner: raw.owner,
     ownerName: raw.ownerName,
     collaborators: raw.collaborators || [],
+    collaboratorRoles: raw.collaboratorRoles || {},
     shareable: !!raw.shareable,
     title: raw.title || 'Untitled',
     data: raw.data || '',

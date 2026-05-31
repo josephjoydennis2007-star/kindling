@@ -82,7 +82,9 @@ export default function CollabPanel({ onClose }: Props) {
 
   const userId = settings.userId || 'me';
   const userName = settings.userDisplayName || 'You';
-  const isAdmin = settings.userRole === 'admin';
+  // The legacy "access request" workflow has been replaced by invites with
+  // explicit roles. Hide its tab entirely — no one needs it anymore.
+  const isAdmin = false;
 
   const [tab, setTab] = useState<'studio' | 'chat' | 'people' | 'invite' | 'requests'>('studio');
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -620,9 +622,15 @@ function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUp
   // profile names and avatars). Fall back to the legacy local coworkers
   // list when there is no cloud story (local-only session).
   if (cloudStory) {
-    const rows: Array<{ uid: string; isOwner: boolean; profile?: CollaboratorProfile }> = [
-      { uid: cloudStory.owner, isOwner: true, profile: cloudProfiles[cloudStory.owner] },
-      ...cloudStory.collaborators.map((uid) => ({ uid, isOwner: false, profile: cloudProfiles[uid] })),
+    const roles = cloudStory.collaboratorRoles || {};
+    const rows: Array<{ uid: string; isOwner: boolean; role: string; profile?: CollaboratorProfile }> = [
+      { uid: cloudStory.owner, isOwner: true, role: 'both', profile: cloudProfiles[cloudStory.owner] },
+      ...cloudStory.collaborators.map((uid) => ({
+        uid,
+        isOwner: false,
+        role: roles[uid] || 'both',
+        profile: cloudProfiles[uid],
+      })),
     ];
     return (
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -635,6 +643,7 @@ function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUp
             uid={r.uid}
             isOwner={r.isOwner}
             isMe={firebaseUserUid === r.uid}
+            role={r.role}
             profile={r.profile}
             fallbackName={r.isOwner ? (cloudStory.ownerName || 'Owner') : undefined}
           />
@@ -669,16 +678,22 @@ function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUp
 
 // Card for a cloud collaborator pulled from /stories/{id}.collaborators and
 // /profiles/{uid}. Used by the People tab when a cloud story is open.
-function CloudCollabCard({ uid, isOwner, isMe, profile, fallbackName }: {
+function CloudCollabCard({ uid, isOwner, isMe, role, profile, fallbackName }: {
   uid: string;
   isOwner: boolean;
   isMe: boolean;
+  role: string;
   profile?: CollaboratorProfile;
   fallbackName?: string;
 }) {
   const name = profile?.displayName || fallbackName || uid.slice(0, 8) + '…';
   const email = profile?.email;
   const initial = (name || '?').charAt(0).toUpperCase();
+  // Role descriptor that mirrors the writer/director/both choice on the
+  // invite dialog. Owner is always shown as Owner regardless of stored role.
+  const roleIcon = isOwner ? Crown : role === 'director' ? Clapperboard : role === 'writer' ? PenLine : Users2;
+  const roleLabel = isOwner ? 'Owner' : role === 'director' ? 'Director' : role === 'writer' ? 'Writer' : 'Writer + Director';
+  const RoleIcon = roleIcon;
   return (
     <div className="flex items-center gap-3 p-3 bg-[var(--card)] border border-[var(--border)] rounded-xl">
       <div
@@ -694,7 +709,8 @@ function CloudCollabCard({ uid, isOwner, isMe, profile, fallbackName }: {
         </div>
         {email && <div className="text-[10px] text-[var(--text-muted)] truncate">{email}</div>}
         <div className="text-[9.5px] text-[var(--text-muted)] uppercase tracking-wider mt-0.5 flex items-center gap-1">
-          {isOwner ? <><Crown className="w-2.5 h-2.5" style={{ color: 'var(--accent)' }} /> Owner</> : <><PenLine className="w-2.5 h-2.5" /> Collaborator</>}
+          <RoleIcon className="w-2.5 h-2.5" style={isOwner ? { color: 'var(--accent)' } : undefined} />
+          {roleLabel}
         </div>
       </div>
     </div>

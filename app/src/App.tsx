@@ -19,6 +19,7 @@ import UserMenu from '@/components/UserMenu';
 import ShareDialog from '@/components/ShareDialog';
 import InviteDialog from '@/components/InviteDialog';
 import CloudDiagnostic from '@/components/CloudDiagnostic';
+import { useStoryRole } from '@/hooks/useStoryRole';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
 import DirectorView from '@/components/DirectorView';
@@ -101,6 +102,12 @@ function App() {
   }, []);
   const [showProfile, setShowProfile] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Current user's role on the active cloud story. For local-only stories
+  // this returns canWrite + canDirect = true (full access). Used to gate
+  // the Writer editor + Director add buttons + format toolbar so a Writer
+  // collaborator can SEE the Director board without being able to edit it.
+  const { canWrite, canDirect, role: storyRole, isOwner: isStoryOwner, isCloud: isCloudStory } = useStoryRole();
 
   // On mount: if user already skipped auth, mark as checked immediately (don't wait for Firebase)
   // Also restore any cached profile from localStorage
@@ -782,12 +789,13 @@ function App() {
             storyTitle={stories.find((s) => s.id === activeStoryId)?.title}
             currentPanel={rightPanel}
             onOpenPanel={(p) => togglePanel(p as any)}
+            roleBadge={isCloudStory ? { role: storyRole || 'both', isOwner: isStoryOwner } : null}
           />
         )}
         {/* The original Toolbar now only renders on the Writer tab and only
             for its format-button row — we strip the AI icons + Reports +
             Export + Focus since the TopBar now owns those. */}
-        {!isFocusMode && activeTab === 'writer' && (
+        {!isFocusMode && activeTab === 'writer' && canWrite && (
           <Toolbar
             activeTab={activeTab}
             onToggleFocusMode={toggleFocusMode}
@@ -805,10 +813,19 @@ function App() {
             onAddSection={() => useAppStore.getState().addSection()}
           />
         )}
+        {/* Read-only banner for collaborators viewing a panel they can't edit.
+            Director-only collaborators see this on the Writer tab; writer-only
+            on the Director / Plot tabs. */}
+        {!isFocusMode && activeTab === 'writer' && !canWrite && (
+          <ReadOnlyBanner kind="writer" />
+        )}
+        {!isFocusMode && (activeTab === 'director' || activeTab === 'plot') && !canDirect && (
+          <ReadOnlyBanner kind="director" />
+        )}
 
         <div className="view-container">
             {activeTab === 'writer' && (
-              <div key="writer" className="h-full">
+              <div key="writer" className={`h-full ${canWrite ? '' : 'pointer-events-none select-text opacity-90'}`}>
                 <WriterView
                   screenplay={screenplay}
                   onUpdateField={updateScreenplayField}
@@ -819,7 +836,7 @@ function App() {
             )}
 
             {activeTab === 'director' && (
-              <div key="director" className="h-full">
+              <div key="director" className={`h-full ${canDirect ? '' : 'pointer-events-none select-text opacity-90'}`}>
                 <DirectorView
                   scenes={scenes}
                   shots={shots}
@@ -842,7 +859,7 @@ function App() {
             )}
 
             {activeTab === 'plot' && (
-              <div key="plot" className="h-full">
+              <div key="plot" className={`h-full ${canDirect ? '' : 'pointer-events-none select-text opacity-90'}`}>
                 <PlotBoardView
                   plotBoard={plotBoard}
                   beats={beats}
@@ -912,7 +929,7 @@ function App() {
       {/* SocialBar removed in the layout rewrite — its functionality is
           consolidated into the rail's user menu + the Workspace tab. */}
 
-      {!isFocusMode && !showStorySelector && (
+      {!isFocusMode && !showStorySelector && (canWrite || canDirect) && (
         <FloatingActionButton
           isFocusMode={isFocusMode}
           actions={[
@@ -1010,6 +1027,31 @@ function App() {
         }}
         anchor="rail-bottom"
       />
+    </div>
+  );
+}
+
+/**
+ * Read-only banner — shown above a view when the current user's role on
+ * the cloud-shared story doesn't include edit access for that view.
+ * Tells the user what they can do (view + look around) and what they
+ * need (an upgrade to writer/director/both) without being scary.
+ */
+function ReadOnlyBanner({ kind }: { kind: 'writer' | 'director' }) {
+  const label = kind === 'writer' ? 'Writer view' : 'Director view';
+  const need = kind === 'writer' ? 'writer or both' : 'director or both';
+  return (
+    <div className="px-3 py-1.5 bg-[var(--accent-soft)] border-b border-[var(--accent)]/30 flex items-center gap-2 text-[11px] text-[var(--text-secondary)] flex-shrink-0">
+      <svg className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--accent)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+      </svg>
+      <span className="font-medium">
+        {label} is read-only for you on this story.
+      </span>
+      <span className="text-[var(--text-muted)] truncate">
+        Ask the owner for the <strong>{need}</strong> role to make changes.
+      </span>
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, X, Loader2, AlertCircle, LogIn, Check, Mail } from 'lucide-react';
+import { UserPlus, X, Loader2, AlertCircle, LogIn, Check, Mail, PenLine, Clapperboard, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
-import { inviteByEmail, pushStory } from '@/lib/cloudStories';
+import { inviteByEmail, pushStory, type StoryRole } from '@/lib/cloudStories';
 import type { User } from 'firebase/auth';
 
 /**
@@ -34,13 +34,14 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
 
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState<StoryRole>('both');
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState<string[]>([]);
+  const [sent, setSent] = useState<Array<{ email: string; role: StoryRole }>>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const onOpen = () => {
-      setOpen(true); setEmail(''); setSent([]); setError(null);
+      setOpen(true); setEmail(''); setRole('both'); setSent([]); setError(null);
     };
     document.addEventListener('app:invite', onOpen);
     return () => document.removeEventListener('app:invite', onOpen);
@@ -58,7 +59,7 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
     if (!user || !activeStoryId || !story) return;
     if (!EMAIL_RE.test(addr)) { setError("That doesn't look like a valid email."); return; }
     if (addr === user.email?.toLowerCase()) { setError("That's your own address."); return; }
-    if (sent.includes(addr)) { setError('Already invited in this session.'); return; }
+    if (sent.some((s) => s.email === addr)) { setError('Already invited in this session.'); return; }
 
     setBusy(true); setError(null);
     try {
@@ -71,10 +72,11 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
         storyId: activeStoryId,
         storyTitle: story.title || 'Untitled',
         toEmail: addr,
+        role,
       });
-      setSent((prev) => [...prev, addr]);
+      setSent((prev) => [...prev, { email: addr, role }]);
       setEmail('');
-      toast.success(`Invite sent to ${addr}`);
+      toast.success(`Invite sent to ${addr} as ${roleLabel(role)}`);
     } catch (err: any) {
       const msg = err?.code === 'permission-denied'
         ? 'Cloud sync blocked — check Firestore rules in Firebase Console.'
@@ -165,7 +167,23 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                     </div>
                     <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">
                       They'll see the invite when they sign in with that email.
-                      Accepting adds them as an editor (read + write).
+                    </p>
+                  </div>
+
+                  {/* Role picker — what does the invitee get to edit? */}
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+                      Their role on this story
+                    </label>
+                    <div className="mt-1 grid grid-cols-3 gap-1.5">
+                      <RoleChoice icon={PenLine} label="Writer" desc="Edits the script. Views the director board." value="writer" selected={role} onPick={setRole} />
+                      <RoleChoice icon={Clapperboard} label="Director" desc="Edits scenes, shots, beats. Views the script." value="director" selected={role} onPick={setRole} />
+                      <RoleChoice icon={Users} label="Both" desc="Full access — edit everything." value="both" selected={role} onPick={setRole} />
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-relaxed">
+                      {role === 'writer' && 'They\'ll be able to edit the screenplay. The Director and Plot views are read-only for them.'}
+                      {role === 'director' && 'They\'ll be able to edit scenes, shots, and the plot board. The Writer view is read-only for them.'}
+                      {role === 'both' && 'Full collaborator — they can edit every part of the story like you can.'}
                     </p>
                   </div>
 
@@ -175,10 +193,11 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                         Sent this session
                       </div>
                       <ul className="space-y-1">
-                        {sent.map((addr) => (
-                          <li key={addr} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[var(--surface-2)] text-[11px]">
+                        {sent.map((s) => (
+                          <li key={s.email} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[var(--surface-2)] text-[11px]">
                             <Check className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--accent)' }} />
-                            <span className="flex-1 truncate text-[var(--text)]">{addr}</span>
+                            <span className="flex-1 truncate text-[var(--text)]">{s.email}</span>
+                            <span className="text-[9.5px] text-[var(--accent)] uppercase tracking-wider font-bold">{roleLabel(s.role)}</span>
                             <span className="text-[9.5px] text-[var(--text-muted)] uppercase tracking-wider">Pending</span>
                           </li>
                         ))}
@@ -199,5 +218,35 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+function roleLabel(r: StoryRole): string {
+  return r === 'writer' ? 'WRITER' : r === 'director' ? 'DIRECTOR' : 'BOTH';
+}
+
+function RoleChoice({ icon: Icon, label, desc, value, selected, onPick }: {
+  icon: any;
+  label: string;
+  desc: string;
+  value: StoryRole;
+  selected: StoryRole;
+  onPick: (v: StoryRole) => void;
+}) {
+  const active = selected === value;
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(value)}
+      title={desc}
+      className={`flex flex-col items-center gap-1 p-2 rounded-md border transition-colors ${
+        active
+          ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+          : 'border-[var(--border)] bg-[var(--card)] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+      }`}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      <span className="text-[10.5px] font-semibold">{label}</span>
+    </button>
   );
 }

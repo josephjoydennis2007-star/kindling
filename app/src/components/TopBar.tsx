@@ -36,6 +36,9 @@ interface Props {
   currentPanel?: string | null;
   /** Called when the user picks a panel from the Tools dropdown. */
   onOpenPanel?: (panel: string) => void;
+  /** Optional role pill shown next to the story title. null = local-only
+   *  story, no badge. Owner shows "Owner". */
+  roleBadge?: { role: 'writer' | 'director' | 'both'; isOwner: boolean } | null;
 }
 
 // Story tools dropdown menu — same panels as the ContextPanel footer, but
@@ -58,7 +61,7 @@ const FMT_SHIFT = FMT_MOD === '⌘' ? '⇧' : 'Shift';
 
 export default function TopBar({
   activeTab, isFocusMode, onToggleFocusMode, onOpenExport, onOpenSettings, onSignOut, storyTitle,
-  currentPanel, onOpenPanel,
+  currentPanel, onOpenPanel, roleBadge,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -105,6 +108,14 @@ export default function TopBar({
         <span className="text-xs font-semibold text-[var(--text)] truncate">
           {storyTitle || 'Untitled story'}
         </span>
+        {roleBadge && (
+          <span
+            title={roleBadge.isOwner ? 'You own this story' : `Your role on this story: ${roleLabel(roleBadge.role)}`}
+            className="hidden sm:inline-flex items-center gap-1 px-1.5 h-5 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] text-[9.5px] uppercase tracking-wider font-bold flex-shrink-0"
+          >
+            {roleBadge.isOwner ? 'Owner' : roleLabel(roleBadge.role)}
+          </span>
+        )}
         <ChevronRight className="w-3 h-3 text-[var(--text-muted)] flex-shrink-0" />
         <span className="text-xs text-[var(--text-muted)] capitalize truncate">
           {tabLabel(activeTab)}
@@ -401,6 +412,10 @@ function Item({
       )}
     </button>
   );
+}
+
+function roleLabel(r: 'writer' | 'director' | 'both'): string {
+  return r === 'writer' ? 'Writer' : r === 'director' ? 'Director' : 'Writer + Director';
 }
 
 function tabLabel(tab: string): string {
