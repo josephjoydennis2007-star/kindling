@@ -210,7 +210,7 @@ export interface UserProfile {
   email?: string | null;
   displayName: string;
   age?: string;
-  role: 'writer' | 'director' | 'both' | 'admin' | 'viewer';
+  role: 'writer' | 'director' | 'both' | 'producer' | 'admin' | 'viewer';
   /**
    * When false (default), this user will REJECT invites whose role does not
    * match their own role. Inviters see a warning + the Send button is

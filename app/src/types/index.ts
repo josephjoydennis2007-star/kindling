@@ -345,6 +345,7 @@ export type RightPanelType =
   | 'characters'
   | 'instructions'
   | 'collab'
+  | 'comments'
   | 'assets'
   | 'ai'
   | 'export'

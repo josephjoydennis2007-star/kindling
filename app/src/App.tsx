@@ -19,6 +19,7 @@ import UserMenu from '@/components/UserMenu';
 import ShareDialog from '@/components/ShareDialog';
 import InviteDialog from '@/components/InviteDialog';
 import CloudDiagnostic from '@/components/CloudDiagnostic';
+import CommentsPanel from '@/components/CommentsPanel';
 import { useStoryRole } from '@/hooks/useStoryRole';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
@@ -906,8 +907,18 @@ function App() {
           />
         )}
 
+        {/* Comments panel is rendered as a fixed-right column when its tool
+            is selected, OUTSIDE the normal RightPanel rotation (because it
+            needs its own data subscription + a real-time list). Same look
+            and feel as the existing inspector panels. */}
+        {rightPanel === 'comments' && (
+          <aside className="fixed right-0 top-11 bottom-7 w-[320px] border-l border-[var(--rule)] bg-[var(--panel)] z-10 shadow-2xl">
+            <CommentsPanel onClose={closePanel} currentTab={activeTab} />
+          </aside>
+        )}
+
         <RightPanel
-          panel={rightPanel}
+          panel={rightPanel === 'comments' ? null : rightPanel}
           onClose={closePanel}
           notes={notes}
           onAddNote={addNote}

@@ -5,6 +5,7 @@ import {
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
   LogOut, UserCircle2, Share2, UserPlus, PanelRight, Lightbulb, StickyNote,
   Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X, Stethoscope,
+  MessageCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -38,7 +39,7 @@ interface Props {
   onOpenPanel?: (panel: string) => void;
   /** Optional role pill shown next to the story title. null = local-only
    *  story, no badge. Owner shows "Owner". */
-  roleBadge?: { role: 'writer' | 'director' | 'both'; isOwner: boolean } | null;
+  roleBadge?: { role: 'writer' | 'director' | 'producer' | 'both'; isOwner: boolean } | null;
 }
 
 // Story tools dropdown menu — same panels as the ContextPanel footer, but
@@ -47,6 +48,7 @@ const TOOL_ITEMS: Array<{ key: string; label: string; icon: any }> = [
   { key: 'instructions', label: 'Instructions', icon: Lightbulb },
   { key: 'notes',        label: 'Notes',        icon: StickyNote },
   { key: 'characters',   label: 'Characters',   icon: Users },
+  { key: 'comments',     label: 'Comments',     icon: MessageCircle },
   { key: 'history',      label: 'History',      icon: HistoryIcon },
   { key: 'collab',       label: 'Collaborate',  icon: Users2 },
   { key: 'ai',           label: 'AI Helper',    icon: Bot },
@@ -414,8 +416,11 @@ function Item({
   );
 }
 
-function roleLabel(r: 'writer' | 'director' | 'both'): string {
-  return r === 'writer' ? 'Writer' : r === 'director' ? 'Director' : 'Writer + Director';
+function roleLabel(r: 'writer' | 'director' | 'producer' | 'both'): string {
+  return r === 'writer' ? 'Writer'
+    : r === 'director' ? 'Director'
+    : r === 'producer' ? 'Producer'
+    : 'Writer + Director';
 }
 
 function tabLabel(tab: string): string {

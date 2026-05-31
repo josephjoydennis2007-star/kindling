@@ -159,6 +159,32 @@ service cloud.firestore {
       // No updates or deletes — chat history is append-only.
     }
 
+    // ── Comments (Producer + everyone) ──────────────────────────────
+    // /stories/{storyId}/comments/{commentId}
+    // Any story member (owner, writer, director, producer, both) can
+    // read + post. Authors can edit their own comments (resolve flag
+    // or text). Author can delete; the story owner can also delete
+    // any comment so they can clean up.
+    match /stories/{storyId}/comments/{commentId} {
+      function storyData() {
+        return get(/databases/$(database)/documents/stories/$(storyId)).data;
+      }
+      function isStoryMember() {
+        let s = storyData();
+        return s.owner == request.auth.uid
+            || request.auth.uid in s.collaborators;
+      }
+      allow read: if request.auth != null && isStoryMember();
+      allow create: if request.auth != null && isStoryMember()
+                    && request.resource.data.authorId == request.auth.uid;
+      allow update: if request.auth != null && isStoryMember()
+                    && resource.data.authorId == request.auth.uid;
+      allow delete: if request.auth != null && (
+        resource.data.authorId == request.auth.uid
+        || storyData().owner == request.auth.uid
+      );
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;

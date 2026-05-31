@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, X, Loader2, AlertCircle, LogIn, Check, Mail, PenLine, Clapperboard, Users } from 'lucide-react';
+import { UserPlus, X, Loader2, AlertCircle, LogIn, Check, Mail, PenLine, Clapperboard, Users, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import { inviteByEmail, pushStory, lookupProfileByEmail, isInviteRoleCompatible, type StoryRole } from '@/lib/cloudStories';
@@ -255,14 +255,16 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                     <label className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
                       Their role on this story
                     </label>
-                    <div className="mt-1 grid grid-cols-3 gap-1.5">
+                    <div className="mt-1 grid grid-cols-4 gap-1.5">
                       <RoleChoice icon={PenLine} label="Writer" desc="Edits the script. Views the director board." value="writer" selected={role} onPick={setRole} />
                       <RoleChoice icon={Clapperboard} label="Director" desc="Edits scenes, shots, beats. Views the script." value="director" selected={role} onPick={setRole} />
+                      <RoleChoice icon={MessageCircle} label="Producer" desc="Read-only on everything. Leaves comments." value="producer" selected={role} onPick={setRole} />
                       <RoleChoice icon={Users} label="Both" desc="Full access — edit everything." value="both" selected={role} onPick={setRole} />
                     </div>
                     <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-relaxed">
                       {role === 'writer' && 'They\'ll be able to edit the screenplay. The Director and Plot views are read-only for them.'}
                       {role === 'director' && 'They\'ll be able to edit scenes, shots, and the plot board. The Writer view is read-only for them.'}
+                      {role === 'producer' && 'They\'ll see the whole story — script, scenes, plot — and can leave comments on anything, but they can\'t make changes themselves.'}
                       {role === 'both' && 'Full collaborator — they can edit every part of the story like you can.'}
                     </p>
 

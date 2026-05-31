@@ -117,7 +117,20 @@ async function withRecovery<T>(fn: () => Promise<T>, attempt = 0): Promise<T> {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type StoryRole = 'writer' | 'director' | 'both';
+/**
+ * StoryRole — what a collaborator can do on a specific story.
+ *
+ *   writer   — edits the Writer view (script). Read-only on Director/Plot.
+ *   director — edits the Director + Plot views. Read-only on Writer.
+ *   producer — read-only on EVERYTHING. Can only leave comments. Mirrors
+ *              the film-industry producer who reviews work and gives notes
+ *              without doing the writing or directing themselves.
+ *   both     — edits Writer AND Director/Plot. Full creative access.
+ *
+ *   The owner is always treated as having full access (writer + director +
+ *   comment) regardless of any stored role.
+ */
+export type StoryRole = 'writer' | 'director' | 'producer' | 'both';
 
 export interface CloudStory {
   id: string;
@@ -170,6 +183,13 @@ export function canEditWriter(role: StoryRole | null): boolean {
 /** Convenience: can this user edit the director view? */
 export function canEditDirector(role: StoryRole | null): boolean {
   return role === 'director' || role === 'both';
+}
+
+/** Convenience: can this user leave comments? Every role (including
+ *  producers, who can ONLY comment) gets this. Producers also see a
+ *  prominent "+ Add comment" affordance since it's their only action. */
+export function canComment(role: StoryRole | null): boolean {
+  return role === 'writer' || role === 'director' || role === 'producer' || role === 'both';
 }
 
 // ─── Write ──────────────────────────────────────────────────────────────────
@@ -436,6 +456,186 @@ export async function declineInvite(inviteId: string): Promise<void> {
 /** Owner-only: delete the story doc. Does not delete IndexedDB local copy. */
 export async function deleteStoryCloud(storyId: string): Promise<void> {
   await deleteDoc(doc(db, 'stories', storyId));
+}
+
+// ─── Ownership transfer ────────────────────────────────────────────────────
+//
+// Pass the story baton: the current owner becomes a 'both' collaborator and
+// the named user becomes the new owner. The new owner must already be a
+// collaborator on the story (so we know they've accepted). Owner-only.
+
+export async function transferOwnership(storyId: string, newOwnerUid: string): Promise<void> {
+  const me = auth?.currentUser;
+  if (!me) throw new Error('Not signed in');
+  return withRecovery(async () => {
+    const ref = doc(db, 'stories', storyId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error('Story not found');
+    const data = snap.data() as any;
+    if (data.owner !== me.uid) throw new Error('Only the current owner can transfer ownership');
+    if (!data.collaborators?.includes(newOwnerUid)) {
+      throw new Error('That person must already be a collaborator before you can transfer ownership.');
+    }
+    const newCollaborators = (data.collaborators as string[])
+      .filter((u) => u !== newOwnerUid) // new owner shouldn't be in collaborators
+      .concat(me.uid); // old owner becomes a collaborator
+    const newRoles = { ...(data.collaboratorRoles || {}) };
+    delete newRoles[newOwnerUid]; // new owner no longer has a collab role (they're owner)
+    newRoles[me.uid] = 'both';     // old owner gets full collab access
+    await updateDoc(ref, {
+      owner: newOwnerUid,
+      collaborators: newCollaborators,
+      collaboratorRoles: newRoles,
+    });
+  });
+}
+
+// ─── Comments (Producer + everyone) ────────────────────────────────────────
+//
+// Comments are stored at /stories/{storyId}/comments/{commentId} and are
+// readable + writable by the owner or any collaborator (any role, including
+// Producer). Each comment has a target (free-form string describing what
+// it's about — e.g. "writer:line 42" or "scene:abc123") so we can later
+// anchor comments to specific elements. For now the UI shows a single
+// thread per story.
+
+export interface CloudComment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  text: string;
+  target?: string;           // e.g. "writer", "director:scene-abc", "plot:beat-xyz"
+  resolved: boolean;
+  createdAt: number;         // ms since epoch
+}
+
+export function watchComments(
+  storyId: string,
+  onUpdate: (comments: CloudComment[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  const q = query(
+    collection(db, 'stories', storyId, 'comments'),
+    orderBy('createdAt', 'desc'),
+    limit(200),
+  );
+  return onSnapshot(q,
+    (snap) => {
+      const items: CloudComment[] = snap.docs.map((d) => {
+        const raw = d.data() as any;
+        return {
+          id: d.id,
+          authorId: raw.authorId,
+          authorName: raw.authorName,
+          text: raw.text || '',
+          target: raw.target,
+          resolved: !!raw.resolved,
+          createdAt: tsToMs(raw.createdAt) || Date.now(),
+        };
+      });
+      onUpdate(items);
+    },
+    (err) => { if (onError) onError(err as any); },
+  );
+}
+
+export async function addComment(input: {
+  storyId: string;
+  text: string;
+  target?: string;
+}): Promise<void> {
+  const user = auth?.currentUser;
+  if (!user) throw new Error('Not signed in');
+  return withRecovery(async () => {
+    await addDoc(collection(db, 'stories', input.storyId, 'comments'), {
+      authorId: user.uid,
+      authorName: user.displayName || user.email || 'Anonymous',
+      text: input.text,
+      target: input.target || 'general',
+      resolved: false,
+      createdAt: serverTimestamp(),
+    });
+  });
+}
+
+/** Toggle the resolved flag on a comment. Author or owner can do this. */
+export async function setCommentResolved(storyId: string, commentId: string, resolved: boolean): Promise<void> {
+  return withRecovery(async () => {
+    await updateDoc(doc(db, 'stories', storyId, 'comments', commentId), { resolved });
+  });
+}
+
+/** Author-only delete (rules enforce). */
+export async function deleteComment(storyId: string, commentId: string): Promise<void> {
+  return withRecovery(async () => {
+    await deleteDoc(doc(db, 'stories', storyId, 'comments', commentId));
+  });
+}
+
+// ─── Friends list (per-user) ───────────────────────────────────────────────
+//
+// Stored as a plain array of uids in /profiles/{uid}.friends. Quick-pick
+// from the InviteDialog so you don't have to retype emails. Adding a friend
+// requires their consent in a follow-up step (a pending friend request) —
+// but for v1 we just store the uid both ways when both have invited each
+// other, OR (simpler) the inviter can add the invitee to friends with one
+// click after sending an invite. No request handshake — the invitee will
+// see the inviter as a friend the next time they refresh.
+
+export interface FriendEntry {
+  uid: string;
+  email?: string;
+  displayName?: string;
+  role?: string;
+  avatar?: string | null;
+  addedAt?: number;
+}
+
+export async function addFriend(friendUid: string, friendInfo?: Partial<FriendEntry>): Promise<void> {
+  const me = auth?.currentUser;
+  if (!me) throw new Error('Not signed in');
+  return withRecovery(async () => {
+    await updateDoc(doc(db, 'profiles', me.uid), {
+      friends: arrayUnion(friendUid),
+      // Cache a small "friend card" so the friends list renders without
+      // an extra lookup per friend.
+      [`friendCards.${friendUid}`]: {
+        uid: friendUid,
+        email: friendInfo?.email || null,
+        displayName: friendInfo?.displayName || null,
+        role: friendInfo?.role || null,
+        avatar: friendInfo?.avatar || null,
+        addedAt: Date.now(),
+      },
+    });
+  });
+}
+
+export async function removeFriend(friendUid: string): Promise<void> {
+  const me = auth?.currentUser;
+  if (!me) throw new Error('Not signed in');
+  return withRecovery(async () => {
+    await updateDoc(doc(db, 'profiles', me.uid), {
+      friends: arrayRemove(friendUid),
+      [`friendCards.${friendUid}`]: deleteField(),
+    });
+  });
+}
+
+/** Read my friends list (from my own /profiles/{uid} doc). */
+export async function listFriends(): Promise<FriendEntry[]> {
+  const me = auth?.currentUser;
+  if (!me) return [];
+  return withRecovery(async () => {
+    const snap = await getDoc(doc(db, 'profiles', me.uid));
+    if (!snap.exists()) return [];
+    const data = snap.data() as any;
+    const cards = data.friendCards || {};
+    return (data.friends || []).map((uid: string) => ({
+      uid,
+      ...(cards[uid] || {}),
+    }));
+  });
 }
 
 // ─── Chat (real-time, Firestore-backed) ─────────────────────────────────────

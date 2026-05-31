@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Camera, Save, PenLine, Clapperboard, Sparkles, Eye, Crown } from 'lucide-react';
+import { X, Camera, Save, PenLine, Clapperboard, Sparkles, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { upsertProfile, type UserProfile } from '@/firebase';
 
@@ -11,12 +11,18 @@ interface Props {
   onSaved: (p: UserProfile) => void;
 }
 
-const ROLES: { id: UserProfile['role']; label: string; icon: any; gradient: string }[] = [
-  { id: 'writer',   label: 'Writer',   icon: PenLine,      gradient: 'from-blue-500 to-indigo-600' },
-  { id: 'director', label: 'Director', icon: Clapperboard, gradient: 'from-purple-500 to-fuchsia-600' },
-  { id: 'both',     label: 'Both',     icon: Sparkles,     gradient: 'from-amber-500 to-pink-500' },
-  { id: 'admin',    label: 'Admin',    icon: Crown,        gradient: 'from-emerald-500 to-teal-600' },
-  { id: 'viewer',   label: 'Viewer',   icon: Eye,          gradient: 'from-zinc-500 to-zinc-700' },
+// Roles a user can sign up as. These appear in the onboarding role
+// picker and at the top of any invite preview.
+//   Writer   — writes scripts
+//   Director — plans scenes, shots, beats
+//   Both     — creative across writer + director
+//   Producer — view + comment only. Mirrors a film producer who reviews
+//              work and gives notes without doing the writing or directing.
+const ROLES: { id: UserProfile['role']; label: string; icon: any; desc: string }[] = [
+  { id: 'writer',   label: 'Writer',   icon: PenLine,      desc: 'I write scripts' },
+  { id: 'director', label: 'Director', icon: Clapperboard, desc: 'I plan scenes + shots' },
+  { id: 'both',     label: 'Both',     icon: Sparkles,     desc: 'I do both' },
+  { id: 'producer', label: 'Producer', icon: MessageCircle, desc: 'I review + leave notes' },
 ];
 
 export default function ProfileEditor({ open, initial, onClose, onSaved }: Props) {
@@ -121,6 +127,7 @@ export default function ProfileEditor({ open, initial, onClose, onSaved }: Props
                           <r.icon className={`w-4 h-4 ${active ? '' : 'text-[var(--text-secondary)]'}`} style={active ? { color: 'var(--accent)' } : undefined} />
                         </div>
                         <div className={`text-xs font-bold ${active ? 'text-[var(--accent)]' : 'text-[var(--text)]'}`}>{r.label}</div>
+                        <div className={`text-[10px] mt-0.5 ${active ? 'text-[var(--accent)]/80' : 'text-[var(--text-muted)]'}`}>{r.desc}</div>
                       </button>
                     );
                   })}

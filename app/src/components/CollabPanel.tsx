@@ -47,6 +47,7 @@ import {
   declineInvite,
   pullStory,
   removeCollaborator,
+  transferOwnership,
   watchChat as watchCloudChat,
   sendCloudChatMessage,
   getCollaboratorProfiles,
@@ -425,6 +426,7 @@ export default function CollabPanel({ onClose }: Props) {
           coworkers={coworkers}
           onUpdate={updateCoworker}
           onRemove={removeCoworker}
+          onCloudChanged={refreshStudio}
         />
       )}
 
@@ -610,19 +612,21 @@ function Attachment({ att }: { att: any }) {
 
 // ----- PEOPLE TAB -----
 
-function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUpdate, onRemove }: {
+function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUpdate, onRemove, onCloudChanged }: {
   cloudStory: CloudStory | null;
   cloudProfiles: Record<string, CollaboratorProfile>;
   firebaseUserUid?: string;
   coworkers: CoworkerInfo[];
   onUpdate: (id: string, u: Partial<CoworkerInfo>) => void;
   onRemove: (id: string) => void;
+  onCloudChanged?: () => void;
 }) {
   // If we have a cloud story, show its real owner + collaborators (with
   // profile names and avatars). Fall back to the legacy local coworkers
   // list when there is no cloud story (local-only session).
   if (cloudStory) {
     const roles = cloudStory.collaboratorRoles || {};
+    const viewerIsOwner = firebaseUserUid === cloudStory.owner;
     const rows: Array<{ uid: string; isOwner: boolean; role: string; profile?: CollaboratorProfile }> = [
       { uid: cloudStory.owner, isOwner: true, role: 'both', profile: cloudProfiles[cloudStory.owner] },
       ...cloudStory.collaborators.map((uid) => ({
@@ -646,6 +650,9 @@ function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUp
             role={r.role}
             profile={r.profile}
             fallbackName={r.isOwner ? (cloudStory.ownerName || 'Owner') : undefined}
+            viewerIsOwner={viewerIsOwner}
+            storyId={cloudStory.id}
+            onChanged={onCloudChanged}
           />
         ))}
         {rows.length === 1 && (
@@ -678,24 +685,41 @@ function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUp
 
 // Card for a cloud collaborator pulled from /stories/{id}.collaborators and
 // /profiles/{uid}. Used by the People tab when a cloud story is open.
-function CloudCollabCard({ uid, isOwner, isMe, role, profile, fallbackName }: {
+function CloudCollabCard({ uid, isOwner, isMe, role, profile, fallbackName, viewerIsOwner, storyId, onChanged }: {
   uid: string;
   isOwner: boolean;
   isMe: boolean;
   role: string;
   profile?: CollaboratorProfile;
   fallbackName?: string;
+  /** Is the user currently looking at this card the story's owner? Drives
+   *  whether the "Make owner" / "Remove" actions appear. */
+  viewerIsOwner?: boolean;
+  storyId?: string | null;
+  onChanged?: () => void;
 }) {
   const name = profile?.displayName || fallbackName || uid.slice(0, 8) + '…';
   const email = profile?.email;
   const initial = (name || '?').charAt(0).toUpperCase();
-  // Role descriptor that mirrors the writer/director/both choice on the
-  // invite dialog. Owner is always shown as Owner regardless of stored role.
-  const roleIcon = isOwner ? Crown : role === 'director' ? Clapperboard : role === 'writer' ? PenLine : Users2;
-  const roleLabel = isOwner ? 'Owner' : role === 'director' ? 'Director' : role === 'writer' ? 'Writer' : 'Writer + Director';
+  // Role descriptor mirrors the writer / director / producer / both choice.
+  // Owner is always shown as Owner regardless of any stored role.
+  const roleIcon =
+    isOwner ? Crown :
+    role === 'director' ? Clapperboard :
+    role === 'writer' ? PenLine :
+    role === 'producer' ? Users2 :
+    Users2;
+  const roleLabel =
+    isOwner ? 'Owner' :
+    role === 'director' ? 'Director' :
+    role === 'writer' ? 'Writer' :
+    role === 'producer' ? 'Producer' :
+    'Writer + Director';
   const RoleIcon = roleIcon;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const showActions = !!(viewerIsOwner && !isOwner && !isMe && storyId);
   return (
-    <div className="flex items-center gap-3 p-3 bg-[var(--card)] border border-[var(--border)] rounded-xl">
+    <div className="relative flex items-center gap-3 p-3 bg-[var(--card)] border border-[var(--border)] rounded-xl">
       <div
         className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0 overflow-hidden"
         style={{ background: stringToColor(uid) }}
@@ -713,6 +737,59 @@ function CloudCollabCard({ uid, isOwner, isMe, role, profile, fallbackName }: {
           {roleLabel}
         </div>
       </div>
+      {showActions && (
+        <div className="relative">
+          <button
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+            className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]"
+            title="Manage"
+          >
+            <MoreVertical className="w-3.5 h-3.5" />
+          </button>
+          <AnimatePresence>
+            {menuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="absolute right-0 top-full mt-1 w-40 bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg z-20 overflow-hidden"
+                onMouseLeave={() => setMenuOpen(false)}
+              >
+                <button
+                  onClick={async () => {
+                    setMenuOpen(false);
+                    if (!confirm(`Make ${name} the new owner? You'll become a collaborator with full edit access.`)) return;
+                    try {
+                      await transferOwnership(storyId!, uid);
+                      toast.success(`Ownership transferred to ${name}`);
+                      onChanged?.();
+                    } catch (err: any) { toast.error(err?.message || 'Could not transfer ownership'); }
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] flex items-center gap-2"
+                >
+                  <Crown className="w-3 h-3" style={{ color: 'var(--accent)' }} />
+                  Make owner
+                </button>
+                <button
+                  onClick={async () => {
+                    setMenuOpen(false);
+                    if (!confirm(`Remove ${name} from this story?`)) return;
+                    try {
+                      await removeCollaborator(storyId!, uid);
+                      toast.success(`Removed ${name}`);
+                      onChanged?.();
+                    } catch (err: any) { toast.error(err?.message || 'Could not remove'); }
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-[11px] text-[var(--danger)] hover:bg-[var(--danger)]/10 flex items-center gap-2 border-t border-[var(--rule)]"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Remove
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }
