@@ -354,17 +354,23 @@ export async function inviteByEmail(input: {
 }): Promise<void> {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in');
+  // Validate up-front so a downstream .toLowerCase() can never throw.
+  if (!input.toEmail || typeof input.toEmail !== 'string') {
+    throw new Error('Recipient email is required.');
+  }
+  const toEmailKey = input.toEmail.toLowerCase().trim();
+  if (!toEmailKey) throw new Error('Recipient email is required.');
   return withRecovery(async () => {
     // Use a DETERMINISTIC invite ID — "{storyId}__{lowercaseEmail}" — so the
     // /stories security rule can verify "does an invite exist for this user
     // on this story?" via a known exists() path.
-    const inviteId = inviteIdFor(input.storyId, input.toEmail);
+    const inviteId = inviteIdFor(input.storyId, toEmailKey);
     await setDoc(doc(db, 'invites', inviteId), {
       storyId: input.storyId,
       storyTitle: input.storyTitle,
       fromUid: user.uid,
       fromName: user.displayName || user.email || 'Anonymous',
-      toEmail: input.toEmail.toLowerCase().trim(),
+      toEmail: toEmailKey,
       // Role the inviter is granting. Default to 'both' — full access —
       // because that's the safest assumption when the inviter didn't pick.
       // The /stories self-join rule reads this back to enforce that the
@@ -377,19 +383,24 @@ export async function inviteByEmail(input: {
 }
 
 /** Deterministic invite document ID. MUST match the path checked by the
- *  /stories update rule in firestore.rules. */
+ *  /stories update rule in firestore.rules. Both arguments are required;
+ *  callers must validate before invoking. */
 function inviteIdFor(storyId: string, email: string): string {
-  return `${storyId}__${email.toLowerCase().trim()}`;
+  return `${storyId}__${(email || '').toLowerCase().trim()}`;
 }
 
 /** List pending invites addressed to the current user's email. */
 export async function listMyInvites(): Promise<CloudInvite[]> {
   const user = auth?.currentUser;
-  if (!user?.email) return [];
+  // Capture email up-front so the closure inside withRecovery doesn't have
+  // to re-check + use a non-null assertion (which was throwing TypeError
+  // when the user signed out mid-query).
+  const email = user?.email?.toLowerCase().trim();
+  if (!email) return [];
   return withRecovery(async () => {
     const q = query(
       collection(db, 'invites'),
-      where('toEmail', '==', user.email!.toLowerCase()),
+      where('toEmail', '==', email),
       where('status', '==', 'pending'),
     );
     const snap = await getDocs(q);

@@ -31,14 +31,6 @@ import { useAppStore } from '@/store/useAppStore';
 import type { CoworkerInfo, AccessRequest } from '@/types';
 import {
   isFirebaseConfigured,
-  ensureRoom,
-  watchChat,
-  watchPresence,
-  setPresence,
-  leavePresence,
-  watchAccessRequests,
-  approveAccessRequest,
-  denyAccessRequest,
   auth,
 } from '@/firebase';
 import {
@@ -83,19 +75,15 @@ export default function CollabPanel({ onClose }: Props) {
   const activeStoryId = useAppStore((s) => s.activeStoryId);
 
   const userId = settings.userId || 'me';
-  const userName = settings.userDisplayName || 'You';
   // The legacy "access request" workflow has been replaced by invites with
   // explicit roles. Hide its tab entirely — no one needs it anymore.
   const isAdmin = false;
 
   const [tab, setTab] = useState<'studio' | 'chat' | 'people' | 'invite' | 'requests'>('studio');
-  const [roomId, setRoomId] = useState<string | null>(null);
-  // Legacy RTDB chat (only populated when the RTDB-backed ensureRoom flow
-  // succeeds — used by older builds before we switched to Firestore chat).
-  // Kept as `_legacyRtdbChat` only so the watchChat callback below has a
-  // sink; the new Firestore chat in cloudChatMsgs is what the UI renders.
-  const [, setLegacyRtdbChat] = useState<any[] | null>(null);
-  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
+  // accessRequests was populated by the legacy RTDB watchAccessRequests
+  // listener which no longer runs. Kept as state (empty forever) so the
+  // requests-tab badge code below doesn't have to be reworked.
+  const [accessRequests] = useState<AccessRequest[]>([]);
 
   // Studio (Firestore) state — pending invites for current user + current
   // story's cloud document (so we can render collaborators + owner badge).
@@ -182,33 +170,27 @@ export default function CollabPanel({ onClose }: Props) {
     })();
   }, [cloudStory]);
 
-  // Ensure room & subscribe
+  // LEGACY RTDB EFFECT — DELETED.
+  //
+  // This used to call ensureRoom / setPresence / watchChat (RTDB) /
+  // watchPresence / watchAccessRequests every time the Collaborate
+  // panel mounted. RTDB has no rules deployed for this project, so
+  // every call threw "Missing or insufficient permissions" and that
+  // bubbled up as the "Cloud sync blocked" toast users were seeing.
+  //
+  // Round 3 replaced all of that with Firestore-backed watchCloudChat
+  // / cloud story subscription / cloud collaborators. So nothing in
+  // the legacy effect was actually needed — it was pure dead weight
+  // emitting noise.
+  //
+  // The legacy block has been removed entirely. The next effect below
+  // is the only thing that remains from the original collab plumbing
+  // and it's already a no-op (just declaring the unused effect cleanup).
   useEffect(() => {
-    if (!online || !activeStoryId) return;
-    let unsubChat = () => {};
-    let unsubPresence = () => {};
-    let unsubRequests = () => {};
-    (async () => {
-      const id = await ensureRoom(activeStoryId, userId);
-      if (!id) return;
-      setRoomId(id);
-      await setPresence(id, userId, { name: userName, role: settings.userRole, status: 'online' });
-      unsubChat = watchChat(id, (msgs) => setLegacyRtdbChat(msgs));
-      unsubPresence = watchPresence(id, () => {});
-      if (isAdmin) {
-        unsubRequests = watchAccessRequests(id, (reqs) => setAccessRequests(reqs));
-      }
-    })();
-    const heartbeat = setInterval(() => {
-      if (roomId) setPresence(roomId, userId, { name: userName, role: settings.userRole, status: 'online' });
-    }, 25000);
-    return () => {
-      unsubChat();
-      unsubPresence();
-      unsubRequests();
-      clearInterval(heartbeat);
-      if (roomId) leavePresence(roomId, userId).catch(() => {});
-    };
+    // No-op — legacy RTDB collab plumbing was removed. Kept the effect
+    // shell so the dependency-array shape on this file doesn't change
+    // and React doesn't trip on hook-order shifts during the rollout.
+    return;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoryId, userId, online, isAdmin]);
 
@@ -431,11 +413,14 @@ export default function CollabPanel({ onClose }: Props) {
         />
       )}
 
-      {tab === 'requests' && isAdmin && roomId && (
+      {/* Requests tab — gated to never render now that isAdmin is hardcoded
+          false above. Kept here so removing it later is a one-line delete
+          rather than picking apart the JSX. */}
+      {tab === 'requests' && isAdmin && (
         <RequestsTab
           requests={accessRequests}
-          onApprove={(id) => approveAccessRequest(roomId, id)}
-          onDeny={(id) => denyAccessRequest(roomId, id)}
+          onApprove={async () => {}}
+          onDeny={async () => {}}
         />
       )}
 
