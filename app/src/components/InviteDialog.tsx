@@ -84,6 +84,12 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
   const roleCheck = isInviteRoleCompatible(role, inviteePreview);
   const roleIncompatible = !roleCheck.ok;
 
+  // Whenever the role or email changes, clear any sticky error from a
+  // previous Send attempt. Otherwise the "Cloud sync blocked" toast
+  // (from an earlier failed attempt) lingers even after the user has
+  // moved on to a different role / invitee.
+  useEffect(() => { setError(null); }, [role, email]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };

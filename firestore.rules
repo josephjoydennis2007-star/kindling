@@ -48,40 +48,42 @@ service cloud.firestore {
       // Anyone signed in can CREATE a story they own.
       allow create: if request.auth != null
                     && request.resource.data.owner == request.auth.uid;
-      // Owner OR a collaborator can update the `data` slice.
-      // Only the owner can change `owner`, `collaborators`, `shareable`,
-      // and other people's `collaboratorRoles` entries — EXCEPT in the
-      // self-join case (see below).
-      allow update: if request.auth != null && (
-        resource.data.owner == request.auth.uid ||
-        (request.auth.uid in resource.data.collaborators
-         && request.resource.data.owner == resource.data.owner
-         && request.resource.data.collaborators == resource.data.collaborators
-         && request.resource.data.shareable == resource.data.shareable
-         && request.resource.data.get('collaboratorRoles', {}) == resource.data.get('collaboratorRoles', {})) ||
-        // ── Self-join via invite ──
-        // An invitee can add themselves (and only themselves) to the
-        // collaborators array AND set their own collaboratorRoles entry
-        // to whatever role the invite specified. Constraints:
-        //   - owner unchanged
-        //   - shareable unchanged
-        //   - they were NOT a collaborator before
-        //   - they ARE a collaborator after
-        //   - collaborators array grew by exactly 1
-        //   - a /invites/{storyId}__{email} doc exists for them
-        //   - the role they wrote into collaboratorRoles[uid] EQUALS the
-        //     role on the invite (so they can't elevate themselves)
-        (
-          request.resource.data.owner == resource.data.owner
-          && request.resource.data.shareable == resource.data.shareable
-          && !(request.auth.uid in resource.data.collaborators)
-          && (request.auth.uid in request.resource.data.collaborators)
-          && request.resource.data.collaborators.size() == resource.data.collaborators.size() + 1
-          && exists(/databases/$(database)/documents/invites/$(storyId + '__' + request.auth.token.email.lower()))
-          && request.resource.data.collaboratorRoles[request.auth.uid]
-             == get(/databases/$(database)/documents/invites/$(storyId + '__' + request.auth.token.email.lower())).data.get('role', 'both')
-        )
-      );
+      // ── Update permissions ──
+      // Split into three INDEPENDENT `allow update` statements so a
+      // condition error in one branch can't error-cascade and block
+      // the others. Firestore treats multiple `allow` statements for
+      // the same operation as OR: if ANY passes, the update is allowed.
+
+      // (1) Owner can do anything. Short and simple — no get(), no
+      //     array math, no map comparison. Owners hit this first.
+      allow update: if request.auth != null
+                    && resource.data.owner == request.auth.uid;
+
+      // (2) Existing collaborator can update the data slice. They
+      //     cannot touch owner / collaborators / shareable /
+      //     collaboratorRoles. Defensive .get() defaults so missing
+      //     fields don't error.
+      allow update: if request.auth != null
+                    && request.auth.uid in resource.data.get('collaborators', [])
+                    && request.resource.data.owner == resource.data.owner
+                    && request.resource.data.collaborators == resource.data.collaborators
+                    && request.resource.data.shareable == resource.data.shareable
+                    && request.resource.data.get('collaboratorRoles', {})
+                       == resource.data.get('collaboratorRoles', {});
+
+      // (3) Self-join via matching invite. Invitee adds themselves to
+      //     collaborators AND sets their own role to whatever the invite
+      //     specified. The role match prevents self-elevation.
+      allow update: if request.auth != null
+                    && request.resource.data.owner == resource.data.owner
+                    && request.resource.data.shareable == resource.data.shareable
+                    && !(request.auth.uid in resource.data.get('collaborators', []))
+                    && (request.auth.uid in request.resource.data.collaborators)
+                    && request.resource.data.collaborators.size()
+                       == resource.data.get('collaborators', []).size() + 1
+                    && exists(/databases/$(database)/documents/invites/$(storyId + '__' + request.auth.token.email.lower()))
+                    && request.resource.data.collaboratorRoles[request.auth.uid]
+                       == get(/databases/$(database)/documents/invites/$(storyId + '__' + request.auth.token.email.lower())).data.get('role', 'both');
       // Only the owner can delete.
       allow delete: if request.auth != null
                     && resource.data.owner == request.auth.uid;

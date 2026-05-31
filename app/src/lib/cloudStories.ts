@@ -768,11 +768,16 @@ export function isInviteRoleCompatible(
   if (invitee.role === 'both' || inviteRole === 'both') return { ok: true };
   if (invitee.role === inviteRole) return { ok: true };
   if (invitee.acceptOppositeRole) return { ok: true };
-  const inviteeRoleLabel = invitee.role === 'writer' ? 'Writer' : 'Director';
-  const inviteRoleLabel = inviteRole === 'writer' ? 'Writer' : 'Director';
+  const label = (r: string): string =>
+    r === 'writer' ? 'Writer'
+    : r === 'director' ? 'Director'
+    : r === 'producer' ? 'Producer'
+    : 'Writer + Director';
+  const inviteeRoleLabel = label(invitee.role);
+  const inviteRoleLabel = label(inviteRole);
   return {
     ok: false,
-    reason: `${invitee.displayName || 'This person'} signed up as a ${inviteeRoleLabel} and doesn't accept ${inviteRoleLabel} invites. Pick the ${inviteeRoleLabel} role or invite someone else.`,
+    reason: `${invitee.displayName || 'This person'} signed up as a ${inviteeRoleLabel} and doesn't accept ${inviteRoleLabel} invites. Pick the ${inviteeRoleLabel} role (or Both) — or turn on "accept opposite role" in their profile.`,
   };
 }
 
