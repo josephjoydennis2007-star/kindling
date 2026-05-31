@@ -47,8 +47,13 @@ import {
   declineInvite,
   pullStory,
   removeCollaborator,
+  watchChat as watchCloudChat,
+  sendCloudChatMessage,
+  getCollaboratorProfiles,
   type CloudInvite,
   type CloudStory,
+  type CloudChatMessage,
+  type CollaboratorProfile,
 } from '@/lib/cloudStories';
 
 interface Props {
@@ -81,7 +86,11 @@ export default function CollabPanel({ onClose }: Props) {
 
   const [tab, setTab] = useState<'studio' | 'chat' | 'people' | 'invite' | 'requests'>('studio');
   const [roomId, setRoomId] = useState<string | null>(null);
-  const [cloudChat, setCloudChat] = useState<any[] | null>(null);
+  // Legacy RTDB chat (only populated when the RTDB-backed ensureRoom flow
+  // succeeds — used by older builds before we switched to Firestore chat).
+  // Kept as `_legacyRtdbChat` only so the watchChat callback below has a
+  // sink; the new Firestore chat in cloudChatMsgs is what the UI renders.
+  const [, setLegacyRtdbChat] = useState<any[] | null>(null);
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
 
   // Studio (Firestore) state — pending invites for current user + current
@@ -89,6 +98,11 @@ export default function CollabPanel({ onClose }: Props) {
   const [pendingInvites, setPendingInvites] = useState<CloudInvite[]>([]);
   const [cloudStory, setCloudStory] = useState<CloudStory | null>(null);
   const [studioBusy, setStudioBusy] = useState<string | null>(null);
+  // Real-time chat (Firestore subcollection on the active story) + a cache of
+  // each collaborator's profile so we can render real names + avatars in the
+  // People tab and the chat message bubbles instead of raw UID prefixes.
+  const [cloudChatMsgs, setCloudChatMsgs] = useState<CloudChatMessage[]>([]);
+  const [collabProfiles, setCollabProfiles] = useState<Record<string, CollaboratorProfile>>({});
   // Surfaced Firestore error so the user can see why their data isn't loading.
   // The most common cases:
   //   - "unavailable" / "failed to get document because the client is offline"
@@ -128,6 +142,42 @@ export default function CollabPanel({ onClose }: Props) {
   };
   useEffect(() => { refreshStudio(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeStoryId, firebaseUser?.uid]);
 
+  // Real-time chat subscription — only active when we're signed in AND the
+  // active story exists in the cloud AND we're either the owner or in the
+  // collaborators array. Without that check the onSnapshot fires with a
+  // permission-denied error.
+  useEffect(() => {
+    if (!firebaseUser || !activeStoryId || !cloudStory) { setCloudChatMsgs([]); return; }
+    const isOwner = cloudStory.owner === firebaseUser.uid;
+    const isMember = isOwner || cloudStory.collaborators.includes(firebaseUser.uid);
+    if (!isMember) { setCloudChatMsgs([]); return; }
+    const unsub = watchCloudChat(activeStoryId,
+      (msgs) => setCloudChatMsgs(msgs),
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[CollabPanel] chat watch failed:', err);
+      },
+    );
+    return () => unsub();
+  }, [firebaseUser, activeStoryId, cloudStory]);
+
+  // Fetch collaborator profiles whenever the collaborator set changes so the
+  // People tab + chat bubbles can render real names + avatars.
+  useEffect(() => {
+    if (!cloudStory) { setCollabProfiles({}); return; }
+    const uids = [cloudStory.owner, ...cloudStory.collaborators];
+    if (!uids.length) { setCollabProfiles({}); return; }
+    (async () => {
+      try {
+        const profiles = await getCollaboratorProfiles(uids);
+        setCollabProfiles(profiles);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[CollabPanel] profile fetch failed:', err);
+      }
+    })();
+  }, [cloudStory]);
+
   // Ensure room & subscribe
   useEffect(() => {
     if (!online || !activeStoryId) return;
@@ -139,7 +189,7 @@ export default function CollabPanel({ onClose }: Props) {
       if (!id) return;
       setRoomId(id);
       await setPresence(id, userId, { name: userName, role: settings.userRole, status: 'online' });
-      unsubChat = watchChat(id, (msgs) => setCloudChat(msgs));
+      unsubChat = watchChat(id, (msgs) => setLegacyRtdbChat(msgs));
       unsubPresence = watchPresence(id, () => {});
       if (isAdmin) {
         unsubRequests = watchAccessRequests(id, (reqs) => setAccessRequests(reqs));
@@ -158,7 +208,8 @@ export default function CollabPanel({ onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoryId, userId, online, isAdmin]);
 
-  const chat = cloudChat ?? localChat;
+  // (legacy `chat` derivation removed — ChatTab now picks its own source
+  // based on cloudActive vs localChat.)
 
   return (
     <motion.div
@@ -213,11 +264,14 @@ export default function CollabPanel({ onClose }: Props) {
           </button>
         </div>
 
-        {/* Call action row */}
+        {/* Call action row — Video + Voice now open a Jitsi Meet room keyed by
+            the story ID (so every collaborator who clicks Video on this story
+            lands in the SAME room). Free, no signup, works in any browser.
+            Voice-only uses the same Jitsi URL with the video-off hash flag. */}
         <div className="relative mt-3 flex gap-2">
-          <CallButton icon={VideoIcon} label="Video" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => toast.info('Video call needs a signaling backend (Firebase/WebRTC) — UI ready.')} />
-          <CallButton icon={Phone}     label="Voice" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => toast.info('Voice call needs a signaling backend — UI ready.')} />
-          <CallButton icon={Share2}    label="Share Link" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => copyInviteLink()} />
+          <CallButton icon={VideoIcon} label="Video" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => openJitsi(activeStoryId, false)} />
+          <CallButton icon={Phone}     label="Voice" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => openJitsi(activeStoryId, true)} />
+          <CallButton icon={Share2}    label="Share Link" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => document.dispatchEvent(new CustomEvent('app:shareStory'))} />
           <CallButton icon={Bell}      label="Ping" color="bg-[var(--accent)] text-[var(--accent-ink)]" onClick={() => toast.success('Ping sent to active coworkers')} />
         </div>
 
@@ -288,8 +342,23 @@ export default function CollabPanel({ onClose }: Props) {
           onAccept={async (inviteId) => {
             setStudioBusy(inviteId);
             try {
-              await acceptInvite(inviteId);
-              toast.success('Invite accepted — you are now a collaborator');
+              const storyId = await acceptInvite(inviteId);
+              toast.success('Invite accepted — opening the story…');
+              if (storyId) {
+                // Pull the cloud copy and import it into local state, then
+                // switch the app's active story to the freshly accepted one
+                // so the user immediately lands inside the shared script.
+                try {
+                  const fresh = await pullStory(storyId);
+                  if (fresh && fresh.data) {
+                    useAppStore.getState().importStory(fresh.data);
+                    toast.success(`Opened "${fresh.title}"`);
+                  }
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.warn('[CollabPanel] could not pull accepted story:', err);
+                }
+              }
               await refreshStudio();
             } catch (err: any) {
               toast.error(err?.message || 'Could not accept invite');
@@ -323,15 +392,32 @@ export default function CollabPanel({ onClose }: Props) {
 
       {tab === 'chat' && (
         <ChatTab
-          chat={chat}
+          // Use the cloud chat whenever we're a signed-in member of a
+          // cloud-backed story; otherwise fall back to the legacy local
+          // chat so local-only users still see their notes.
+          cloudActive={!!(firebaseUser && activeStoryId && cloudStory && (cloudStory.owner === firebaseUser.uid || cloudStory.collaborators.includes(firebaseUser.uid)))}
+          cloudMessages={cloudChatMsgs}
+          localChat={localChat}
           authorName={settings.userDisplayName}
-          authorId={settings.userId || 'me'}
-          onSend={(text, atts) => sendChatMessage({ text, authorId: settings.userId || 'me', authorName: settings.userDisplayName, attachments: atts })}
+          authorId={firebaseUser?.uid || settings.userId || 'me'}
+          onCloudSend={async (text, atts) => {
+            if (!activeStoryId) return;
+            try { await sendCloudChatMessage({ storyId: activeStoryId, text, attachments: atts }); }
+            catch (err: any) { toast.error(err?.message || 'Could not send message'); }
+          }}
+          onLocalSend={(text, atts) => sendChatMessage({ text, authorId: settings.userId || 'me', authorName: settings.userDisplayName, attachments: atts })}
         />
       )}
 
       {tab === 'people' && (
         <PeopleTab
+          // Cloud collaborators take precedence — they're the real source of
+          // truth for a signed-in user. We hand the People tab the cloud
+          // story + profiles map, plus the legacy local coworkers list so
+          // local-only sessions still see something.
+          cloudStory={cloudStory}
+          cloudProfiles={collabProfiles}
+          firebaseUserUid={firebaseUser?.uid}
           coworkers={coworkers}
           onUpdate={updateCoworker}
           onRemove={removeCoworker}
@@ -355,11 +441,14 @@ export default function CollabPanel({ onClose }: Props) {
 
 // ----- CHAT TAB -----
 
-function ChatTab({ chat, authorId, onSend }: {
-  chat: any[];
+function ChatTab({ cloudActive, cloudMessages, localChat, authorId, onCloudSend, onLocalSend }: {
+  cloudActive: boolean;
+  cloudMessages: CloudChatMessage[];
+  localChat: any[];
   authorName: string;
   authorId: string;
-  onSend: (text: string, atts?: any[]) => void;
+  onCloudSend: (text: string, atts?: any[]) => Promise<void> | void;
+  onLocalSend: (text: string, atts?: any[]) => void;
 }) {
   const [text, setText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
@@ -368,13 +457,21 @@ function ChatTab({ chat, authorId, onSend }: {
   const imgInput = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Pick the right source + send fn based on whether we're in a cloud-shared
+  // story. Cloud messages have a 'timestamp' field; local chat uses the same.
+  const chat = cloudActive ? cloudMessages : localChat;
+  const send = (txt: string, atts?: any[]) => {
+    if (cloudActive) onCloudSend(txt, atts);
+    else onLocalSend(txt, atts);
+  };
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [chat.length]);
 
-  const send = () => {
+  const sendNow = () => {
     if (!text.trim()) return;
-    onSend(text.trim());
+    send(text.trim());
     setText('');
     setShowEmoji(false);
   };
@@ -384,7 +481,7 @@ function ChatTab({ chat, authorId, onSend }: {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      onSend(text.trim() || `📎 ${file.name}`, [{ kind, url: ev.target?.result as string, name: file.name }]);
+      send(text.trim() || `📎 ${file.name}`, [{ kind, url: ev.target?.result as string, name: file.name }]);
       setText('');
     };
     reader.readAsDataURL(file);
@@ -457,7 +554,7 @@ function ChatTab({ chat, authorId, onSend }: {
           </button>
           <button onClick={() => {
             const url = prompt('Paste a link:');
-            if (url) onSend(text.trim() || url, [{ kind: 'link', url }]);
+            if (url) send(text.trim() || url, [{ kind: 'link', url }]);
           }} title="Link" className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover)]">
             <LinkIcon className="w-3.5 h-3.5" />
           </button>
@@ -471,15 +568,15 @@ function ChatTab({ chat, authorId, onSend }: {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                send();
+                sendNow();
               }
             }}
-            placeholder="Write a message…"
+            placeholder={cloudActive ? 'Write a message to collaborators…' : 'Write a note (local)…'}
             className="flex-1 mx-1 px-3 py-2 rounded-full bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
           />
 
           <button
-            onClick={send}
+            onClick={sendNow}
             disabled={!text.trim()}
             className="p-2 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-white shadow disabled:opacity-50"
           >
@@ -509,17 +606,53 @@ function Attachment({ att }: { att: any }) {
 
 // ----- PEOPLE TAB -----
 
-function PeopleTab({ coworkers, onUpdate, onRemove }: {
+function PeopleTab({ cloudStory, cloudProfiles, firebaseUserUid, coworkers, onUpdate, onRemove }: {
+  cloudStory: CloudStory | null;
+  cloudProfiles: Record<string, CollaboratorProfile>;
+  firebaseUserUid?: string;
   coworkers: CoworkerInfo[];
   onUpdate: (id: string, u: Partial<CoworkerInfo>) => void;
   onRemove: (id: string) => void;
 }) {
+  // If we have a cloud story, show its real owner + collaborators (with
+  // profile names and avatars). Fall back to the legacy local coworkers
+  // list when there is no cloud story (local-only session).
+  if (cloudStory) {
+    const rows: Array<{ uid: string; isOwner: boolean; profile?: CollaboratorProfile }> = [
+      { uid: cloudStory.owner, isOwner: true, profile: cloudProfiles[cloudStory.owner] },
+      ...cloudStory.collaborators.map((uid) => ({ uid, isOwner: false, profile: cloudProfiles[uid] })),
+    ];
+    return (
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="px-1 mb-1 text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+          On "{cloudStory.title}" — {rows.length} {rows.length === 1 ? 'person' : 'people'}
+        </div>
+        {rows.map((r) => (
+          <CloudCollabCard
+            key={r.uid}
+            uid={r.uid}
+            isOwner={r.isOwner}
+            isMe={firebaseUserUid === r.uid}
+            profile={r.profile}
+            fallbackName={r.isOwner ? (cloudStory.ownerName || 'Owner') : undefined}
+          />
+        ))}
+        {rows.length === 1 && (
+          <p className="px-2 pt-2 text-[10.5px] text-[var(--text-muted)] italic text-center">
+            You're flying solo. Use the <strong>Invite</strong> tab to add a collaborator.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // Local-only fallback — same UX as before for sessions without a cloud story.
   if (coworkers.length === 0) {
     return (
       <div className="flex-1 overflow-y-auto p-6 text-center text-[var(--text-muted)] text-xs">
         <Users2 className="w-7 h-7 mx-auto opacity-50 mb-2" />
         <p>No collaborators yet</p>
-        <p className="text-[10px] mt-1">Use the <strong>Invite</strong> tab above to add someone.</p>
+        <p className="text-[10px] mt-1">Sign in and open a cloud-shared story to see collaborators here.</p>
       </div>
     );
   }
@@ -528,6 +661,40 @@ function PeopleTab({ coworkers, onUpdate, onRemove }: {
       {coworkers.map((c) => (
         <CoworkerCard key={c.id} coworker={c} onUpdate={(u) => onUpdate(c.id, u)} onRemove={() => onRemove(c.id)} />
       ))}
+    </div>
+  );
+}
+
+// Card for a cloud collaborator pulled from /stories/{id}.collaborators and
+// /profiles/{uid}. Used by the People tab when a cloud story is open.
+function CloudCollabCard({ uid, isOwner, isMe, profile, fallbackName }: {
+  uid: string;
+  isOwner: boolean;
+  isMe: boolean;
+  profile?: CollaboratorProfile;
+  fallbackName?: string;
+}) {
+  const name = profile?.displayName || fallbackName || uid.slice(0, 8) + '…';
+  const email = profile?.email;
+  const initial = (name || '?').charAt(0).toUpperCase();
+  return (
+    <div className="flex items-center gap-3 p-3 bg-[var(--card)] border border-[var(--border)] rounded-xl">
+      <div
+        className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0 overflow-hidden"
+        style={{ background: stringToColor(uid) }}
+      >
+        {profile?.avatar ? <img src={profile.avatar} className="w-full h-full object-cover" alt="" /> : initial}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <div className="text-xs font-bold text-[var(--text)] truncate">{name}</div>
+          {isMe && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent)]/15 text-[var(--accent)] font-semibold uppercase tracking-wide">you</span>}
+        </div>
+        {email && <div className="text-[10px] text-[var(--text-muted)] truncate">{email}</div>}
+        <div className="text-[9.5px] text-[var(--text-muted)] uppercase tracking-wider mt-0.5 flex items-center gap-1">
+          {isOwner ? <><Crown className="w-2.5 h-2.5" style={{ color: 'var(--accent)' }} /> Owner</> : <><PenLine className="w-2.5 h-2.5" /> Collaborator</>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1096,21 +1263,44 @@ function CallButton({ icon: Icon, label, color, onClick }: { icon: any; label: s
   );
 }
 
+/**
+ * openJitsi — opens a Jitsi Meet room in a new tab, keyed by the story's id
+ * so every collaborator who clicks Video/Voice on the same story lands in
+ * the SAME room. Jitsi Meet is free, requires no account, and works in any
+ * modern browser. voiceOnly=true starts with the camera muted via the
+ * #config hash flag.
+ *
+ * The room name is prefixed with "kindling-" to avoid collisions with other
+ * apps using meet.jit.si. Story IDs are UUIDs so the room is unguessable
+ * unless you have access to the story.
+ */
+function openJitsi(storyId: string | null, voiceOnly: boolean): void {
+  if (!storyId) {
+    toast.error('Open a story first — calls are per-story rooms.');
+    return;
+  }
+  const room = `kindling-${storyId}`;
+  const flags = voiceOnly
+    ? '#config.startWithVideoMuted=true&config.startWithAudioMuted=false'
+    : '';
+  const url = `https://meet.jit.si/${encodeURIComponent(room)}${flags}`;
+  // Open in a new tab so the writer doesn't lose their place in the script.
+  const win = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!win) {
+    toast.error('Pop-up blocked — allow pop-ups for this site to open the call.');
+  } else {
+    toast.success(voiceOnly ? 'Opened voice call room' : 'Opened video call room');
+  }
+}
+
 function buildInviteLink(role: string): string {
   const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
   const token = Math.random().toString(36).slice(2, 10);
   return `${base}?invite=${token}&role=${role}`;
 }
 
-async function copyInviteLink() {
-  const link = buildInviteLink('writer');
-  try {
-    await navigator.clipboard.writeText(link);
-    toast.success('Invite link copied to clipboard');
-  } catch {
-    toast.error('Could not copy');
-  }
-}
+// (copyInviteLink helper removed — the Share Link button now dispatches the
+//  app:shareStory event so it routes through the proper ShareDialog flow.)
 
 // Map Firestore SDK error codes / messages to plain-English text. The
 // Firestore SDK reports "failed to get document because the client is

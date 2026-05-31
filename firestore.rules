@@ -125,6 +125,28 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
+    // ── Chat (Round 3) ───────────────────────────────────────────────
+    // Real-time chat messages between collaborators on a story. Path:
+    //   /stories/{storyId}/chat/{msgId}
+    // Rules: only the story's owner OR users in its `collaborators`
+    // array can read or post messages. Messages are immutable once
+    // posted (no update / delete). The author field on each message
+    // must match the current user's uid so nobody can spoof another.
+    match /stories/{storyId}/chat/{msgId} {
+      function storyData() {
+        return get(/databases/$(database)/documents/stories/$(storyId)).data;
+      }
+      function isStoryMember() {
+        let s = storyData();
+        return s.owner == request.auth.uid
+            || request.auth.uid in s.collaborators;
+      }
+      allow read: if request.auth != null && isStoryMember();
+      allow create: if request.auth != null && isStoryMember()
+                    && request.resource.data.authorId == request.auth.uid;
+      // No updates or deletes — chat history is append-only.
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;

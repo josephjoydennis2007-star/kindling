@@ -40,6 +40,9 @@ import {
   serverTimestamp,
   arrayUnion,
   arrayRemove,
+  addDoc,
+  orderBy,
+  limit,
   getDocs,
   enableNetwork,
   disableNetwork,
@@ -366,6 +369,110 @@ export async function declineInvite(inviteId: string): Promise<void> {
 /** Owner-only: delete the story doc. Does not delete IndexedDB local copy. */
 export async function deleteStoryCloud(storyId: string): Promise<void> {
   await deleteDoc(doc(db, 'stories', storyId));
+}
+
+// ─── Chat (real-time, Firestore-backed) ─────────────────────────────────────
+//
+// Chat lives in the /stories/{storyId}/chat/{msgId} subcollection. Rules
+// restrict read+write to the owner or any user in the story's collaborators
+// array. We use onSnapshot for live updates so collaborators see new
+// messages without polling.
+
+export interface CloudChatMessage {
+  id: string;
+  authorId: string;
+  authorName: string;
+  text: string;
+  attachments?: Array<{ kind: string; url: string; name?: string }>;
+  timestamp: number;
+}
+
+/** Live subscription to the chat for a story. Returns unsubscribe fn. */
+export function watchChat(
+  storyId: string,
+  onUpdate: (msgs: CloudChatMessage[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  const q = query(
+    collection(db, 'stories', storyId, 'chat'),
+    orderBy('timestamp', 'asc'),
+    limit(200),
+  );
+  return onSnapshot(q,
+    (snap) => {
+      const msgs: CloudChatMessage[] = snap.docs.map((d) => {
+        const raw = d.data() as any;
+        return {
+          id: d.id,
+          authorId: raw.authorId,
+          authorName: raw.authorName,
+          text: raw.text || '',
+          attachments: raw.attachments || [],
+          timestamp: tsToMs(raw.timestamp) || Date.now(),
+        };
+      });
+      onUpdate(msgs);
+    },
+    (err) => { if (onError) onError(err as any); },
+  );
+}
+
+export async function sendCloudChatMessage(input: {
+  storyId: string;
+  text: string;
+  attachments?: Array<{ kind: string; url: string; name?: string }>;
+}): Promise<void> {
+  const user = auth?.currentUser;
+  if (!user) throw new Error('Not signed in');
+  return withRecovery(async () => {
+    await addDoc(collection(db, 'stories', input.storyId, 'chat'), {
+      authorId: user.uid,
+      authorName: user.displayName || user.email || 'Anonymous',
+      text: input.text,
+      attachments: input.attachments || [],
+      timestamp: serverTimestamp(),
+    });
+  });
+}
+
+// ─── Profile lookup ─────────────────────────────────────────────────────────
+//
+// Batch-fetch /profiles/{uid} docs for a set of collaborator UIDs so we can
+// show real names + avatars in the People tab instead of raw UID prefixes.
+// Profile rules permit any authenticated user to read.
+
+export interface CollaboratorProfile {
+  uid: string;
+  displayName?: string;
+  email?: string;
+  avatar?: string | null;
+  role?: string;
+}
+
+export async function getCollaboratorProfiles(uids: string[]): Promise<Record<string, CollaboratorProfile>> {
+  if (!uids.length) return {};
+  return withRecovery(async () => {
+    const out: Record<string, CollaboratorProfile> = {};
+    await Promise.all(uids.map(async (uid) => {
+      try {
+        const snap = await getDoc(doc(db, 'profiles', uid));
+        if (snap.exists()) {
+          const d = snap.data() as any;
+          out[uid] = {
+            uid,
+            displayName: d.displayName,
+            email: d.email,
+            avatar: d.avatar,
+            role: d.role,
+          };
+        }
+      } catch {
+        // Skip individual failures — caller renders the missing entry with
+        // a UID fallback. Don't let one missing profile break the whole list.
+      }
+    }));
+    return out;
+  });
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
