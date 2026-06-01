@@ -126,6 +126,37 @@ export default function TopBar({
 
       {/* Actions */}
       <div className="flex items-center gap-1">
+        {/* Inline Comment button — opens the floating comment popup
+            anchored to the current text selection (if any). Available on
+            Writer / Director / Plot tabs where commenting makes sense.
+            Also triggerable via Cmd/Ctrl+Shift+M or by right-clicking
+            in those views. */}
+        {(activeTab === 'writer' || activeTab === 'director' || activeTab === 'plot') && activeStoryId && (
+          <button
+            onClick={() => {
+              document.dispatchEvent(new CustomEvent('app:openInlineComment', {
+                detail: (() => {
+                  const sel = window.getSelection();
+                  let snippet = '';
+                  let x: number | undefined;
+                  let y: number | undefined;
+                  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+                    snippet = sel.toString().trim();
+                    const r = sel.getRangeAt(0).getBoundingClientRect();
+                    if (r) { x = r.left; y = r.bottom + 8; }
+                  }
+                  return { tab: activeTab, snippet, x, y, target: `${activeTab}${snippet ? ':' + snippet.slice(0, 40) : ''}` };
+                })(),
+              }));
+            }}
+            title={`Add comment (${FMT_SHIFT}${FMT_MOD}M)`}
+            className="flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-colors text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            Comment
+          </button>
+        )}
+
         <button
           onClick={onToggleFocusMode}
           title={isFocusMode ? 'Exit focus mode' : `Focus mode (${FMT_MOD}+.)`}

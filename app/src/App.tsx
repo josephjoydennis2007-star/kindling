@@ -20,6 +20,7 @@ import ShareDialog from '@/components/ShareDialog';
 import InviteDialog from '@/components/InviteDialog';
 import CloudDiagnostic from '@/components/CloudDiagnostic';
 import CommentsPanel from '@/components/CommentsPanel';
+import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import { useStoryRole } from '@/hooks/useStoryRole';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
@@ -494,6 +495,72 @@ function App() {
     };
   }, []);
 
+  // Right-click → contextmenu. On the writer / director / plot views, if
+  // the user has text selected we show our own small menu with "Add
+  // comment" instead of the browser's default menu. Otherwise we let the
+  // browser handle it normally so they can paste / inspect.
+  useEffect(() => {
+    let menuEl: HTMLDivElement | null = null;
+    const closeMenu = () => {
+      if (menuEl && menuEl.parentNode) menuEl.parentNode.removeChild(menuEl);
+      menuEl = null;
+    };
+    const onContext = (e: MouseEvent) => {
+      const tab = useAppStore.getState().activeTab;
+      if (tab !== 'writer' && tab !== 'director' && tab !== 'plot') return;
+      // Only intercept when the user is right-clicking inside the main
+      // view area (so they can still paste into the editor + use the
+      // browser menu on toolbars etc).
+      const inViewContainer = (e.target as HTMLElement)?.closest?.('.view-container');
+      if (!inViewContainer) return;
+      // Only intercept if either:
+      //   - text is selected (something to comment on)
+      //   - they right-clicked on a scene/beat element
+      const sel = window.getSelection();
+      const hasSelection = sel && sel.toString().trim().length > 0;
+      const onCommentable = (e.target as HTMLElement)?.closest?.('[data-commentable]');
+      if (!hasSelection && !onCommentable) return;
+
+      e.preventDefault();
+      closeMenu();
+
+      const snippet = hasSelection
+        ? sel!.toString().trim().slice(0, 240)
+        : (onCommentable?.textContent || '').trim().slice(0, 240);
+
+      // Build a small floating menu near the click.
+      menuEl = document.createElement('div');
+      menuEl.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:400;background:var(--panel);border:1px solid var(--rule);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;min-width:180px;font:12px Inter,system-ui,sans-serif;color:var(--text);`;
+      const item = document.createElement('button');
+      item.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border:none;background:transparent;color:var(--text-secondary);text-align:left;cursor:pointer;border-radius:4px;font-size:12px';
+      item.innerHTML = '<span style="color:var(--accent)">💬</span><span>Add comment</span>';
+      item.addEventListener('mouseenter', () => { item.style.background = 'var(--hover)'; item.style.color = 'var(--text)'; });
+      item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; item.style.color = 'var(--text-secondary)'; });
+      item.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('app:openInlineComment', {
+          detail: { x: e.clientX, y: e.clientY + 4, tab, snippet, target: `${tab}${snippet ? ':' + snippet.slice(0, 40) : ''}` },
+        }));
+        closeMenu();
+      });
+      menuEl.appendChild(item);
+      document.body.appendChild(menuEl);
+
+      // Close on any click outside.
+      const onAway = (ev: MouseEvent) => {
+        if (menuEl && !menuEl.contains(ev.target as Node)) {
+          closeMenu();
+          document.removeEventListener('mousedown', onAway, true);
+        }
+      };
+      setTimeout(() => document.addEventListener('mousedown', onAway, true), 0);
+    };
+    document.addEventListener('contextmenu', onContext);
+    return () => {
+      document.removeEventListener('contextmenu', onContext);
+      closeMenu();
+    };
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -534,6 +601,16 @@ function App() {
         // Ctrl/Cmd+Shift+R → toggle Table Read mode
         e.preventDefault();
         setShowTableRead((v) => !v);
+      }
+      else if (mod && e.shiftKey && e.key.toLowerCase() === 'm') {
+        // Ctrl/Cmd+Shift+M → open the inline comment popup anchored to
+        // the current text selection (if any). Works on every tab where
+        // a comment makes sense.
+        const tab = useAppStore.getState().activeTab;
+        if (tab === 'writer' || tab === 'director' || tab === 'plot') {
+          e.preventDefault();
+          openInlineCommentFromSelection(tab);
+        }
       }
       else if (mod && e.shiftKey && e.key.toLowerCase() === 'w' && useAppStore.getState().activeTab === 'writer') {
         // Ctrl/Cmd+Shift+W → "What if?" — open the AltTakeOverlay with whatever
@@ -1000,6 +1077,13 @@ function App() {
           event from any UI surface. Tells the user EXACTLY which step fails
           (config / auth / network / write / read), with the raw error code. */}
       <CloudDiagnostic />
+      {/* Floating inline comment popup. Opens via:
+            - TopBar Comment button → app:openInlineComment event
+            - Cmd/Ctrl+Shift+M keyboard shortcut (see keyboard handler)
+            - Right-click on writer / director / plot view → "Add comment"
+          Posts to /stories/{id}/comments with a target string anchored to
+          the current tab + selection snippet. */}
+      <InlineCommentPopup />
       <Onboarding />
       <FindReplace />
       <StylePane />
