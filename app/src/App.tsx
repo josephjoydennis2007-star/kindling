@@ -21,6 +21,7 @@ import InviteDialog from '@/components/InviteDialog';
 import CloudDiagnostic from '@/components/CloudDiagnostic';
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
+import InlineCommentHighlights from '@/components/InlineCommentHighlights';
 import { useStoryRole } from '@/hooks/useStoryRole';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
@@ -1084,6 +1085,10 @@ function App() {
           Posts to /stories/{id}/comments with a target string anchored to
           the current tab + selection snippet. */}
       <InlineCommentPopup />
+      {/* Persistent highlight overlay — paints colored boxes over every
+          commented snippet in the active panel. Double-clicking a
+          highlight opens InlineCommentPopup in edit mode. */}
+      <InlineCommentHighlights />
       <Onboarding />
       <FindReplace />
       <StylePane />

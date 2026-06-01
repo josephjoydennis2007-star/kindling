@@ -516,6 +516,10 @@ export interface CloudComment {
   authorName: string;
   text: string;
   target?: string;           // e.g. "writer", "director:scene-abc", "plot:beat-xyz"
+  /** Verbatim text the comment is anchored to, used to render inline
+   *  highlight overlays in the matching view. Stored separately from
+   *  target (which is truncated to ~40 chars for ID purposes). */
+  snippet?: string;
   resolved: boolean;
   createdAt: number;         // ms since epoch
 }
@@ -540,6 +544,7 @@ export function watchComments(
           authorName: raw.authorName,
           text: raw.text || '',
           target: raw.target,
+          snippet: raw.snippet,
           resolved: !!raw.resolved,
           createdAt: tsToMs(raw.createdAt) || Date.now(),
         };
@@ -554,6 +559,7 @@ export async function addComment(input: {
   storyId: string;
   text: string;
   target?: string;
+  snippet?: string;
 }): Promise<void> {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in');
@@ -563,9 +569,17 @@ export async function addComment(input: {
       authorName: user.displayName || user.email || 'Anonymous',
       text: input.text,
       target: input.target || 'general',
+      snippet: input.snippet || null,
       resolved: false,
       createdAt: serverTimestamp(),
     });
+  });
+}
+
+/** Update the text of an existing comment. Author-only — rules enforce. */
+export async function updateCommentText(storyId: string, commentId: string, text: string): Promise<void> {
+  return withRecovery(async () => {
+    await updateDoc(doc(db, 'stories', storyId, 'comments', commentId), { text });
   });
 }
 
