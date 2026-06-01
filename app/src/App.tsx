@@ -447,6 +447,13 @@ function App() {
     return () => document.removeEventListener('app:import', onImport);
   }, [handleImport]);
 
+  // Open the full ProfileEditor from anywhere (e.g. Settings → Profile → "Open full profile editor →").
+  useEffect(() => {
+    const onOpenProfile = () => { if (profile) setShowProfile(true); };
+    document.addEventListener('app:openProfileEditor', onOpenProfile);
+    return () => document.removeEventListener('app:openProfileEditor', onOpenProfile);
+  }, [profile]);
+
   // Live-sync poller — when settings.liveSync is on AND a cloud provider is
   // configured, pull every 15 seconds. Cheap polling-based "collab" without a
   // dedicated backend.

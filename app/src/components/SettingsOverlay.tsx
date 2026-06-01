@@ -442,18 +442,43 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                   <Section title="Display name">
                     <input value={draft.userDisplayName} onChange={(e) => setDraft({ ...draft, userDisplayName: e.target.value })} placeholder="How collaborators see you"
                       className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]" />
+                    <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">
+                      Shown on invites, comments, and the People tab.
+                    </p>
                   </Section>
-                  <Section title="Default role">
+                  <Section title="Your role">
                     <select
                       value={draft.userRole}
                       onChange={(e) => setDraft({ ...draft, userRole: e.target.value as any })}
                       className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]"
                     >
-                      <option value="admin">Admin</option>
-                      <option value="writer">Writer</option>
-                      <option value="director">Director</option>
-                      <option value="viewer">Viewer</option>
+                      <option value="writer">Writer — I write scripts</option>
+                      <option value="director">Director — I plan scenes + shots</option>
+                      <option value="both">Both — I do both</option>
+                      <option value="producer">Producer — I review + leave notes</option>
                     </select>
+                    <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">
+                      Your default for invites + what other people see when they look you up by email.
+                      For per-story permissions, the story owner picks the role when inviting.
+                    </p>
+                  </Section>
+                  <Section title="Full profile">
+                    <button
+                      onClick={() => {
+                        // Dispatch the same event UserMenu uses so the
+                        // existing ProfileEditor opens with the avatar
+                        // upload + accept-opposite-role toggle visible.
+                        document.dispatchEvent(new CustomEvent('app:openProfileEditor'));
+                        onClose();
+                      }}
+                      className="w-full px-3 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[11px] font-semibold hover:brightness-110"
+                    >
+                      Open full profile editor →
+                    </button>
+                    <p className="mt-1.5 text-[10px] text-[var(--text-muted)]">
+                      Change your avatar, set the "Accept invites from the opposite role" preference,
+                      and sync to the cloud profile that powers invite previews.
+                    </p>
                   </Section>
                 </div>
               )}
