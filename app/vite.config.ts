@@ -18,4 +18,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    // Emit source maps so prod stack traces point at real file:line.
+    // The repo is public on GitHub anyway — no secrets to hide.
+    sourcemap: true,
+  },
 });

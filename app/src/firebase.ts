@@ -234,22 +234,33 @@ export async function upsertProfile(profile: UserProfile): Promise<void> {
   const now = Date.now();
   // Write the main profile doc (keyed by uid).
   await setDoc(doc(_db, 'profiles', profile.uid), { ...profile, updatedAt: now }, { merge: true });
+
   // Mirror a small "discovery" doc at /profilesByEmail/{lowercased email}
   // so the InviteDialog can look up a person by email and show their
   // role + acceptOppositeRole preference. Email is the natural lookup
   // key when inviting. Without this mirror, profiles are unqueryable by
   // email since the main doc is keyed by uid.
-  if (profile.email) {
-    const emailKey = profile.email.toLowerCase().trim();
+  //
+  // Wrap defensively: the email mirror is a CONVENIENCE feature. If it
+  // fails for any reason (rules glitch, non-string email, doc-id encoding
+  // issue), we don't want it to break the main profile save above.
+  try {
+    const rawEmail = profile.email;
+    if (typeof rawEmail !== 'string' || !rawEmail) return;
+    const emailKey = rawEmail.toLowerCase().trim();
+    if (!emailKey) return;
     await setDoc(doc(_db, 'profilesByEmail', emailKey), {
       uid: profile.uid,
       email: emailKey,
-      displayName: profile.displayName,
-      role: profile.role,
+      displayName: profile.displayName || '',
+      role: profile.role || 'both',
       acceptOppositeRole: !!profile.acceptOppositeRole,
       avatar: profile.avatar || null,
       updatedAt: now,
     }, { merge: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[Kindling] profilesByEmail mirror failed (non-fatal):', err);
   }
 }
 
