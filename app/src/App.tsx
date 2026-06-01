@@ -22,6 +22,7 @@ import CloudDiagnostic from '@/components/CloudDiagnostic';
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
+import { useNotifications } from '@/hooks/useNotifications';
 import { useStoryRole } from '@/hooks/useStoryRole';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
@@ -111,6 +112,10 @@ function App() {
   // the Writer editor + Director add buttons + format toolbar so a Writer
   // collaborator can SEE the Director board without being able to edit it.
   const { canWrite, canDirect, role: storyRole, isOwner: isStoryOwner, isCloud: isCloudStory } = useStoryRole();
+  // Cross-app notification counts — surfaced as small badges on the
+  // TopBar Tools dropdown so a collaborator sees "someone invited you"
+  // or "there's a new comment on this story" without opening every panel.
+  const { pendingInvites, unreadComments, markCommentsSeen } = useNotifications();
 
   // On mount: if user already skipped auth, mark as checked immediately (don't wait for Firebase)
   // Also restore any cached profile from localStorage
@@ -876,8 +881,15 @@ function App() {
             } : undefined}
             storyTitle={stories.find((s) => s.id === activeStoryId)?.title}
             currentPanel={rightPanel}
-            onOpenPanel={(p) => togglePanel(p as any)}
+            onOpenPanel={(p) => {
+              // Opening Comments or Collaborate effectively "sees" the
+              // notifications they were badging.
+              if (p === 'comments') markCommentsSeen();
+              togglePanel(p as any);
+            }}
             roleBadge={isCloudStory ? { role: storyRole || 'both', isOwner: isStoryOwner } : null}
+            pendingInvites={pendingInvites}
+            unreadComments={unreadComments}
           />
         )}
         {/* The original Toolbar now only renders on the Writer tab and only

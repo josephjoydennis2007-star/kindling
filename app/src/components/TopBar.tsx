@@ -41,6 +41,12 @@ interface Props {
   /** Optional role pill shown next to the story title. null = local-only
    *  story, no badge. Owner shows "Owner". */
   roleBadge?: { role: 'writer' | 'director' | 'producer' | 'both'; isOwner: boolean } | null;
+  /** Number of pending invites for the current user across all stories.
+   *  Shown as a dot on the Tools button + a count on the Collaborate item. */
+  pendingInvites?: number;
+  /** Unread comments on the active story. Shown as a dot on Tools + a
+   *  count on the Comments item. */
+  unreadComments?: number;
 }
 
 // Story tools dropdown menu — same panels as the ContextPanel footer, but
@@ -65,7 +71,10 @@ const FMT_SHIFT = FMT_MOD === '⌘' ? '⇧' : 'Shift';
 export default function TopBar({
   activeTab, isFocusMode, onToggleFocusMode, onOpenExport, onOpenSettings, onSignOut, storyTitle,
   currentPanel, onOpenPanel, roleBadge,
+  pendingInvites = 0, unreadComments = 0,
 }: Props) {
+  // Total badge count on the Tools button — any non-zero shows the dot.
+  const totalBadge = (pendingInvites || 0) + (unreadComments || 0);
   const [open, setOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -171,12 +180,12 @@ export default function TopBar({
         <div className="relative" ref={toolsRef}>
           <button
             onClick={() => setToolsOpen((v) => !v)}
-            title="Story tools"
+            title={`Story tools${totalBadge ? ` — ${totalBadge} new` : ''}`}
             aria-label="Story tools"
             aria-haspopup="menu"
             aria-expanded={toolsOpen}
             disabled={!activeStoryId}
-            className={`flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`relative flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
               currentPanel || toolsOpen
                 ? 'bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/40'
                 : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
@@ -184,6 +193,14 @@ export default function TopBar({
           >
             <PanelRight className="w-3.5 h-3.5" />
             Tools
+            {/* Notification dot — 6px dot in the top-right corner when
+                there are pending invites or unread comments. */}
+            {totalBadge > 0 && (
+              <span
+                className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[var(--accent)] border-2 border-[var(--bg)]"
+                aria-label={`${totalBadge} unread`}
+              />
+            )}
           </button>
 
           <AnimatePresence>
@@ -202,6 +219,13 @@ export default function TopBar({
                 </div>
                 {TOOL_ITEMS.map((it) => {
                   const active = currentPanel === it.key;
+                  // Per-item badge count for menu items that have a
+                  // notification source: Comments (unread) + Collaborate
+                  // (pending invites).
+                  const itemBadge =
+                    it.key === 'comments' ? unreadComments
+                    : it.key === 'collab' ? pendingInvites
+                    : 0;
                   return (
                     <button
                       key={it.key}
@@ -218,7 +242,14 @@ export default function TopBar({
                     >
                       <it.icon className="w-3.5 h-3.5 flex-shrink-0" />
                       <span className="flex-1 font-medium">{it.label}</span>
-                      {active && <span className="text-[9.5px] text-[var(--accent)] uppercase tracking-wider">Open</span>}
+                      {itemBadge > 0 && (
+                        <span className="text-[9.5px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/30 text-[var(--accent)] font-bold">
+                          {itemBadge > 99 ? '99+' : itemBadge}
+                        </span>
+                      )}
+                      {active && itemBadge === 0 && (
+                        <span className="text-[9.5px] text-[var(--accent)] uppercase tracking-wider">Open</span>
+                      )}
                     </button>
                   );
                 })}
