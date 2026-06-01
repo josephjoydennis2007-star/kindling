@@ -70,11 +70,15 @@ export default function ShareDialog({ user, onOpenAuth }: Props) {
       if (next) toast.success('Anyone with this link can now view the story.');
       else toast.success('Story is private again.');
     } catch (err: any) {
+      // eslint-disable-next-line no-console
+      console.error('[ShareDialog] toggleShare failed', err);
       const msg = err?.code === 'permission-denied'
-        ? 'Cloud sync blocked — check Firestore rules in Firebase Console.'
+        ? 'The Firestore rules denied this write. Check DevTools Console for the exact error.'
         : (err?.message || 'Could not change share state.');
       setError(msg);
-      toast.error(msg);
+      // Don't double the toast for permission errors — the inline banner
+      // already shows them.
+      if (err?.code !== 'permission-denied') toast.error(msg);
     } finally { setBusy(false); }
   };
 

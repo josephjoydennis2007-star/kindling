@@ -109,12 +109,15 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
     }
 
     setBusy(true); setError(null);
+    // Track which step failed so the error message can be specific.
+    let phase: 'push-story' | 'send-invite' = 'push-story';
     try {
       await pushStory({
         storyId: activeStoryId,
         title: story.title || 'Untitled',
         data: exportStory(),
       });
+      phase = 'send-invite';
       await inviteByEmail({
         storyId: activeStoryId,
         storyTitle: story.title || 'Untitled',
@@ -125,11 +128,16 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
       setEmail('');
       toast.success(`Invite sent to ${addr} as ${roleLabel(role)}`);
     } catch (err: any) {
+      // eslint-disable-next-line no-console
+      console.error('[InviteDialog] failed at', phase, err);
       const msg = err?.code === 'permission-denied'
-        ? 'Cloud sync blocked — check Firestore rules in Firebase Console.'
-        : (err?.message || 'Could not send invite.');
+        ? `Couldn't ${phase === 'push-story' ? 'sync the story to the cloud' : 'send the invite'}. The Firestore rules are denying ${phase === 'push-story' ? 'a /stories update' : 'an /invites write'}. Open DevTools Console for the exact error.`
+        : (err?.message || `Could not ${phase === 'push-story' ? 'sync story' : 'send invite'}.`);
       setError(msg);
-      toast.error(msg);
+      // Only toast for NON-permission failures. Permission-denied already
+      // shows inline in the dialog; doubling it as a toast was the noise
+      // the user was seeing.
+      if (err?.code !== 'permission-denied') toast.error(msg);
     } finally { setBusy(false); }
   };
 

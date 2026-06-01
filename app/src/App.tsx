@@ -497,6 +497,13 @@ function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Guard against synthetic / IME / screen-reader / extension-injected
+      // keyboard events that arrive without a `.key` value. The standard
+      // KeyboardEvent.key is typed as a non-optional string but in practice
+      // some clients dispatch events where it is undefined — calling
+      // .toLowerCase() on undefined throws the TypeError that was filling
+      // the console. Bail early when there's no key to act on.
+      if (typeof e.key !== 'string' || !e.key) return;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); handleManualSave(); }
       else if (mod && e.key === '\\') { e.preventDefault(); toggleSidebar(); }
