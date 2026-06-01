@@ -3,7 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, X, Loader2, AlertCircle, LogIn, Check, Mail, PenLine, Clapperboard, Users, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
-import { inviteByEmail, pushStory, lookupProfileByEmail, isInviteRoleCompatible, type StoryRole } from '@/lib/cloudStories';
+import {
+  inviteByEmail, pushStory, lookupProfileByEmail, isInviteRoleCompatible,
+  addFriend, listFriends, type StoryRole, type FriendEntry,
+} from '@/lib/cloudStories';
 import type { User } from 'firebase/auth';
 
 /**
@@ -50,10 +53,21 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
     avatar?: string | null;
   } | null>(null);
   const [lookupBusy, setLookupBusy] = useState(false);
+  // Friend list state — loaded on open + after a successful invite (so
+  // a newly-added friend appears right away).
+  const [friends, setFriends] = useState<FriendEntry[]>([]);
+  // 'Add to friends' checkbox state — defaults to true, the inviter can
+  // un-tick it before sending.
+  const [addAsFriend, setAddAsFriend] = useState(true);
 
   useEffect(() => {
-    const onOpen = () => {
+    const onOpen = async () => {
       setOpen(true); setEmail(''); setRole('both'); setSent([]); setError(null); setInviteePreview(null);
+      setAddAsFriend(true);
+      // Pull friend list each time we open. listFriends is cheap (single
+      // /profiles/{me} read) and resyncs after a previous add.
+      try { setFriends(await listFriends()); }
+      catch { setFriends([]); }
     };
     document.addEventListener('app:invite', onOpen);
     return () => document.removeEventListener('app:invite', onOpen);
@@ -127,6 +141,23 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
       setSent((prev) => [...prev, { email: addr, role }]);
       setEmail('');
       toast.success(`Invite sent to ${addr} as ${roleLabel(role)}`);
+      // Optionally save them as a friend so the inviter can pick them
+      // from the friends row next time without retyping the email.
+      if (addAsFriend && inviteePreview?.uid) {
+        try {
+          await addFriend(inviteePreview.uid, {
+            email: addr,
+            displayName: inviteePreview.displayName,
+            role: inviteePreview.role as string,
+            avatar: inviteePreview.avatar,
+          });
+          // Refresh local list so the new friend appears in the row.
+          try { setFriends(await listFriends()); } catch {/* silent */}
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[InviteDialog] could not add friend:', err);
+        }
+      }
     } catch (err: any) {
       // eslint-disable-next-line no-console
       console.error('[InviteDialog] failed at', phase, err);
@@ -192,6 +223,39 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                 </div>
               ) : (
                 <>
+                  {/* Friends quick-pick row — appears when the user has
+                      at least one friend in their list. Clicking a chip
+                      fills the email + role from the friend card. */}
+                  {friends.length > 0 && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-1.5">
+                        Or pick a friend
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {friends.slice(0, 12).map((f) => (
+                          <button
+                            key={f.uid}
+                            onClick={() => {
+                              if (f.email) setEmail(f.email);
+                            }}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[10.5px] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] max-w-[140px]"
+                            title={f.email || f.displayName}
+                          >
+                            <span
+                              className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0 overflow-hidden"
+                              style={{ background: `hsl(${(f.uid.charCodeAt(0) * 7) % 360}, 60%, 50%)` }}
+                            >
+                              {f.avatar
+                                ? <img src={f.avatar} className="w-full h-full object-cover" alt="" />
+                                : (f.displayName || f.email || '?').charAt(0).toUpperCase()}
+                            </span>
+                            <span className="truncate">{f.displayName || f.email || 'Friend'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label htmlFor="invite-email" className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
                       Email address
@@ -284,6 +348,20 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
                       {role === 'producer' && 'They\'ll see the whole story — script, scenes, plot — and can leave comments on anything, but they can\'t make changes themselves.'}
                       {role === 'both' && 'Full collaborator — they can edit every part of the story like you can.'}
                     </p>
+
+                    {/* Add-as-friend toggle — only meaningful when we
+                        actually have an invitee profile to save. */}
+                    {inviteePreview && (
+                      <label className="flex items-center gap-2 mt-2 text-[10.5px] text-[var(--text-secondary)] cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={addAsFriend}
+                          onChange={(e) => setAddAsFriend(e.target.checked)}
+                          className="accent-[var(--accent)]"
+                        />
+                        Also save {inviteePreview.displayName} to my friends
+                      </label>
+                    )}
 
                     {/* Role-compatibility warning. Appears when the chosen
                         invite role doesn't match the invitee's signup role
