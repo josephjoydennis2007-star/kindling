@@ -8,6 +8,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { openInlineCommentFromSelection } from './InlineCommentPopup';
 
 /**
  * TopBar — slim 44px row above the workspace.
@@ -130,25 +131,18 @@ export default function TopBar({
             anchored to the current text selection (if any). Available on
             Writer / Director / Plot tabs where commenting makes sense.
             Also triggerable via Cmd/Ctrl+Shift+M or by right-clicking
-            in those views. */}
+            in those views.
+            CRITICAL: onMouseDown calls preventDefault() so clicking this
+            button does NOT defocus / clear the user's text selection.
+            Without it, the act of clicking the button blurs whatever
+            input/textarea/editor held the selection and we end up reading
+            an empty selection in onClick. The button still fires onClick
+            normally because mousedown.preventDefault only blocks the
+            FOCUS-change side effect, not the click. */}
         {(activeTab === 'writer' || activeTab === 'director' || activeTab === 'plot') && activeStoryId && (
           <button
-            onClick={() => {
-              document.dispatchEvent(new CustomEvent('app:openInlineComment', {
-                detail: (() => {
-                  const sel = window.getSelection();
-                  let snippet = '';
-                  let x: number | undefined;
-                  let y: number | undefined;
-                  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
-                    snippet = sel.toString().trim();
-                    const r = sel.getRangeAt(0).getBoundingClientRect();
-                    if (r) { x = r.left; y = r.bottom + 8; }
-                  }
-                  return { tab: activeTab, snippet, x, y, target: `${activeTab}${snippet ? ':' + snippet.slice(0, 40) : ''}` };
-                })(),
-              }));
-            }}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => openInlineCommentFromSelection(activeTab)}
             title={`Add comment (${FMT_SHIFT}${FMT_MOD}M)`}
             className="flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-colors text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
           >
