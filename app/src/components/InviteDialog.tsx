@@ -323,7 +323,10 @@ export default function InviteDialog({ user, onOpenAuth }: Props) {
 }
 
 function roleLabel(r: StoryRole): string {
-  return r === 'writer' ? 'WRITER' : r === 'director' ? 'DIRECTOR' : 'BOTH';
+  return r === 'writer' ? 'WRITER'
+    : r === 'director' ? 'DIRECTOR'
+    : r === 'producer' ? 'PRODUCER'
+    : 'BOTH';
 }
 
 function RoleChoice({ icon: Icon, label, desc, value, selected, onPick }: {

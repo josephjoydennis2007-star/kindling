@@ -341,6 +341,12 @@ function App() {
     // Push to Firestore IF the user is signed in. Errors don't block the
     // local save (which always succeeds first). The story doc id matches
     // the local storyId so re-opens find it cleanly.
+    //
+    // Cloud failures are logged but NEVER toasted — local save already
+    // succeeded. Previously a permission-denied here would show a scary
+    // "Cloud sync blocked" toast even though the user's actual work was
+    // safely persisted, which was alarming + misleading. Failures show up
+    // in the Studio tab's diagnostic banner instead.
     if (user) {
       try {
         const { pushStory } = await import('@/lib/cloudStories');
@@ -352,11 +358,7 @@ function App() {
         });
       } catch (err: any) {
         // eslint-disable-next-line no-console
-        console.warn('[Kindling] Cloud save failed (local copy was saved):', err);
-        // Only surface to user if it's likely a config problem.
-        if (err?.code === 'permission-denied') {
-          toast.error('Cloud sync blocked — check Firestore rules in Firebase Console.');
-        }
+        console.warn('[Kindling] Cloud save failed (local copy was saved):', err?.code || err?.message || err);
       }
     }
 

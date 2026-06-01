@@ -183,7 +183,9 @@ export interface CoworkerInfo {
   name: string;
   email?: string;
   avatar?: string | null;
-  role: 'admin' | 'writer' | 'director' | 'viewer';
+  // Includes producer + both (the four role system introduced in v12+).
+  // admin / viewer kept for backward compat with old local data.
+  role: 'admin' | 'writer' | 'director' | 'producer' | 'both' | 'viewer';
   status: 'online' | 'offline' | 'typing' | 'away';
   lastSeen?: number;
   currentSection?: string | null; // which app section they are in
@@ -253,7 +255,9 @@ export interface AppSettings {
   aiModel: string;
   aiEndpoint: string;
   userDisplayName: string;
-  userRole: 'admin' | 'writer' | 'director' | 'viewer';
+  // Mirrors the profile-level role choice (writer/director/producer/both).
+  // admin / viewer kept for backward compat with older local-storage shapes.
+  userRole: 'admin' | 'writer' | 'director' | 'producer' | 'both' | 'viewer';
 
   // Optional cloud-storage provider tokens. All optional so existing
   // saved settings stay valid; each provider stores its own token here.

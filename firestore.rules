@@ -42,8 +42,8 @@ service cloud.firestore {
       allow read: if request.auth != null && (
         resource == null ||
         resource.data.owner == request.auth.uid ||
-        request.auth.uid in resource.data.collaborators ||
-        resource.data.shareable == true
+        request.auth.uid in resource.data.get('collaborators', []) ||
+        resource.data.get('shareable', false) == true
       );
       // Anyone signed in can CREATE a story they own.
       allow create: if request.auth != null
