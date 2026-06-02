@@ -1,73 +1,37 @@
-# React + TypeScript + Vite
+# Kindling app
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+See the **root README** ([../README.md](../README.md)) for product overview, features, and running instructions.
 
-Currently, two official plugins are available:
+This directory is the React + Vite app — most day-to-day work happens in `src/`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Quick commands
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install               # one-time
+npm run dev               # local dev server on :3000
+npm run build             # production bundle into dist/
+npm run preview           # serve the production bundle locally
+npm run test:e2e          # Playwright smoke test
+npm run test:e2e:ui       # interactive Playwright UI
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Source layout
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Path             | What's in it                                              |
+| ---------------- | --------------------------------------------------------- |
+| `src/App.tsx`    | Root layout, keyboard shortcuts, context menus            |
+| `src/main.tsx`   | Entrypoint, error handlers, service worker registration   |
+| `src/components/`| All UI — writer / director / plot / collab / comments…   |
+| `src/lib/`       | Firestore data layer, importers, exporters, AI, sync     |
+| `src/hooks/`     | Custom hooks (useIndexedDB, useStoryRole, useNotifications)|
+| `src/store/`     | Zustand store + persist                                   |
+| `src/types/`     | Shared TypeScript types                                   |
+| `public/`        | Service worker, manifest, icons, reset.html escape hatch  |
+| `tests/`         | Playwright smoke test                                     |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Conventions
+
+- New features land as components in `src/components/<feature>.tsx` + a small data hook in `src/hooks/` if they need to subscribe to Firestore
+- Cloud writes go through `src/lib/cloudStories.ts` (wrapped in `withRecovery` for the stuck-offline auto-fix)
+- TopBar visibility-gated actions check `useStoryRole()` for cloud collab permissions
+- Every keyboard handler must guard `if (typeof e.key !== 'string' || !e.key) return;` (see App.tsx onKey) — some IME / extension events arrive without a `.key`
