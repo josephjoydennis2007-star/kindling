@@ -8,6 +8,7 @@ import { useAppStore } from '@/store/useAppStore';
 // does not exist" 404 came from typing 'chatgpt' as the model name — these
 // defaults stop that from happening.
 const DEFAULT_MODELS: Record<string, string> = {
+  builtin: 'openai',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-sonnet-latest',
   openrouter: 'openai/gpt-4o-mini',
@@ -17,6 +18,7 @@ const DEFAULT_MODELS: Record<string, string> = {
 };
 
 const MODEL_SUGGESTIONS: Record<string, string[]> = {
+  builtin: ['openai', 'mistral', 'llama', 'qwen-coder', 'claude-hybridspace'],
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
   openrouter: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-flash-1.5'],
@@ -26,6 +28,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
 };
 
 const PROVIDER_HELP: Record<string, { name: string; url: string; note: string }> = {
+  builtin: { name: 'Built-in', url: 'https://pollinations.ai', note: '✨ FREE — works out of the box, no key needed. Powered by Pollinations.ai.' },
   openai: { name: 'OpenAI', url: 'https://platform.openai.com/api-keys', note: 'Paid (small free credits for new accounts)' },
   anthropic: { name: 'Anthropic', url: 'https://console.anthropic.com/', note: 'Paid' },
   openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', note: '✨ Has FREE models (look for ":free" suffix)' },
@@ -101,7 +104,7 @@ export default function AIHelperPanel({ onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleProviderChange = (p: 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom') => {
+  const handleProviderChange = (p: 'builtin' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom') => {
     updateSettings({ aiProvider: p as any });
     const wantModel = DEFAULT_MODELS[p] || '';
     if (!modelDraft || MODEL_SUGGESTIONS[(settings.aiProvider as string)]?.includes(modelDraft)) {
@@ -148,9 +151,9 @@ export default function AIHelperPanel({ onClose }: Props) {
     const userMsg: Msg = { role: 'user', content: userText, ts: Date.now() };
     setMessages((m) => [...m, userMsg]);
 
-    // Ollama runs locally and never needs a key — only gate on missing key for
-    // hosted providers.
-    if (!settings.aiApiKey && settings.aiProvider !== 'ollama') {
+    // Ollama runs locally and never needs a key. 'builtin' (Pollinations) is
+    // free and keyless. Only gate on missing key for paid hosted providers.
+    if (!settings.aiApiKey && settings.aiProvider !== 'ollama' && settings.aiProvider !== 'builtin') {
       // Local fallback — show a templated reply explaining how to enable.
       const stub: Msg = {
         role: 'assistant',
@@ -260,7 +263,7 @@ export default function AIHelperPanel({ onClose }: Props) {
           >
             <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Provider</div>
             <div className="grid grid-cols-3 gap-1.5">
-              {(['openai', 'anthropic', 'openrouter', 'groq', 'ollama', 'custom'] as const).map((p) => (
+              {(['builtin', 'openai', 'anthropic', 'openrouter', 'groq', 'ollama', 'custom'] as const).map((p) => (
                 <button
                   key={p}
                   onClick={() => handleProviderChange(p)}
@@ -467,7 +470,7 @@ export default function AIHelperPanel({ onClose }: Props) {
           onClick={async () => {
             const sel = getEditorSelection();
             if (!sel) { toast.error('Select text in the editor first'); return; }
-            if (!settings.aiApiKey && settings.aiProvider !== 'ollama') {
+            if (!settings.aiApiKey && settings.aiProvider !== 'ollama' && settings.aiProvider !== 'builtin') {
               toast.error('Add an API key (⚙) to use inline rewrite');
               return;
             }
@@ -522,7 +525,11 @@ export default function AIHelperPanel({ onClose }: Props) {
           />
           <div className="flex items-center justify-between px-2 pb-2">
             <span className="text-[10px] text-[var(--text-muted)]">
-              {settings.aiApiKey ? `${settings.aiProvider} · ${settings.aiModel || '(default model)'}` : 'No key set — click ⚙ to add one'}
+              {settings.aiProvider === 'builtin'
+                ? `Built-in AI · ${settings.aiModel || 'openai'} (free, no key needed)`
+                : settings.aiApiKey
+                  ? `${settings.aiProvider} · ${settings.aiModel || '(default model)'}`
+                  : 'No key set — click ⚙ to add one'}
             </span>
             <button
               onClick={() => send()}
@@ -561,7 +568,7 @@ function buildContext({ screenplay, characters, scenes }: any): string {
 }
 
 async function callAI(opts: {
-  provider: 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
+  provider: 'builtin' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
   endpoint: string;
   apiKey: string;
   model: string;
@@ -677,6 +684,11 @@ async function callAI(opts: {
     return full;
   }
 
+  // Built-in: Pollinations.ai's free, no-key OpenAI-compatible endpoint.
+  // Streams via standard SSE so the same openAIStyle reader handles it.
+  if (opts.provider === 'builtin') {
+    return openAIStyle('https://text.pollinations.ai/openai');
+  }
   if (opts.provider === 'openai') return openAIStyle('https://api.openai.com/v1/chat/completions');
   if (opts.provider === 'openrouter') return openAIStyle('https://openrouter.ai/api/v1/chat/completions', {
     'HTTP-Referer': location.origin,

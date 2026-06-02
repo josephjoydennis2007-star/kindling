@@ -3,14 +3,22 @@ import { motion } from 'framer-motion';
 import { X, Upload, Image as ImageIcon, Music, FileText, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
-import type { AssetKind } from '@/types';
+import type { Asset, AssetKind } from '@/types';
 
 /**
  * Per-story asset library. Images, audio, references. Drag any image asset
  * into a shot's storyboard slot (it sets the storyboard data URL).
  */
+// Stable empty-array reference. Returning `[]` inline from a Zustand
+// selector creates a NEW array on every render, which fails Object.is
+// comparison and forces a re-render on EVERY store update — that, combined
+// with downstream effects, was triggering React error #185 ("Maximum update
+// depth exceeded") when the user opened Assets. Sharing one frozen array
+// breaks the cycle.
+const EMPTY_ASSETS: Asset[] = [];
+
 export default function AssetsPanel({ onClose }: { onClose: () => void }) {
-  const assets = useAppStore((s) => s.screenplay.assets || []);
+  const assets = useAppStore((s) => (s.screenplay.assets ?? EMPTY_ASSETS) as Asset[]);
   const addAsset = useAppStore((s) => s.addAsset);
   const deleteAsset = useAppStore((s) => s.deleteAsset);
   const [filter, setFilter] = useState<'all' | AssetKind>('all');

@@ -11,6 +11,11 @@
 import type { AppSettings } from '@/types';
 
 const DEFAULT_MODELS: Record<string, string> = {
+  // 'builtin' is the no-key free default — Pollinations.ai. Their text endpoint
+  // accepts a `model` param naming an upstream backend ('openai', 'mistral',
+  // 'llama' etc.); 'openai' gives the best general-purpose quality at time
+  // of writing. Free, rate-limited, no auth.
+  builtin: 'openai',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-sonnet-latest',
   openrouter: 'openai/gpt-4o-mini',
@@ -18,6 +23,11 @@ const DEFAULT_MODELS: Record<string, string> = {
   ollama: 'llama3.2',
   custom: '',
 };
+
+// Pollinations Text API — free OpenAI-compatible endpoint. Documented at
+// https://pollinations.ai/text — no API key required, suitable for the
+// out-of-the-box "AI co-worker" experience.
+const POLLINATIONS_TEXT_URL = 'https://text.pollinations.ai/openai';
 
 export interface AIMsg {
   role: 'user' | 'assistant' | 'system';
@@ -37,7 +47,8 @@ export type AIResult =
  * Ollama). Useful for deciding whether to gate UI on a missing key.
  */
 export function providerNeedsKey(provider: string): boolean {
-  return provider !== 'ollama';
+  // 'builtin' (Pollinations) and 'ollama' (local) both run without a key.
+  return provider !== 'ollama' && provider !== 'builtin';
 }
 
 /**
@@ -86,6 +97,7 @@ export async function aiOnce(
 
     // OpenAI-style chat-completions request (everything else)
     const url =
+      provider === 'builtin'    ? POLLINATIONS_TEXT_URL :
       provider === 'openai'     ? 'https://api.openai.com/v1/chat/completions' :
       provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
       provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :

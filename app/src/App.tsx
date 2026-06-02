@@ -33,6 +33,10 @@ import StorySelector from '@/components/StorySelector';
 import WorkspaceView from '@/components/WorkspaceView';
 import StoryDashboard from '@/components/StoryDashboard';
 import CalendarView from '@/components/CalendarView';
+import OutlineView from '@/components/OutlineView';
+import WorldView from '@/components/WorldView';
+import StoryboardView from '@/components/StoryboardView';
+import LocationsView from '@/components/LocationsView';
 import CommandPalette from '@/components/CommandPalette';
 import Onboarding from '@/components/Onboarding';
 import FindReplace from '@/components/FindReplace';
@@ -859,13 +863,8 @@ function App() {
           onOpenSettings={() => setShowSettings(true)}
           onOpenProfile={() => setShowUserMenu((v) => !v)}
           user={user ? { displayName: profile?.displayName || user.displayName, photoURL: profile?.avatar || user.photoURL, email: user.email } : null}
-          currentPanel={rightPanel}
-          onOpenPanel={(p) => {
-            if (p === 'comments') markCommentsSeen();
-            togglePanel(p as any);
-          }}
-          pendingInvites={pendingInvites}
-          unreadComments={unreadComments}
+          canWrite={canWrite}
+          canDirect={canDirect}
         />
       )}
       {!isFocusMode && activeTab !== 'writer' && (
@@ -1002,8 +1001,32 @@ function App() {
             )}
 
             {activeTab === 'calendar' && (
-              <div key="calendar" className="h-full">
+              <div key="calendar" className={`h-full ${canDirect ? '' : 'pointer-events-none select-text opacity-90'}`}>
                 <CalendarView />
+              </div>
+            )}
+
+            {/* Writer-section workspaces — gated by canWrite */}
+            {activeTab === 'outline' && (
+              <div key="outline" className={`h-full ${canWrite ? '' : 'pointer-events-none select-text opacity-90'}`}>
+                <OutlineView />
+              </div>
+            )}
+            {activeTab === 'world' && (
+              <div key="world" className={`h-full ${canWrite ? '' : 'pointer-events-none select-text opacity-90'}`}>
+                <WorldView />
+              </div>
+            )}
+
+            {/* Director-section workspaces — gated by canDirect */}
+            {activeTab === 'storyboard' && (
+              <div key="storyboard" className={`h-full ${canDirect ? '' : 'pointer-events-none select-text opacity-90'}`}>
+                <StoryboardView />
+              </div>
+            )}
+            {activeTab === 'locations' && (
+              <div key="locations" className={`h-full ${canDirect ? '' : 'pointer-events-none select-text opacity-90'}`}>
+                <LocationsView />
               </div>
             )}
         </div>

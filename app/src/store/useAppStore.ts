@@ -48,9 +48,13 @@ const defaultSettings: AppSettings = {
 
   defaultSaveFolder: null,
   socialBarEnabled: true,
-  aiProvider: 'anthropic',
+  // 'builtin' is the free, no-API-key default. Uses Pollinations.ai so any
+  // user — including someone who just installed the app — can talk to the
+  // co-worker AI right away. Power users can switch to OpenAI/Anthropic etc.
+  // in Settings → AI for higher-quality output.
+  aiProvider: 'builtin',
   aiApiKey: '',
-  aiModel: 'claude-opus-4-7',
+  aiModel: 'openai',
   aiEndpoint: '',
   userDisplayName: 'You',
   userRole: 'admin',

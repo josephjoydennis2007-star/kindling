@@ -250,7 +250,11 @@ export interface AppSettings {
   // New
   defaultSaveFolder: string | null;       // user-friendly name (handle stored in IDB)
   socialBarEnabled: boolean;
-  aiProvider: 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
+  // 'builtin' is the no-setup, free-by-default provider. It proxies through
+  // Pollinations.ai which serves an OpenAI-compatible endpoint with no API
+  // key required. Users can still pick a paid provider if they want better
+  // models or higher rate limits.
+  aiProvider: 'builtin' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
   aiApiKey: string;
   aiModel: string;
   aiEndpoint: string;
@@ -340,7 +344,17 @@ export const REVISION_COLORS: { name: string; hex: string; textHex: string }[] =
   { name: 'Second White', hex: '#f8fafc', textHex: '#222222' },
 ];
 
-export type AppTab = 'dashboard' | 'writer' | 'director' | 'plot' | 'workspace' | 'calendar';
+// Writer-section views: writer, outline, world, research
+// Director-section views: director, plot, storyboard, schedule (calendar), locations
+// General views: dashboard, workspace
+export type AppTab =
+  | 'dashboard'
+  // Writer workspaces
+  | 'writer' | 'outline' | 'world' | 'research'
+  // Director workspaces
+  | 'director' | 'plot' | 'storyboard' | 'calendar' | 'locations'
+  // General
+  | 'workspace';
 
 export type RightPanelType =
   | 'notes'

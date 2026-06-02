@@ -3,8 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   PenLine, Clapperboard, LayoutGrid, Calendar as CalendarIcon, Briefcase, Sparkles,
   Settings, Plus, X, ChevronRight,
-  Users, StickyNote, MessageCircle, Bot, Image as ImageIcon, History as HistoryIcon,
+  ListTree, Globe2, Image as ImageIcon, MapPin,
+  Lock,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import { t } from '@/lib/i18n';
 import type { Story } from '@/types';
@@ -12,23 +14,36 @@ import type { Story } from '@/types';
 /**
  * IconRail — the ONE persistent navigation surface.
  *
- * A 56px-wide vertical rail on the far left of the app. Holds:
- *   - The K logo (click → opens the Stories drawer)
- *   - Six view icons (Home / Writer / Director / Plot / Calendar / Workspace)
- *   - Settings + User avatar at the bottom
+ * A 56px-wide vertical rail on the far left. The user explicitly asked for
+ * the rail to be SECTIONED so that everything in the top group belongs to
+ * the writer's job and everything in the bottom group belongs to the
+ * director's job. If a collaborator is invited as a director only, their
+ * Writer-section icons render LOCKED (and clicking shows a permissions
+ * toast). And vice versa. Owners and 'both'-role users see no locks.
  *
- * This replaces the previous 280px Sidebar's 2x3 tab grid + Story Tools list
- * + AI Tools list + Settings list + User dock. Everything that used to be in
- * that sidebar is now reachable via:
- *   - Rail icons (the six views)
- *   - Logo click → Stories drawer
- *   - Settings cog → Settings overlay
- *   - User avatar → Profile/sign-out sheet
- *   - Top bar "…" menu (AI tools, Export, etc.)
- *   - Cmd/Ctrl+K command palette
+ *   K logo
+ *   ──── (rule)
+ *   Dashboard
+ *   ──── (writer-section label) ────
+ *   Writer    PenLine
+ *   Outline   ListTree
+ *   World     Globe2
+ *   ──── (director-section label) ────
+ *   Director  Clapperboard
+ *   Plot      LayoutGrid
+ *   Storyboard ImageIcon
+ *   Schedule  Calendar
+ *   Locations MapPin
+ *   ──── (general) ────
+ *   Workspace Briefcase
+ *   (spacer)
+ *   Settings cog
+ *   Avatar
  *
- * The active view gets a Tobacco-gold left bar marker — that's the only
- * always-on accent in the rail. Inspired by ElevenLabs / Notion / Linear.
+ * Each section icon highlights when its tab is active using the same
+ * Tobacco-gold left bar marker the previous rail used. Section dividers
+ * are visible faint rules so the user can see at a glance which group
+ * an item belongs to.
  */
 
 interface Props {
@@ -41,36 +56,32 @@ interface Props {
   onOpenSettings: () => void;
   onOpenProfile?: () => void;
   user?: { displayName?: string | null; photoURL?: string | null; email?: string | null } | null;
-  /** Currently active right-inspector (or null). Drives highlight state
-   *  on the inspector quick-jump icons. */
-  currentPanel?: string | null;
-  /** Open / toggle a right-inspector panel by name. */
-  onOpenPanel?: (panel: string) => void;
-  /** Notification counts for inspector badges. */
-  pendingInvites?: number;
-  unreadComments?: number;
+  /** Permission flags from the story role hook. Default true so the
+   *  rail still renders unlocked when nothing is wired up. */
+  canWrite?: boolean;
+  canDirect?: boolean;
 }
 
-const VIEWS = [
-  { id: 'dashboard', key: 'tab.dashboard', icon: Sparkles },
-  { id: 'writer',    key: 'tab.writer',    icon: PenLine },
-  { id: 'director',  key: 'tab.director',  icon: Clapperboard },
-  { id: 'plot',      key: 'tab.plot',      icon: LayoutGrid },
-  { id: 'calendar',  key: 'tab.calendar',  icon: CalendarIcon },
-  { id: 'workspace', key: 'tab.workspace', icon: Briefcase },
+// Writer section — everything here is part of the writer's job.
+const WRITER_VIEWS = [
+  { id: 'writer',  labelKey: 'tab.writer',  fallback: 'Writer',  icon: PenLine,  desc: 'The screenplay editor' },
+  { id: 'outline', labelKey: 'tab.outline', fallback: 'Outline', icon: ListTree, desc: 'Treatment, theme, story points' },
+  { id: 'world',   labelKey: 'tab.world',   fallback: 'World',   icon: Globe2,   desc: 'Worldbuilding wiki' },
 ];
 
-// Inspector quick-jumps — each one opens the matching right-side panel
-// from any view, so you don't have to dig through Tools menus to reach
-// Characters, Notes, Comments, AI Helper, Assets, History. The labels
-// here are short single-word names that fit the rail's tooltip slot.
-const INSPECTORS = [
-  { id: 'characters', label: 'Characters', icon: Users },
-  { id: 'notes',      label: 'Notes',      icon: StickyNote },
-  { id: 'comments',   label: 'Comments',   icon: MessageCircle },
-  { id: 'ai',         label: 'AI Helper',  icon: Bot },
-  { id: 'assets',     label: 'Assets',     icon: ImageIcon },
-  { id: 'history',    label: 'History',    icon: HistoryIcon },
+// Director section — everything here is part of the director's job.
+const DIRECTOR_VIEWS = [
+  { id: 'director',   labelKey: 'tab.director',   fallback: 'Director',   icon: Clapperboard, desc: 'Scenes + shot list' },
+  { id: 'plot',       labelKey: 'tab.plot',       fallback: 'Plot',       icon: LayoutGrid,   desc: 'Plot board / beat sheet' },
+  { id: 'storyboard', labelKey: 'tab.storyboard', fallback: 'Storyboard', icon: ImageIcon,    desc: 'Full storyboard grid' },
+  { id: 'calendar',   labelKey: 'tab.calendar',   fallback: 'Schedule',   icon: CalendarIcon, desc: 'Shoot schedule' },
+  { id: 'locations',  labelKey: 'tab.locations',  fallback: 'Locations',  icon: MapPin,       desc: 'Production location scout' },
+];
+
+// General — accessible to all roles.
+const GENERAL_VIEWS = [
+  { id: 'dashboard', labelKey: 'tab.dashboard', fallback: 'Dashboard', icon: Sparkles,  desc: 'Story dashboard' },
+  { id: 'workspace', labelKey: 'tab.workspace', fallback: 'Workspace', icon: Briefcase, desc: 'External tools + links' },
 ];
 
 export default function IconRail({
@@ -83,28 +94,91 @@ export default function IconRail({
   onOpenSettings,
   onOpenProfile,
   user,
-  currentPanel,
-  onOpenPanel,
-  unreadComments = 0,
+  canWrite = true,
+  canDirect = true,
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const locale = (useAppStore((s) => (s.settings as any).locale) as ('en'|'es'|'fr')) || 'en';
   const activeStory = stories.find((s) => s.id === activeStoryId);
 
+  // Wrap onTabChange so we can intercept locked-tab clicks and show a
+  // toast instead of changing tabs.
+  const tryTabChange = (tab: string, locked: boolean) => {
+    if (locked) {
+      toast.error("You don't have access to this workspace on this story", {
+        description: 'Ask the story owner to grant you writer or director access.',
+      });
+      return;
+    }
+    onTabChange(tab);
+  };
+
+  // Render a single rail item with active marker + lock overlay.
+  const renderItem = (
+    v: { id: string; labelKey: string; fallback: string; icon: any; desc: string },
+    locked: boolean,
+  ) => {
+    const isActive = activeTab === v.id;
+    const label = t(v.labelKey, locale) === v.labelKey ? v.fallback : t(v.labelKey, locale);
+    return (
+      <li key={v.id} className="relative">
+        {isActive && (
+          <span
+            aria-hidden
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+            style={{ background: 'var(--accent)' }}
+          />
+        )}
+        <button
+          onClick={() => tryTabChange(v.id, locked)}
+          title={locked ? `${label} (locked — no access)` : `${label} — ${v.desc}`}
+          aria-label={label}
+          aria-current={isActive ? 'page' : undefined}
+          className={`relative w-10 h-10 rounded-md flex items-center justify-center transition-colors ${
+            isActive
+              ? 'rail-active-bg text-[var(--accent)]'
+              : locked
+                ? 'text-[var(--text-muted)]/40 hover:text-[var(--text-muted)]/60'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+          }`}
+        >
+          <v.icon className="w-[18px] h-[18px]" />
+          {locked && (
+            <Lock
+              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[var(--rail-bg)] rounded-full p-0.5"
+              style={{ color: 'var(--text-muted)' }}
+            />
+          )}
+        </button>
+      </li>
+    );
+  };
+
+  // Tiny section label glyph between groups — narrow capitalized hint
+  // showing whose section this is. Helps a viewer instantly understand
+  // why some icons are locked.
+  const SectionLabel = ({ text, locked }: { text: string; locked: boolean }) => (
+    <div
+      className="my-1 text-[8px] uppercase tracking-widest font-bold text-center select-none"
+      style={{ color: locked ? 'var(--text-muted)' : 'var(--text-secondary)', opacity: 0.7 }}
+      aria-hidden
+    >
+      {text}
+    </div>
+  );
+
   return (
     <>
-      {/* Desktop + tablet: vertical 56px rail on the left.
-          Phone (<sm): becomes a 56px BOTTOM nav bar pinned to the screen
-          bottom (above the StatusLine), exactly like iOS tab bar. The
-          drawer + Settings cog + avatar are reachable via the same icons. */}
+      {/* Desktop + tablet: vertical 56px rail. Mobile (<sm) becomes a
+          horizontal bottom nav with a condensed view set. */}
       <nav
-        className="hidden sm:flex flex-col items-center py-2 gap-1 bg-[var(--rail-bg)] border-r border-[var(--rule)] flex-shrink-0 w-14 z-30"
+        className="hidden sm:flex flex-col items-center py-2 gap-0.5 bg-[var(--rail-bg)] border-r border-[var(--rule)] flex-shrink-0 w-14 z-30 overflow-y-auto"
         aria-label="Primary navigation"
       >
         {/* Logo — opens the stories drawer */}
         <button
           onClick={() => setDrawerOpen(true)}
-          className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--accent-ink)] font-display font-bold text-base mb-1 transition-colors"
+          className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--accent-ink)] font-display font-bold text-base mb-1 transition-colors flex-shrink-0"
           style={{ background: 'var(--accent)' }}
           aria-label="Open stories drawer"
           title="Stories"
@@ -112,96 +186,39 @@ export default function IconRail({
           K
         </button>
 
-        <div className="w-8 h-px bg-[var(--rule)] my-1" aria-hidden />
+        <div className="w-8 h-px bg-[var(--rule)] my-1 flex-shrink-0" aria-hidden />
 
-        {/* View icons */}
-        <ul className="flex flex-col gap-0.5">
-          {VIEWS.map((v) => {
-            const isActive = activeTab === v.id;
-            return (
-              <li key={v.id} className="relative">
-                {isActive && (
-                  <span
-                    aria-hidden
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
-                    style={{ background: 'var(--accent)' }}
-                  />
-                )}
-                <button
-                  onClick={() => onTabChange(v.id)}
-                  title={t(v.key, locale)}
-                  aria-label={t(v.key, locale)}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`w-10 h-10 rounded-md flex items-center justify-center transition-colors ${
-                    isActive
-                      ? 'rail-active-bg text-[var(--accent)]'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <v.icon className="w-[18px] h-[18px]" />
-                </button>
-              </li>
-            );
-          })}
+        {/* Dashboard — always visible */}
+        <ul className="flex flex-col gap-0.5 flex-shrink-0">
+          {GENERAL_VIEWS.filter((v) => v.id === 'dashboard').map((v) => renderItem(v, false))}
         </ul>
 
-        {/* Divider + Inspector quick-jumps — same width as the view icons
-            but with a slightly softer hover. Each one toggles the right
-            inspector panel for that tool. Badged like the TopBar Tools
-            menu so Comments / Collaborate are discoverable when new. */}
-        {onOpenPanel && (
-          <>
-            <div className="w-8 h-px bg-[var(--rule)] my-2" aria-hidden />
-            <ul className="flex flex-col gap-0.5">
-              {INSPECTORS.map((it) => {
-                const isActive = currentPanel === it.id;
-                const badge =
-                  it.id === 'comments' ? unreadComments
-                  : it.id === 'characters' ? 0
-                  : 0;
-                return (
-                  <li key={it.id} className="relative">
-                    {isActive && (
-                      <span
-                        aria-hidden
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
-                        style={{ background: 'var(--accent)' }}
-                      />
-                    )}
-                    <button
-                      onClick={() => onOpenPanel(it.id)}
-                      title={it.label}
-                      aria-label={it.label}
-                      className={`relative w-10 h-10 rounded-md flex items-center justify-center transition-colors ${
-                        isActive
-                          ? 'rail-active-bg text-[var(--accent)]'
-                          : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      <it.icon className="w-[17px] h-[17px]" />
-                      {badge > 0 && (
-                        <span
-                          className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full"
-                          style={{ background: 'var(--accent)' }}
-                          aria-label={`${badge} new`}
-                        />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
-        )}
+        {/* Writer section */}
+        <SectionLabel text="Writer" locked={!canWrite} />
+        <ul className="flex flex-col gap-0.5 flex-shrink-0">
+          {WRITER_VIEWS.map((v) => renderItem(v, !canWrite))}
+        </ul>
+
+        {/* Director section */}
+        <SectionLabel text="Director" locked={!canDirect} />
+        <ul className="flex flex-col gap-0.5 flex-shrink-0">
+          {DIRECTOR_VIEWS.map((v) => renderItem(v, !canDirect))}
+        </ul>
+
+        {/* General — workspace always visible */}
+        <div className="w-8 h-px bg-[var(--rule)] my-2 flex-shrink-0" aria-hidden />
+        <ul className="flex flex-col gap-0.5 flex-shrink-0">
+          {GENERAL_VIEWS.filter((v) => v.id === 'workspace').map((v) => renderItem(v, false))}
+        </ul>
 
         {/* Spacer pushes Settings + avatar to the bottom */}
-        <div className="flex-1" />
+        <div className="flex-1 min-h-2" />
 
         <button
           onClick={onOpenSettings}
           title="Settings"
           aria-label="Settings"
-          className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] transition-colors"
+          className="w-10 h-10 rounded-md flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] transition-colors flex-shrink-0"
         >
           <Settings className="w-[18px] h-[18px]" />
         </button>
@@ -210,7 +227,7 @@ export default function IconRail({
           onClick={() => onOpenProfile?.()}
           title={user?.displayName || user?.email || 'You'}
           aria-label="Open user menu"
-          className="avatar-gradient w-10 h-10 rounded-full overflow-hidden flex items-center justify-center transition-transform hover:scale-[1.04]"
+          className="avatar-gradient w-10 h-10 rounded-full overflow-hidden flex items-center justify-center transition-transform hover:scale-[1.04] flex-shrink-0"
         >
           {user?.photoURL
             ? <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
@@ -220,7 +237,7 @@ export default function IconRail({
         </button>
       </nav>
 
-      {/* Mobile bottom nav (< sm) — same icons, horizontal layout */}
+      {/* Mobile bottom nav — condensed: Stories + 5 most-used icons */}
       <nav
         className="sm:hidden fixed bottom-7 left-0 right-0 h-12 flex items-center justify-around px-1 bg-[var(--rail-bg)] border-t border-[var(--rule)] z-30"
         aria-label="Primary navigation"
@@ -233,21 +250,33 @@ export default function IconRail({
         >
           K
         </button>
-        {VIEWS.slice(0, 5).map((v) => {
+        {/* Compressed mobile: writer + director + plot + dashboard + workspace */}
+        {[
+          { id: 'writer',    fallback: 'Writer',    icon: PenLine,     locked: !canWrite },
+          { id: 'director',  fallback: 'Director',  icon: Clapperboard, locked: !canDirect },
+          { id: 'plot',      fallback: 'Plot',      icon: LayoutGrid,  locked: !canDirect },
+          { id: 'dashboard', fallback: 'Dashboard', icon: Sparkles,    locked: false },
+          { id: 'workspace', fallback: 'Workspace', icon: Briefcase,   locked: false },
+        ].map((v) => {
           const isActive = activeTab === v.id;
           return (
             <button
               key={v.id}
-              onClick={() => onTabChange(v.id)}
-              aria-label={t(v.key, locale)}
+              onClick={() => tryTabChange(v.id, v.locked)}
+              aria-label={v.fallback}
               aria-current={isActive ? 'page' : undefined}
-              className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors ${
+              className={`relative w-9 h-9 rounded-md flex items-center justify-center transition-colors ${
                 isActive
                   ? 'rail-active-bg text-[var(--accent)]'
-                  : 'text-[var(--text-secondary)] hover:bg-[var(--hover)]'
+                  : v.locked
+                    ? 'text-[var(--text-muted)]/40'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--hover)]'
               }`}
             >
               <v.icon className="w-[18px] h-[18px]" />
+              {v.locked && (
+                <Lock className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[var(--rail-bg)] rounded-full p-0.5" style={{ color: 'var(--text-muted)' }} />
+              )}
             </button>
           );
         })}
