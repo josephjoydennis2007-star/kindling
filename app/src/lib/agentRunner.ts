@@ -1,4 +1,4 @@
-import { aiOnce, extractJSON } from '@/lib/aiClient';
+import { aiOnce } from '@/lib/aiClient';
 import { runTool, snapshotState, toolsManual, setAgentRunning, type AgentEvent } from '@/lib/agentTools';
 import { appendTurns, loadMemory, type MemoryTurn } from '@/lib/agentMemory';
 import { useAppStore } from '@/store/useAppStore';
@@ -36,7 +36,7 @@ ${toolsManual()}
 On EVERY turn, respond with ONE JSON object — nothing else, no prose around it:
 
 {
-  "thought": "1–2 sentences explaining what you're about to do",
+  "thought": "one short sentence (≤ 20 words) — what you're about to do",
   "actions": [
     { "tool": "toolName", "args": { ... } },
     ...
@@ -44,14 +44,14 @@ On EVERY turn, respond with ONE JSON object — nothing else, no prose around it
   "done": false
 }
 
-Rules
-- Always start a fresh sub-task with a \`navigate\` action so the user can SEE your work.
-- You can emit up to 15 actions per turn. Use more actions per turn for big requests — don't stop after 3.
+CRITICAL RULES — read these every turn:
+- **Keep each turn SMALL.** 3–6 actions per turn maximum. The loop gives you 30 turns — use them. Quality + completeness over a single huge plan.
+- **Your full JSON response MUST be under 1500 tokens.** If you write more, it gets truncated mid-string and the parser fails — your turn is wasted.
+- **Don't put long text in args.** A whole scene's dialogue + action can be 200–400 words in ONE writeScreenplay call, but never write multiple long scenes in one turn. Do one scene per turn.
+- Always start a sub-task with a \`navigate\` action so the user SEES what you're doing.
 - When a previous tool failed, fix it next turn — don't repeat the same failing args.
-- For BIG requests (write a whole feature outline, build a full plot board, populate 10 characters, etc.) do NOT emit \`done\` until you've done EVERY part. Use multiple turns.
-- If you're not 100% sure what already exists, call a \`list*\` or \`getScreenplaySummary\` tool FIRST so you don't duplicate work.
-- For long-form prose (scene description, dialogue, monologue), use \`writeScreenplay\` with multi-line text — write a LOT of content per call.
-- The user can see every action live. Make your actions varied and visible — don't stack 15 identical adds.
+- For BIG requests do NOT emit \`done\` until every part is complete. Plan: turn 1 = setup (title/logline/synopsis), turns 2–4 = characters, turns 5–8 = plot board, turns 9+ = scenes + screenplay text. The loop will continue automatically.
+- Use \`list*\` or \`getScreenplaySummary\` BEFORE editing/deleting so you reference the real names/ids in the app.
 
 ## Prior conversation on this story
 ${history || '(no prior conversation — this is a fresh start)'}
@@ -122,22 +122,32 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
 
       emitTurn({ ts: Date.now(), kind: 'plan', text: `Thinking… (turn ${iter + 1}/${max})` });
 
-      const ai = await aiOnce(settings, system, userMsg, { maxTokens: 3500, temperature: 0.45 });
+      const ai = await aiOnce(settings, system, userMsg, { maxTokens: 2400, temperature: 0.4 });
       if (!ai.ok) {
         emitTurn({ ts: Date.now(), kind: 'error', text: ai.error });
         appendTurns(storyId, [{ role: 'assistant', content: `Error: ${ai.error}`, ts: Date.now() }]);
         return;
       }
-      const plan = extractJSON<PlanShape>(ai.text) || {};
-      if (!plan.actions || !Array.isArray(plan.actions) || plan.actions.length === 0) {
-        // No actions returned — surface the AI's text but DO NOT stop;
-        // ask it to try again next turn if there's clearly more to do.
-        const text = plan.thought || ai.text.slice(0, 400) || 'No actions returned.';
-        emitTurn({ ts: Date.now(), kind: 'reply', text });
-        appendTurns(storyId, [{ role: 'assistant', content: text, ts: Date.now() }]);
-        // Stop if the AI explicitly said done or this is the first turn
-        // (avoid infinite no-ops). Otherwise give it one more chance.
-        if (plan.done || iter === 0) break;
+      const plan = parseAndRepairPlan(ai.text);
+      if (!plan || !plan.actions || !Array.isArray(plan.actions) || plan.actions.length === 0) {
+        // Parser couldn't recover anything useful. Show a short status and
+        // RETRY rather than bail — past v2 we used to break here which
+        // surfaced raw JSON to the user. Now we feed the failure back to
+        // the AI with a "respond shorter" reminder.
+        const snippet = ai.text.slice(0, 160);
+        emitTurn({ ts: Date.now(), kind: 'plan', text: `Response was unparseable — asking the AI to try again with a smaller plan…` });
+        history.push({ role: 'assistant', content: snippet, ts: Date.now() });
+        history.push({
+          role: 'tool',
+          content: 'PARSE FAILURE — your last response was not valid JSON (likely truncated). Respond AGAIN with ONE small JSON object: thought + 2–4 actions. Keep all string args short.',
+          ts: Date.now(),
+        });
+        // Bail only if we've been failing for several turns straight.
+        if (iter >= 2) {
+          emitTurn({ ts: Date.now(), kind: 'error', text: 'AI is not returning parseable plans. Try a smaller request or stop and restart.' });
+          appendTurns(storyId, [{ role: 'assistant', content: 'Aborted: repeated parse failures.', ts: Date.now() }]);
+          break;
+        }
         continue;
       }
 
@@ -188,4 +198,97 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
 function renderHistory(turns: MemoryTurn[]): string {
   const recent = turns.slice(-24);
   return recent.map((t) => `[${t.role.toUpperCase()}]\n${t.content}`).join('\n\n');
+}
+
+/**
+ * parseAndRepairPlan — robust JSON extraction tolerant to TRUNCATION.
+ *
+ * The built-in Pollinations model frequently emits a valid-shaped JSON
+ * object but runs over the max_tokens budget mid-string, leaving
+ * unterminated strings + unclosed braces/brackets. JSON.parse rejects
+ * those, which used to drop us into the "no actions returned" branch
+ * and show the user raw JSON in the log.
+ *
+ * Strategy:
+ *   1. Try clean parse.
+ *   2. Strip ```json fences.
+ *   3. Slice from first '{' to last '}', try parse.
+ *   4. JSON-aware brace counter: walk the string, track string/escape
+ *      state, count open vs closed brackets. If we're mid-string, close
+ *      it. Then close any unclosed arrays + objects.
+ *   5. If step 4 still fails, progressively drop the trailing bytes
+ *      (50 char chunks) and re-close until parse succeeds.
+ *
+ * Returns the parsed object (or null if nothing salvageable). For our
+ * loop we accept partial action arrays — if the AI was mid-way through
+ * its 5th action when truncation hit, we'll still execute actions 1–4.
+ */
+export function parseAndRepairPlan(raw: string): PlanShape | null {
+  if (!raw) return null;
+  const s = raw.trim();
+
+  // 1. Clean parse first.
+  try { return JSON.parse(s) as PlanShape; } catch {}
+
+  // 2. Strip ```json fences if present.
+  const fence = s.match(/```(?:json)?\s*([\s\S]+?)```/i);
+  const candidate1 = fence ? fence[1] : s;
+  try { return JSON.parse(candidate1) as PlanShape; } catch {}
+
+  // 3. Slice between first '{' and last '}'.
+  const first = candidate1.indexOf('{');
+  const last = candidate1.lastIndexOf('}');
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(candidate1.slice(first, last + 1)) as PlanShape; } catch {}
+  }
+
+  // 4. JSON-aware repair: count open structures, close them.
+  const body = first >= 0 ? candidate1.slice(first) : candidate1;
+  const repaired = closeOpenStructures(body);
+  try { return JSON.parse(repaired) as PlanShape; } catch {}
+
+  // 5. Progressively drop the trailing bytes + retry, dropping the
+  // unclosed last action so we at least keep the earlier ones.
+  let trimmed = repaired;
+  for (let i = 0; i < 30; i++) {
+    // Drop last 50 chars, then strip dangling ',' or ':' and re-close.
+    trimmed = trimmed.slice(0, Math.max(0, trimmed.length - 60));
+    if (trimmed.length < 20) break;
+    const cleaned = closeOpenStructures(trimmed.replace(/[,:\s]+$/g, ''));
+    try { return JSON.parse(cleaned) as PlanShape; } catch {}
+  }
+  return null;
+}
+
+/** Walk the string tracking string/escape state and emit a corrected
+ *  copy that closes any unterminated string + open brackets/braces.
+ *  Best-effort — assumes the input is mostly-valid JSON that ran out
+ *  of room. */
+function closeOpenStructures(body: string): string {
+  let openCurly = 0;
+  let openSquare = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (esc) { esc = false; continue; }
+    if (inStr) {
+      if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{') openCurly++;
+    else if (ch === '}') openCurly--;
+    else if (ch === '[') openSquare++;
+    else if (ch === ']') openSquare--;
+  }
+  let out = body;
+  // Strip an unterminated trailing object/array element
+  // (e.g. `, { "tool": "x", "args":`). Trim any trailing comma + colon.
+  out = out.replace(/[,:\s]+$/, '');
+  if (inStr) out += '"';
+  while (openSquare > 0) { out += ']'; openSquare--; }
+  while (openCurly > 0) { out += '}'; openCurly--; }
+  return out;
 }
