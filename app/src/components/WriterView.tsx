@@ -414,6 +414,24 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
     editor?.setEditable(!readingMode);
   }, [editor, readingMode]);
 
+  // External rebuild: when the agentic co-worker writes new screenplay
+  // elements via the store, dispatch `writer:rebuild` so the live TipTap
+  // editor re-syncs with the store. Without this the agent's changes
+  // would be invisible until the user navigated away + back.
+  useEffect(() => {
+    if (!editor) return;
+    const onRebuild = () => {
+      const els = useAppStore.getState().screenplay.elements || [];
+      const html = els.map((el) => `<p class="${el.type}">${el.content}</p>`).join('');
+      // setContent rebuilds the doc. The second arg is the emitUpdate flag;
+      // false keeps onUpdate from firing twice as the agent's writes already
+      // ran updateScreenplayField for us.
+      try { (editor.commands as any).setContent(html, false); } catch { /* editor torn down */ }
+    };
+    document.addEventListener('writer:rebuild', onRebuild);
+    return () => document.removeEventListener('writer:rebuild', onRebuild);
+  }, [editor]);
+
   // Focus-typing: keep .is-active-paragraph on the paragraph the cursor is in,
   // strip it from siblings. We run this whenever the cursor moves.
   useEffect(() => {

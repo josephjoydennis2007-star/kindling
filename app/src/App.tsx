@@ -47,6 +47,7 @@ import TableRead from '@/components/TableRead';
 import AltTakeOverlay from '@/components/AltTakeOverlay';
 import ExportDialog from '@/components/ExportDialog';
 import SettingsOverlay from '@/components/SettingsOverlay';
+import AgentPanel from '@/components/AgentPanel';
 import FloatingActionButton from '@/components/FloatingActionButton';
 import './App.css';
 
@@ -110,6 +111,9 @@ function App() {
   }, []);
   const [showProfile, setShowProfile] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  // AgentPanel — the agentic AI co-worker drawer. Opens via TopBar button
+  // or via the `app:openAgent` event from anywhere.
+  const [showAgent, setShowAgent] = useState(false);
 
   // Current user's role on the active cloud story. For local-only stories
   // this returns canWrite + canDirect = true (full access). Used to gate
@@ -457,6 +461,14 @@ function App() {
     document.addEventListener('app:openProfileEditor', onOpenProfile);
     return () => document.removeEventListener('app:openProfileEditor', onOpenProfile);
   }, [profile]);
+
+  // Agent panel — opened by the TopBar Co-worker button or by any
+  // component that dispatches `app:openAgent`.
+  useEffect(() => {
+    const onOpenAgent = () => setShowAgent(true);
+    document.addEventListener('app:openAgent', onOpenAgent);
+    return () => document.removeEventListener('app:openAgent', onOpenAgent);
+  }, []);
 
   // Live-sync poller — when settings.liveSync is on AND a cloud provider is
   // configured, pull every 15 seconds. Cheap polling-based "collab" without a
@@ -1138,6 +1150,8 @@ function App() {
           commented snippet in the active panel. Double-clicking a
           highlight opens InlineCommentPopup in edit mode. */}
       <InlineCommentHighlights />
+      {/* Agent co-worker drawer — opened via TopBar Bot button. */}
+      <AgentPanel open={showAgent} onClose={() => setShowAgent(false)} />
       <Onboarding />
       <FindReplace />
       <StylePane />

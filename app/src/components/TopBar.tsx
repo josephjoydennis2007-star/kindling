@@ -173,6 +173,21 @@ export default function TopBar({
           {isFocusMode ? 'Exit' : 'Focus'}
         </button>
 
+        {/* Co-worker button — opens the agentic AI side-drawer. The AI can
+            navigate tabs, write screenplay content, create scenes/shots/
+            beats/characters/etc. on behalf of the user. This is the
+            visible entry point for the "make changes for me" experience. */}
+        <button
+          onClick={() => document.dispatchEvent(new CustomEvent('app:openAgent'))}
+          title="Open AI co-worker — describe what to build and watch it happen"
+          aria-label="Open AI co-worker"
+          disabled={!activeStoryId}
+          className="relative flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
+        >
+          <Bot className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+          Co-worker
+        </button>
+
         {/* Story Tools dropdown — open Notes / Characters / History / Collab /
             AI Helper / Assets / Instructions from any tab, not just non-Writer
             tabs. Clicking the currently-open tool again toggles the panel
