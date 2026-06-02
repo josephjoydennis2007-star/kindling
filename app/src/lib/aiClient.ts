@@ -16,6 +16,10 @@ const DEFAULT_MODELS: Record<string, string> = {
   // 'llama' etc.); 'openai' gives the best general-purpose quality at time
   // of writing. Free, rate-limited, no auth.
   builtin: 'openai',
+  // Google AI Studio (Gemini). Free tier on flash-class models is generous:
+  // 1500 req/day, ~GPT-4o-mini quality, very fast. Recommended fallback
+  // when Pollinations 524s.
+  gemini: 'gemini-2.0-flash',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-sonnet-latest',
   openrouter: 'openai/gpt-4o-mini',
@@ -73,6 +77,36 @@ export async function aiOnce(
   }
 
   try {
+    // ---- Google AI Studio (Gemini) ----
+    // Different request shape from OpenAI: uses `contents` + `systemInstruction`
+    // + `generationConfig`. Key goes in the query string per Google's docs.
+    // Free tier: 1500 req/day on gemini-2.0-flash, no credit card required.
+    if (provider === 'gemini') {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ role: 'user', parts: [{ text: user }] }],
+          generationConfig: {
+            temperature,
+            maxOutputTokens: maxTokens,
+          },
+        }),
+      });
+      if (!r.ok) {
+        return { ok: false, error: `Gemini ${r.status}: ${(await r.text()).slice(0, 300)}` };
+      }
+      const j = await r.json();
+      const text = (j.candidates?.[0]?.content?.parts || [])
+        .map((p: any) => p.text || '')
+        .join('')
+        .trim();
+      if (!text) return { ok: false, error: `Gemini returned no text (finishReason=${j.candidates?.[0]?.finishReason || 'unknown'})` };
+      return { ok: true, text };
+    }
+
     if (provider === 'anthropic') {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',

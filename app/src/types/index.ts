@@ -250,11 +250,13 @@ export interface AppSettings {
   // New
   defaultSaveFolder: string | null;       // user-friendly name (handle stored in IDB)
   socialBarEnabled: boolean;
-  // 'builtin' is the no-setup, free-by-default provider. It proxies through
-  // Pollinations.ai which serves an OpenAI-compatible endpoint with no API
-  // key required. Users can still pick a paid provider if they want better
-  // models or higher rate limits.
-  aiProvider: 'builtin' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
+  // 'builtin'  = Pollinations.ai (no key, but unreliable + can return HTML
+  //              errors when their upstream is sad).
+  // 'gemini'   = Google AI Studio (free key, 1500 req/day, GPT-4o-mini-class
+  //              quality, no credit card needed). Recommended default for
+  //              anyone who hits a Pollinations 524 — see PROVIDER_HELP.
+  // Other providers are paid or self-hosted.
+  aiProvider: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
   aiApiKey: string;
   aiModel: string;
   aiEndpoint: string;

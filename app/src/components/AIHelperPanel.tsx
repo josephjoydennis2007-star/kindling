@@ -9,6 +9,7 @@ import { useAppStore } from '@/store/useAppStore';
 // defaults stop that from happening.
 const DEFAULT_MODELS: Record<string, string> = {
   builtin: 'openai',
+  gemini: 'gemini-2.0-flash',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-sonnet-latest',
   openrouter: 'openai/gpt-4o-mini',
@@ -19,6 +20,7 @@ const DEFAULT_MODELS: Record<string, string> = {
 
 const MODEL_SUGGESTIONS: Record<string, string[]> = {
   builtin: ['openai', 'mistral', 'llama', 'qwen-coder', 'claude-hybridspace'],
+  gemini: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-2.5-flash-preview-05-20'],
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
   openrouter: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-flash-1.5'],
@@ -28,11 +30,12 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
 };
 
 const PROVIDER_HELP: Record<string, { name: string; url: string; note: string }> = {
-  builtin: { name: 'Built-in', url: 'https://pollinations.ai', note: '✨ FREE — works out of the box, no key needed. Powered by Pollinations.ai.' },
+  builtin: { name: 'Built-in', url: 'https://pollinations.ai', note: 'FREE — no key needed, but their upstream can 524 occasionally. Falls back to Gemini if you set a Gemini key.' },
+  gemini: { name: 'Gemini', url: 'https://aistudio.google.com/apikey', note: '⭐ RECOMMENDED — free Google AI Studio key (no card), GPT-4o-mini-class quality, fast, 1500 req/day. The smartest free option.' },
   openai: { name: 'OpenAI', url: 'https://platform.openai.com/api-keys', note: 'Paid (small free credits for new accounts)' },
   anthropic: { name: 'Anthropic', url: 'https://console.anthropic.com/', note: 'Paid' },
   openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', note: '✨ Has FREE models (look for ":free" suffix)' },
-  groq: { name: 'Groq', url: 'https://console.groq.com/keys', note: '✨ FREE — fast Llama/Mixtral inference' },
+  groq: { name: 'Groq', url: 'https://console.groq.com/keys', note: '✨ FREE — extremely fast Llama 3.3 inference' },
   ollama: { name: 'Ollama', url: 'http://localhost:11434', note: '✨ FREE — runs locally, no key needed' },
   custom: { name: 'Custom endpoint', url: '', note: 'Any OpenAI-compatible endpoint' },
 };
@@ -104,7 +107,7 @@ export default function AIHelperPanel({ onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleProviderChange = (p: 'builtin' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom') => {
+  const handleProviderChange = (p: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom') => {
     updateSettings({ aiProvider: p as any });
     const wantModel = DEFAULT_MODELS[p] || '';
     if (!modelDraft || MODEL_SUGGESTIONS[(settings.aiProvider as string)]?.includes(modelDraft)) {
@@ -263,7 +266,7 @@ export default function AIHelperPanel({ onClose }: Props) {
           >
             <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Provider</div>
             <div className="grid grid-cols-3 gap-1.5">
-              {(['builtin', 'openai', 'anthropic', 'openrouter', 'groq', 'ollama', 'custom'] as const).map((p) => (
+              {(['builtin', 'gemini', 'openai', 'anthropic', 'openrouter', 'groq', 'ollama', 'custom'] as const).map((p) => (
                 <button
                   key={p}
                   onClick={() => handleProviderChange(p)}
@@ -568,7 +571,7 @@ function buildContext({ screenplay, characters, scenes }: any): string {
 }
 
 async function callAI(opts: {
-  provider: 'builtin' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
+  provider: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
   endpoint: string;
   apiKey: string;
   model: string;
@@ -628,6 +631,63 @@ async function callAI(opts: {
     }
     return full;
   };
+
+  // ---- Google Gemini ----
+  // Uses generativelanguage.googleapis.com — different shape from OpenAI:
+  // systemInstruction lives at the top level, conversation goes into
+  // `contents[]` with role + parts[]. Streaming uses SSE (alt=sse).
+  if (opts.provider === 'gemini') {
+    const wantStream = !!opts.onToken;
+    const path = wantStream ? 'streamGenerateContent?alt=sse' : 'generateContent';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model || DEFAULT_MODELS.gemini)}:${path}&key=${encodeURIComponent(opts.apiKey)}`;
+    const sysContent = opts.messages.find((m) => m.role === 'system')?.content;
+    const conv = opts.messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      }));
+    const body = {
+      ...(sysContent ? { systemInstruction: { parts: [{ text: sysContent }] } } : {}),
+      contents: conv,
+      generationConfig: { temperature: 0.7, maxOutputTokens: 1500 },
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    if (!wantStream || !r.body) {
+      const j = await r.json();
+      return ((j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('')).trim();
+    }
+    // Gemini SSE: each `data: {…}` line is a partial-content envelope with
+    // `candidates[0].content.parts[].text` containing the delta.
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let full = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const j = JSON.parse(payload);
+          const chunk = (j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('');
+          if (chunk) { full += chunk; opts.onToken!(chunk); }
+        } catch { /* ignore non-JSON SSE blips */ }
+      }
+    }
+    return full;
+  }
 
   if (opts.provider === 'anthropic') {
     const sys = opts.messages.find((m) => m.role === 'system')?.content;

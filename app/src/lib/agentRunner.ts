@@ -189,8 +189,13 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
       }
 
       // Detect upstream HTML error pages (Cloudflare 524, 502, etc.) —
-      // Pollinations occasionally returns these instead of JSON. Retry
-      // once with a small backoff, then surface a friendly message.
+      // Pollinations occasionally returns these instead of JSON.
+      // Strategy:
+      //   1. Retry once.
+      //   2. If the user has a Gemini key configured, auto-promote it to
+      //      the active provider (since it's free, fast, and reliable).
+      //   3. Otherwise surface a friendly error with a link to set up
+      //      Gemini.
       if (looksLikeHtmlError(ai.text)) {
         consecutiveHtmlErrors++;
         if (consecutiveHtmlErrors < 2) {
@@ -198,12 +203,28 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
           await new Promise((r) => setTimeout(r, 2500));
           continue;
         }
+        // Auto-fallback to Gemini if the user has set up a key.
+        const s = useAppStore.getState().settings as any;
+        const geminiKey = (s.geminiApiKey || s.aiApiKey || '').trim();
+        if (s.aiProvider === 'builtin' && geminiKey && /^AIza[\w-]{30,}/.test(geminiKey)) {
+          emitTurn({
+            ts: Date.now(),
+            kind: 'plan',
+            text: 'Built-in AI is sad — switching to Gemini (your saved key).',
+          });
+          useAppStore.getState().updateSettings({
+            aiProvider: 'gemini' as any,
+            aiApiKey: geminiKey,
+          } as any);
+          consecutiveHtmlErrors = 0;
+          continue;
+        }
         emitTurn({
           ts: Date.now(),
           kind: 'error',
-          text: 'The built-in AI service is temporarily unavailable. Wait a moment and click Run again, or switch to a different AI provider in Settings → AI.',
+          text: 'The built-in AI service is temporarily unavailable. For a reliable smart free option, get a Gemini API key at https://aistudio.google.com/apikey (60 seconds, no credit card) and paste it into Settings → AI → Gemini.',
         });
-        appendTurns(storyId, [{ role: 'assistant', content: 'AI service unavailable.', ts: Date.now() }]);
+        appendTurns(storyId, [{ role: 'assistant', content: 'AI service unavailable — recommend Gemini fallback.', ts: Date.now() }]);
         return;
       }
       consecutiveHtmlErrors = 0;
