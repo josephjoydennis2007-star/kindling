@@ -36,6 +36,8 @@ ${toolsManual()}
 On EVERY turn, respond with ONE JSON object — nothing else, no prose around it:
 
 {
+  "plan": ["Set up story metadata", "Create 6 characters", "Build 3-act plot", "Create 8 scenes", "Add storyboard shots"],
+  "currentStep": 0,
   "thought": "one short sentence (≤ 20 words) — what you're about to do",
   "actions": [
     { "tool": "toolName", "args": { ... } },
@@ -43,6 +45,12 @@ On EVERY turn, respond with ONE JSON object — nothing else, no prose around it
   ],
   "done": false
 }
+
+About \`plan\` and \`currentStep\`:
+- **First turn**: ALWAYS include a \`plan\` — an ordered list of 3–8 plain-English milestone names the user will see (e.g. "Create characters", "Write opening scene", "Plan production locations"). These are the user-facing progress steps for THEIR specific request. NOT generic, but tailored.
+- **Subsequent turns**: omit \`plan\` if it hasn't changed (the previous one stays in effect), OR include it again only if you need to RE-PLAN. Update \`currentStep\` to reflect which milestone you're working on this turn (0-indexed).
+- If the request is tiny ("set the title"), use a 1-element plan like \`["Set the title"]\`.
+- Don't put internal tool names in plan items — use short user-friendly phrases.
 
 CRITICAL RULES — read these every turn:
 - **Keep each turn SMALL.** 3–6 actions per turn maximum. The loop gives you 30 turns — use them. Quality + completeness over a single huge plan.
@@ -66,14 +74,38 @@ export interface AgentTurnEvent {
   text: string;
 }
 
+/** Progress against the AI's own milestone plan. Drives the
+ *  "Step 2 of 5 — Creating characters" indicator in the panel. */
+export interface AgentProgressEvent {
+  steps: string[];     // the milestone names the AI defined
+  currentStep: number; // 0-indexed
+}
+
 interface PlanShape {
   thought?: string;
   actions?: Array<{ tool: string; args?: any }>;
+  /** The AI's milestone list for the user's current request. Set on
+   *  the first turn; persists until the AI re-emits a new plan. */
+  plan?: string[];
+  /** Which milestone the AI is currently working on, 0-indexed. */
+  currentStep?: number;
   done?: boolean;
 }
 
 function emitTurn(ev: AgentTurnEvent) {
   document.dispatchEvent(new CustomEvent('agent:turn', { detail: ev }));
+}
+
+function emitProgress(steps: string[], currentStep: number) {
+  document.dispatchEvent(new CustomEvent('agent:progress', { detail: { steps, currentStep } }));
+}
+
+/** Detect when Pollinations (or any provider) returns an HTML error page
+ *  instead of JSON. Cloudflare 524s / 502s / 503s look like
+ *  `<!DOCTYPE html><html>...`. We retry once before surfacing. */
+function looksLikeHtmlError(text: string): boolean {
+  const head = (text || '').trim().slice(0, 200).toLowerCase();
+  return head.startsWith('<!doctype html') || head.startsWith('<html') || /^<.+>\s*$/s.test(head.slice(0, 50));
 }
 
 let cancelRequested = false;
@@ -104,6 +136,17 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
   // and is checkpoint-saved to memory at the end of each turn.
   const history: MemoryTurn[] = [...memoryAtStart, { role: 'user', content: `New goal: ${goal}`, ts: Date.now() }];
 
+  // AI-defined milestone plan + current step. Set on the first turn that
+  // returns a plan; persisted across turns by the runner. Drives the
+  // "Step N of M — <label>" UI in AgentPanel instead of "turn N/30".
+  let milestones: string[] = [];
+  let currentStep = 0;
+
+  // Tracks how many parse failures + HTML errors have occurred so we can
+  // bail after repeated failure rather than spinning forever.
+  let consecutiveParseFails = 0;
+  let consecutiveHtmlErrors = 0;
+
   try {
     for (let iter = 0; iter < max; iter++) {
       if (checkCancelled()) {
@@ -120,7 +163,12 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
       // lives in the system prompt's "Prior conversation" + state blocks.
       const userMsg = `Continue working on the goal. Use as many tools as you need.`;
 
-      emitTurn({ ts: Date.now(), kind: 'plan', text: `Thinking… (turn ${iter + 1}/${max})` });
+      // User-facing status — show a clean "Thinking…" if no plan yet, or
+      // "Step N of M — <label>" once the AI has emitted milestones.
+      const thinkingText = milestones.length
+        ? `Step ${currentStep + 1} of ${milestones.length} — ${milestones[currentStep] || 'Working'}`
+        : 'Thinking…';
+      emitTurn({ ts: Date.now(), kind: 'plan', text: thinkingText });
 
       const ai = await aiOnce(settings, system, userMsg, { maxTokens: 2400, temperature: 0.4 });
       if (!ai.ok) {
@@ -128,6 +176,27 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
         appendTurns(storyId, [{ role: 'assistant', content: `Error: ${ai.error}`, ts: Date.now() }]);
         return;
       }
+
+      // Detect upstream HTML error pages (Cloudflare 524, 502, etc.) —
+      // Pollinations occasionally returns these instead of JSON. Retry
+      // once with a small backoff, then surface a friendly message.
+      if (looksLikeHtmlError(ai.text)) {
+        consecutiveHtmlErrors++;
+        if (consecutiveHtmlErrors < 2) {
+          emitTurn({ ts: Date.now(), kind: 'plan', text: 'Built-in AI returned an error page — retrying…' });
+          await new Promise((r) => setTimeout(r, 2500));
+          continue;
+        }
+        emitTurn({
+          ts: Date.now(),
+          kind: 'error',
+          text: 'The built-in AI service is temporarily unavailable. Wait a moment and click Run again, or switch to a different AI provider in Settings → AI.',
+        });
+        appendTurns(storyId, [{ role: 'assistant', content: 'AI service unavailable.', ts: Date.now() }]);
+        return;
+      }
+      consecutiveHtmlErrors = 0;
+
       const plan = parseAndRepairPlan(ai.text);
       if (!plan || !plan.actions || !Array.isArray(plan.actions) || plan.actions.length === 0) {
         // Parser couldn't recover anything useful. Show a short status and
@@ -142,14 +211,31 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
           content: 'PARSE FAILURE — your last response was not valid JSON (likely truncated). Respond AGAIN with ONE small JSON object: thought + 2–4 actions. Keep all string args short.',
           ts: Date.now(),
         });
-        // Bail only if we've been failing for several turns straight.
-        if (iter >= 2) {
+        consecutiveParseFails++;
+        if (consecutiveParseFails >= 3) {
           emitTurn({ ts: Date.now(), kind: 'error', text: 'AI is not returning parseable plans. Try a smaller request or stop and restart.' });
           appendTurns(storyId, [{ role: 'assistant', content: 'Aborted: repeated parse failures.', ts: Date.now() }]);
           break;
         }
         continue;
       }
+      consecutiveParseFails = 0;
+
+      // Update milestone plan from the AI's response. On the first turn
+      // we EXPECT a plan; if the AI forgot, synthesize a single-item one
+      // so the user still sees a clean progress label instead of
+      // technical noise.
+      if (Array.isArray(plan.plan) && plan.plan.length > 0) {
+        milestones = plan.plan.slice(0, 12).map((s) => String(s || '').slice(0, 80));
+      } else if (milestones.length === 0) {
+        // Fallback: derive a single milestone from the user's goal so
+        // the user-facing step counter has something to show.
+        milestones = [goal.length > 60 ? goal.slice(0, 60) + '…' : goal];
+      }
+      if (typeof plan.currentStep === 'number' && plan.currentStep >= 0 && plan.currentStep < milestones.length) {
+        currentStep = plan.currentStep;
+      }
+      emitProgress(milestones, currentStep);
 
       if (plan.thought) {
         emitTurn({ ts: Date.now(), kind: 'plan', text: plan.thought });
