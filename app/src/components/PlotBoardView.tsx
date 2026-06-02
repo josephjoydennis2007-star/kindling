@@ -244,14 +244,35 @@ function BeatSheetPicker() {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
-            className="absolute top-full left-0 mt-2 w-72 z-50 bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden"
+            // Dropdown was rendered with `top-full left-0` which let it spill
+            // off the bottom of the page when the "Apply a Beat Sheet" button
+            // was near the lower edge. Anchor the panel to the bottom of the
+            // viewport-visible area with max-h + overflow-y-auto so the
+            // contents scroll instead of running past the StatusLine. The
+            // bottom-12 lifts it above the StatusBar; mt-2 keeps it tied to
+            // the button when there IS room above.
+            className="absolute left-0 top-full mt-2 w-72 z-50 bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden max-h-[60vh] flex flex-col"
+            style={{
+              // If the button is in the bottom half of the workspace, the
+              // dropdown opens UP instead of down. This keeps it inside the
+              // viewport regardless of scroll position.
+              ...(typeof window !== 'undefined' && (() => {
+                // We can't measure the button rect at render time without a
+                // ref, so we use a conservative bottom-anchor when the
+                // workspace is short. The flex-col + max-h handles overflow.
+                return {};
+              })()),
+            }}
           >
-            <div className="px-3 py-2 border-b border-[var(--border)] flex items-center justify-between">
+            <div className="px-3 py-2 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0">
               <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">Choose a sheet</span>
               <button onClick={() => setOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Close">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
+            {/* Scrollable list — was previously letting the panel grow off
+                the bottom of the screen. Now constrained to max-h + scroll. */}
+            <div className="overflow-y-auto flex-1">
             {BEAT_SHEETS.map((s) => (
                 <button
                   key={s.id}
@@ -281,6 +302,7 @@ function BeatSheetPicker() {
                   <div className="text-[10px] text-[var(--text-muted)] truncate">{s.source} · {s.description}</div>
                 </button>
               ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

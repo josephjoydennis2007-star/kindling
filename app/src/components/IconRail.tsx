@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   PenLine, Clapperboard, LayoutGrid, Calendar as CalendarIcon, Briefcase, Sparkles,
   Settings, Plus, X, ChevronRight,
+  Users, StickyNote, MessageCircle, Bot, Image as ImageIcon, History as HistoryIcon,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { t } from '@/lib/i18n';
@@ -40,6 +41,14 @@ interface Props {
   onOpenSettings: () => void;
   onOpenProfile?: () => void;
   user?: { displayName?: string | null; photoURL?: string | null; email?: string | null } | null;
+  /** Currently active right-inspector (or null). Drives highlight state
+   *  on the inspector quick-jump icons. */
+  currentPanel?: string | null;
+  /** Open / toggle a right-inspector panel by name. */
+  onOpenPanel?: (panel: string) => void;
+  /** Notification counts for inspector badges. */
+  pendingInvites?: number;
+  unreadComments?: number;
 }
 
 const VIEWS = [
@@ -49,6 +58,19 @@ const VIEWS = [
   { id: 'plot',      key: 'tab.plot',      icon: LayoutGrid },
   { id: 'calendar',  key: 'tab.calendar',  icon: CalendarIcon },
   { id: 'workspace', key: 'tab.workspace', icon: Briefcase },
+];
+
+// Inspector quick-jumps — each one opens the matching right-side panel
+// from any view, so you don't have to dig through Tools menus to reach
+// Characters, Notes, Comments, AI Helper, Assets, History. The labels
+// here are short single-word names that fit the rail's tooltip slot.
+const INSPECTORS = [
+  { id: 'characters', label: 'Characters', icon: Users },
+  { id: 'notes',      label: 'Notes',      icon: StickyNote },
+  { id: 'comments',   label: 'Comments',   icon: MessageCircle },
+  { id: 'ai',         label: 'AI Helper',  icon: Bot },
+  { id: 'assets',     label: 'Assets',     icon: ImageIcon },
+  { id: 'history',    label: 'History',    icon: HistoryIcon },
 ];
 
 export default function IconRail({
@@ -61,6 +83,9 @@ export default function IconRail({
   onOpenSettings,
   onOpenProfile,
   user,
+  currentPanel,
+  onOpenPanel,
+  unreadComments = 0,
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const locale = (useAppStore((s) => (s.settings as any).locale) as ('en'|'es'|'fr')) || 'en';
@@ -119,6 +144,55 @@ export default function IconRail({
             );
           })}
         </ul>
+
+        {/* Divider + Inspector quick-jumps — same width as the view icons
+            but with a slightly softer hover. Each one toggles the right
+            inspector panel for that tool. Badged like the TopBar Tools
+            menu so Comments / Collaborate are discoverable when new. */}
+        {onOpenPanel && (
+          <>
+            <div className="w-8 h-px bg-[var(--rule)] my-2" aria-hidden />
+            <ul className="flex flex-col gap-0.5">
+              {INSPECTORS.map((it) => {
+                const isActive = currentPanel === it.id;
+                const badge =
+                  it.id === 'comments' ? unreadComments
+                  : it.id === 'characters' ? 0
+                  : 0;
+                return (
+                  <li key={it.id} className="relative">
+                    {isActive && (
+                      <span
+                        aria-hidden
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+                        style={{ background: 'var(--accent)' }}
+                      />
+                    )}
+                    <button
+                      onClick={() => onOpenPanel(it.id)}
+                      title={it.label}
+                      aria-label={it.label}
+                      className={`relative w-10 h-10 rounded-md flex items-center justify-center transition-colors ${
+                        isActive
+                          ? 'rail-active-bg text-[var(--accent)]'
+                          : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      <it.icon className="w-[17px] h-[17px]" />
+                      {badge > 0 && (
+                        <span
+                          className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full"
+                          style={{ background: 'var(--accent)' }}
+                          aria-label={`${badge} new`}
+                        />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
 
         {/* Spacer pushes Settings + avatar to the bottom */}
         <div className="flex-1" />

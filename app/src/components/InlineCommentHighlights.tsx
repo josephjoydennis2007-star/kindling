@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { auth } from '@/firebase';
 import { watchComments, type CloudComment } from '@/lib/cloudStories';
@@ -32,12 +32,8 @@ interface HighlightRect {
 export default function InlineCommentHighlights() {
   const activeStoryId = useAppStore((s) => s.activeStoryId);
   const activeTab = useAppStore((s) => s.activeTab);
-  const screenplay = useAppStore((s) => s.screenplay);
-  const scenes = useAppStore((s) => s.scenes);
-  const beats = useAppStore((s) => s.beats);
   const [comments, setComments] = useState<CloudComment[]>([]);
   const [rects, setRects] = useState<HighlightRect[]>([]);
-  const tickRef = useRef(0);
 
   // Subscribe to the active story's comments. Listener is per-storyId so
   // changing stories resubscribes cleanly.
@@ -62,15 +58,22 @@ export default function InlineCommentHighlights() {
 
   // Recompute rect positions whenever the relevant comment set OR the
   // visible content changes (tab switch, scroll, resize, panel content
-  // updates via store data). We use a small debounce so successive
-  // updates don't thrash.
+  // updates via store data).
+  //
+  // CRITICAL: setRects is called with a functional updater that COMPARES
+  // the new array to the previous one and bails when they're equivalent.
+  // Without this, calling setRects(out) every recompute creates a new
+  // array reference each time which triggers a re-render, which triggers
+  // the effect again, which calls setRects again — React error #185
+  // ('Maximum update depth exceeded'). The shallow compare breaks the
+  // cycle. The deps array is also kept small + stable (no full store
+  // objects) so the effect only re-runs when the comment SET changes.
   useEffect(() => {
-    if (!relevant.length) { setRects([]); return; }
     let cancelled = false;
     const recompute = () => {
       if (cancelled) return;
       const container = document.querySelector('.view-container') as HTMLElement | null;
-      if (!container) { setRects([]); return; }
+      if (!container) { setRectsIfChanged(setRects, []); return; }
       const containerRect = container.getBoundingClientRect();
 
       const out: HighlightRect[] = [];
@@ -80,8 +83,6 @@ export default function InlineCommentHighlights() {
         const range = findSnippetRange(container, snippet);
         if (!range) continue;
         const r = range.getBoundingClientRect();
-        // Skip if the match is entirely outside the workspace (off-screen
-        // scroll, hidden panel, etc.).
         if (r.bottom < containerRect.top || r.top > containerRect.bottom) continue;
         if (r.right < containerRect.left || r.left > containerRect.right) continue;
         out.push({
@@ -92,13 +93,11 @@ export default function InlineCommentHighlights() {
           rect: { left: r.left, top: r.top, width: r.width, height: r.height },
         });
       }
-      if (!cancelled) setRects(out);
+      if (!cancelled) setRectsIfChanged(setRects, out);
     };
-    // Initial pass + a debounced re-run after the next render tick so any
-    // re-layout from a tab switch settles first.
     const id = window.setTimeout(recompute, 60);
-    const obs = new ResizeObserver(() => recompute());
     const container = document.querySelector('.view-container') as HTMLElement | null;
+    const obs = new ResizeObserver(() => recompute());
     if (container) obs.observe(container);
     const onScroll = () => recompute();
     window.addEventListener('scroll', onScroll, true);
@@ -110,9 +109,7 @@ export default function InlineCommentHighlights() {
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onScroll);
     };
-    // tickRef bumped via doc data changes (below) to force re-run.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relevant, activeTab, screenplay, scenes, beats, tickRef.current]);
+  }, [relevant, activeTab]);
 
   if (!rects.length) return null;
 
@@ -168,6 +165,31 @@ export default function InlineCommentHighlights() {
  * see inside form fields (textarea/input value), which is acceptable for
  * v1 — we just won't draw highlights for snippets that live in those.
  */
+/**
+ * setRectsIfChanged — functional updater that only commits the new rect
+ * array when it's structurally different from the previous one. Prevents
+ * the effect → setState → re-render → effect loop that was throwing
+ * React error #185.
+ */
+function setRectsIfChanged(
+  setRects: (updater: (prev: HighlightRect[]) => HighlightRect[]) => void,
+  next: HighlightRect[],
+): void {
+  setRects((prev) => {
+    if (prev.length !== next.length) return next;
+    for (let i = 0; i < next.length; i++) {
+      const p = prev[i];
+      const n = next[i];
+      if (p.commentId !== n.commentId) return next;
+      if (Math.round(p.rect.left) !== Math.round(n.rect.left)) return next;
+      if (Math.round(p.rect.top) !== Math.round(n.rect.top)) return next;
+      if (Math.round(p.rect.width) !== Math.round(n.rect.width)) return next;
+      if (Math.round(p.rect.height) !== Math.round(n.rect.height)) return next;
+    }
+    return prev;
+  });
+}
+
 function findSnippetRange(container: HTMLElement, snippet: string): Range | null {
   if (!snippet) return null;
   const needle = snippet.toLowerCase();

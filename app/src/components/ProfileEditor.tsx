@@ -98,15 +98,52 @@ export default function ProfileEditor({ open, initial, onClose, onSaved }: Props
                 />
               </div>
 
-              {/* Age */}
+              {/* Age — number-only input (0–120) OR a date picker the user can
+                  use to enter their birthday. Both routes write back a numeric
+                  age string. type="number" gives mobile keypads + browser
+                  validation; on desktop browsers it also gives spinners. */}
               <div>
                 <label className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-1.5 block">Age (optional)</label>
-                <input
-                  value={draft.age || ''}
-                  onChange={(e) => setDraft({ ...draft, age: e.target.value })}
-                  placeholder="e.g. 28"
-                  className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)] text-[var(--text)]"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={120}
+                    step={1}
+                    value={draft.age || ''}
+                    onChange={(e) => {
+                      // Strip anything that isn't a non-negative integer
+                      // (number inputs already filter in most browsers but
+                      // some still allow 'e', '-', '.').
+                      const clean = e.target.value.replace(/[^0-9]/g, '').slice(0, 3);
+                      setDraft({ ...draft, age: clean });
+                    }}
+                    onKeyDown={(e) => {
+                      // Block keys that aren't digits / navigation / delete.
+                      if (e.key.length === 1 && !/[0-9]/.test(e.key)) e.preventDefault();
+                    }}
+                    placeholder="e.g. 28"
+                    className="flex-1 px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)] text-[var(--text)]"
+                  />
+                  <input
+                    type="date"
+                    title="Or pick your birthday — we'll convert to age"
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      const birth = new Date(e.target.value);
+                      if (isNaN(birth.getTime())) return;
+                      const now = new Date();
+                      let years = now.getFullYear() - birth.getFullYear();
+                      const monthDiff = now.getMonth() - birth.getMonth();
+                      if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) years--;
+                      if (years >= 0 && years <= 120) {
+                        setDraft({ ...draft, age: String(years) });
+                      }
+                    }}
+                    className="w-32 px-2 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-[10.5px] outline-none focus:border-[var(--accent)] text-[var(--text-secondary)]"
+                  />
+                </div>
               </div>
 
               {/* Role */}

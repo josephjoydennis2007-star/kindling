@@ -6,7 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary.tsx'
 
 // Stamp a build marker on window + console so we can see at a glance whether
 // the fresh bundle actually loaded. Bump on every deploy with intent.
-const KINDLING_BUILD = 'v27-2026.05.31-export-delete-account'
+const KINDLING_BUILD = 'v28-2026.06.01-bugsweep-rail-inspectors'
 ;(window as any).__KINDLING_BUILD__ = KINDLING_BUILD;
 // eslint-disable-next-line no-console
 console.log(`%c⚙ Kindling ${KINDLING_BUILD}`, 'color:#a855f7;font-weight:bold;font-size:14px');

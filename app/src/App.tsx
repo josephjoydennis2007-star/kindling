@@ -859,6 +859,13 @@ function App() {
           onOpenSettings={() => setShowSettings(true)}
           onOpenProfile={() => setShowUserMenu((v) => !v)}
           user={user ? { displayName: profile?.displayName || user.displayName, photoURL: profile?.avatar || user.photoURL, email: user.email } : null}
+          currentPanel={rightPanel}
+          onOpenPanel={(p) => {
+            if (p === 'comments') markCommentsSeen();
+            togglePanel(p as any);
+          }}
+          pendingInvites={pendingInvites}
+          unreadComments={unreadComments}
         />
       )}
       {!isFocusMode && activeTab !== 'writer' && (
