@@ -578,6 +578,79 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                         className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]" />
                     </Section>
                   )}
+
+                  {/* ---- Runway integration ----
+                      Optional second-stage AI: image + video generation
+                      from Runway Gen-4. When this key is set, the co-worker
+                      agent unlocks the generateShotImage / generateShotVideo
+                      tools so it can populate the storyboard with real
+                      generated frames during a build run. */}
+                  <div className="pt-3 mt-3 border-t border-[var(--rule)]">
+                    <h3 className="text-[11px] uppercase tracking-widest font-bold text-[var(--text-secondary)] mb-2 flex items-center gap-1.5">
+                      <span
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{ background: 'var(--accent)' }}
+                      />
+                      Runway (image + video generation)
+                    </h3>
+                    <p className="text-[11px] text-[var(--text-secondary)] mb-3">
+                      Connect your Runway account to let the AI co-worker generate shot images + video clips while it builds the story. Get a key at{' '}
+                      <a
+                        href="https://dev.runwayml.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[var(--accent)] underline"
+                      >
+                        dev.runwayml.com
+                      </a>
+                      . Your key stays on this device.
+                    </p>
+                    <Section title="Runway API key">
+                      <input
+                        type="password"
+                        value={(draft as any).runwayApiKey || ''}
+                        onChange={(e) => setDraft({ ...draft, runwayApiKey: e.target.value } as any)}
+                        placeholder="key_…"
+                        className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs font-mono outline-none focus:border-[var(--accent)]"
+                      />
+                    </Section>
+                    <Section title="Image model">
+                      <input
+                        value={(draft as any).runwayImageModel || ''}
+                        onChange={(e) => setDraft({ ...draft, runwayImageModel: e.target.value } as any)}
+                        placeholder="gen4_image"
+                        className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]"
+                      />
+                    </Section>
+                    <Section title="Video model">
+                      <input
+                        value={(draft as any).runwayVideoModel || ''}
+                        onChange={(e) => setDraft({ ...draft, runwayVideoModel: e.target.value } as any)}
+                        placeholder="gen4_turbo"
+                        className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]"
+                      />
+                    </Section>
+                    <button
+                      onClick={async () => {
+                        const key = ((draft as any).runwayApiKey || '').trim();
+                        if (!key) {
+                          import('sonner').then(({ toast }) => toast.error('Paste a key first'));
+                          return;
+                        }
+                        import('sonner').then(({ toast }) => toast.loading('Pinging Runway…', { id: 'rwy' }));
+                        const { runwayPing } = await import('@/lib/runwayClient');
+                        const ok = await runwayPing(key);
+                        import('sonner').then(({ toast }) =>
+                          ok
+                            ? toast.success('Runway key works', { id: 'rwy' })
+                            : toast.error('Runway rejected the key', { id: 'rwy' }),
+                        );
+                      }}
+                      className="mt-2 w-full px-3 py-2 rounded-md text-xs font-semibold bg-[var(--card)] border border-[var(--rule)] hover:border-[var(--accent)] transition-colors text-[var(--text)]"
+                    >
+                      Test connection
+                    </button>
+                  </div>
                 </div>
               )}
 

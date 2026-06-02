@@ -452,6 +452,96 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     return { ok: true, message: 'Saved' };
   },
 
+  // ---- Runway integration (image + video generation) ----
+  //
+  // Both tools require settings.runwayApiKey to be set. If not, they
+  // return a friendly "configure your key" message instead of failing
+  // hard, so the agent can ask the user to wire it up.
+  async generateShotImage({ shot, prompt, ratio }: { shot?: string; prompt: string; ratio?: string }) {
+    const settings = useAppStore.getState().settings as any;
+    const apiKey = (settings.runwayApiKey || '').trim();
+    if (!apiKey) {
+      return { ok: false, message: 'No Runway API key — open Settings → AI → Runway and paste your key first.' };
+    }
+    if (!prompt) return { ok: false, message: 'prompt required' };
+    const { runwayTextToImage } = await import('@/lib/runwayClient');
+    const result = await runwayTextToImage({
+      apiKey,
+      prompt,
+      model: settings.runwayImageModel || 'gen4_image',
+      ratio: ratio || '1920:1080',
+    });
+    if (!result.ok || !result.url) {
+      return { ok: false, message: result.error || 'Runway failed' };
+    }
+    // If a shot was specified, attach the generated image as that shot's
+    // storyboard frame so it shows up in StoryboardView immediately.
+    if (shot) {
+      const state = useAppStore.getState();
+      const allShots = Object.values(state.shots);
+      let target = allShots.find((s) => s.id === shot);
+      if (!target) {
+        // Try matching by scene + index ("scene 2 shot 1") — fall back to
+        // first shot of named scene.
+        const scene = state.scenes.find((sc) => sc.name.toLowerCase().includes(shot.toLowerCase()));
+        if (scene) target = allShots.find((s) => s.sceneId === scene.id);
+      }
+      if (target) {
+        state.updateShot(target.id, { storyboard: result.url });
+        return { ok: true, message: `Generated image attached to shot in ${state.scenes.find((s) => s.id === target!.sceneId)?.name || 'scene'}`, url: result.url, id: target.id };
+      }
+    }
+    // No shot match — drop it in the asset library so the user can drag
+    // it onto any storyboard slot.
+    useAppStore.getState().addAsset({
+      name: prompt.slice(0, 60),
+      kind: 'image',
+      data: result.url,
+      size: 0,
+    });
+    return { ok: true, message: 'Generated image added to Assets', url: result.url };
+  },
+
+  async generateShotVideo({ shot, promptImage, promptText, duration }: { shot?: string; promptImage?: string; promptText?: string; duration?: 5 | 10 }) {
+    const settings = useAppStore.getState().settings as any;
+    const apiKey = (settings.runwayApiKey || '').trim();
+    if (!apiKey) {
+      return { ok: false, message: 'No Runway API key — open Settings → AI → Runway and paste your key first.' };
+    }
+    // Source image: explicit URL/data, or the named shot's existing
+    // storyboard, or fail with a helpful hint.
+    let sourceUrl = promptImage || '';
+    if (!sourceUrl && shot) {
+      const state = useAppStore.getState();
+      const allShots = Object.values(state.shots);
+      const target = allShots.find((s) => s.id === shot)
+        || allShots.find((s) => state.scenes.find((sc) => sc.id === s.sceneId)?.name.toLowerCase().includes(shot.toLowerCase()));
+      if (target?.storyboard) sourceUrl = target.storyboard;
+    }
+    if (!sourceUrl) {
+      return { ok: false, message: 'No source image — call generateShotImage first or pass promptImage.' };
+    }
+    const { runwayImageToVideo } = await import('@/lib/runwayClient');
+    const result = await runwayImageToVideo({
+      apiKey,
+      promptImage: sourceUrl,
+      promptText: promptText || '',
+      model: settings.runwayVideoModel || 'gen4_turbo',
+      duration: duration || 5,
+    });
+    if (!result.ok || !result.url) {
+      return { ok: false, message: result.error || 'Runway video failed' };
+    }
+    // Save the video URL to Assets as a reference so user can preview/download.
+    useAppStore.getState().addAsset({
+      name: (promptText || 'shot video').slice(0, 60),
+      kind: 'reference',
+      data: result.url,
+      size: 0,
+    });
+    return { ok: true, message: 'Generated video added to Assets', url: result.url };
+  },
+
   // ---- Meta ----
   async think({ text }: { text: string }) {
     return { ok: true, message: String(text || '') };
@@ -595,6 +685,11 @@ export function toolsManual(): string {
     '### UI triggers',
     '- `triggerSave()`',
     '- `triggerExport()` — opens the export dialog',
+    '',
+    '### Runway (image + video generation)',
+    'Only available if the user has set their Runway API key in Settings → AI → Runway. If `generateShotImage` returns "No Runway API key", relay that to the user as a single sentence and continue with text-only work.',
+    '- `generateShotImage(shot?, prompt, ratio?)` — text-to-image via Runway Gen-4. If `shot` is provided (scene name, id, or first match), the result is attached as that shot\'s storyboard frame so the user sees it appear in StoryboardView. Otherwise dropped into Assets. `ratio` defaults to "1920:1080".',
+    '- `generateShotVideo(shot?, promptImage?, promptText?, duration?)` — image-to-video via Runway Gen-4 Turbo. Either pass `promptImage` (URL or data URL) or reference an existing shot by name/id (uses that shot\'s storyboard image as the source). `duration` is 5 or 10 seconds. Saved into Assets as a reference.',
     '',
     '### Meta',
     '- `think(text)` — narrate what you are about to do; shows in the live log',

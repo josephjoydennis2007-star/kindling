@@ -65,6 +65,27 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
   const [readingMode, setReadingMode] = useState(false);
   const [focusTyping, setFocusTyping] = useState(false);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  // ===== Word-style pagination =====
+  // The editor renders inside ONE TipTap document (multi-editor is a non-
+  // starter — it would split history/undo/find-replace). To get Word's
+  // "pages flow when content overflows" feel we instead:
+  //   1. Track the editor's rendered height via ResizeObserver.
+  //   2. Divide by the page's writable area (9in × 96dpi) to compute the
+  //      page COUNT.
+  //   3. Render that many visually-distinct white paper sheets stacked
+  //      vertically, with a small gap between them — the editor's text
+  //      flows over the top of them, so the user sees Page 1, Page 2, …
+  //      with their real content.
+  //   4. Track the user's scroll position to surface "Page X of Y" and to
+  //      highlight the active page in the sidebar.
+  // The Pages sidebar previews now scroll the editor to the chosen page.
+  const PAGE_HEIGHT_PX = 11 * 96;      // 11" at 96dpi (standard letter)
+  const PAGE_INNER_HEIGHT_PX = 9 * 96; // page minus 1" top + 1" bottom
+  const PAGE_GAP_PX = 24;              // visual gap between stacked pages
+  const editorAreaRef = useRef<HTMLDivElement | null>(null); // scrollable container
+  const editorContentRef = useRef<HTMLDivElement | null>(null); // paper / EditorContent wrapper
+  const [pageCount, setPageCount] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Get focusCharacterId and methods from store
   const focusCharacterId = useAppStore((s) => s.focusCharacterId);
@@ -432,6 +453,50 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
     return () => document.removeEventListener('writer:rebuild', onRebuild);
   }, [editor]);
 
+  // Page-count tracker. Watches the ProseMirror DOM for size changes and
+  // recomputes how many 9"-tall pages the content currently fills. This
+  // is what drives the multi-paper visual stack — without it, the editor
+  // looked like one infinitely tall sheet, which is what the user
+  // (correctly) flagged as broken.
+  useEffect(() => {
+    if (!editor) return;
+    let pm: HTMLElement | null = null;
+    const findPm = () => editorContentRef.current?.querySelector('.ProseMirror') as HTMLElement | null;
+    const compute = () => {
+      pm = pm || findPm();
+      if (!pm) return;
+      const h = pm.scrollHeight;
+      const n = Math.max(1, Math.ceil(h / PAGE_INNER_HEIGHT_PX));
+      setPageCount((prev) => (prev === n ? prev : n));
+    };
+    // Re-run on size change + after every editor update so freshly typed
+    // lines push the page count up the instant they overflow.
+    const ro = new ResizeObserver(compute);
+    const init = setTimeout(() => { pm = findPm(); if (pm) ro.observe(pm); compute(); }, 60);
+    editor.on('update', compute);
+    return () => {
+      clearTimeout(init);
+      ro.disconnect();
+      editor.off('update', compute);
+    };
+  }, [editor]);
+
+  // Track which page the user is currently scrolled into, for the
+  // "Page X of Y" indicator + active-page highlight in the sidebar.
+  useEffect(() => {
+    const el = editorAreaRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const y = el.scrollTop;
+      const stride = PAGE_HEIGHT_PX + PAGE_GAP_PX;
+      const n = Math.floor(y / stride) + 1;
+      setCurrentPage(Math.max(1, Math.min(n, pageCount)));
+    };
+    onScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [pageCount]);
+
   // Focus-typing: keep .is-active-paragraph on the paragraph the cursor is in,
   // strip it from siblings. We run this whenever the cursor moves.
   useEffect(() => {
@@ -460,43 +525,41 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
     setShowMention(false);
   }, []);
 
-  // Build a "Pages" list. If the writer has named sections, those become the
-  // pages (one section = one page in the user's mental model). Otherwise we
-  // fall back to chunking elements 30 at a time.
+  // Build a "Pages" list driven by the REAL rendered page count from the
+  // editor height tracker — not by chunking the element array. Each entry
+  // corresponds to one visual paper sheet in the stack.
+  //
+  // Previews are still derived from chunking the element list as a rough
+  // approximation of what each page will contain. It won't be byte-perfect
+  // (because element height varies), but it's good enough for the sidebar
+  // thumbnail to feel like the actual page.
   const pages = useMemo(() => {
     const els = screenplay.elements || [];
-    const namedSections = (screenplay.sections || []).slice().sort((a, b) => a.order - b.order);
-    if (namedSections.length > 0) {
-      return namedSections.map((s, i) => {
-        const inSection = els.filter((e) => (e as any).sectionId === s.id);
-        return {
-          index: i + 1,
-          title: s.name,
-          color: s.color,
-          sectionId: s.id,
-          preview: inSection.map((e) => stripTags(e.content)).filter(Boolean).slice(0, 3).join(' · ') || '(empty)',
-        };
-      });
-    }
-    const PER_PAGE = 30;
-    const pageCount = Math.max(1, Math.ceil(els.length / PER_PAGE));
+    // Estimate how many elements land on each rendered page by spreading
+    // them evenly across the computed page count.
+    const perPage = Math.max(1, Math.ceil(els.length / Math.max(1, pageCount)));
     return new Array(pageCount).fill(0).map((_, i) => ({
       index: i + 1,
       title: `Page ${i + 1}`,
       color: undefined as string | undefined,
       sectionId: null as string | null,
       preview: els
-        .slice(i * PER_PAGE, (i + 1) * PER_PAGE)
+        .slice(i * perPage, (i + 1) * perPage)
         .map((e) => stripTags(e.content))
         .filter(Boolean)
-        .slice(0, 3)
-        .join(' · ') || '(empty)',
+        .slice(0, 4)
+        .join(' · ') || '(blank page)',
     }));
-  }, [screenplay.elements, screenplay.sections]);
+  }, [screenplay.elements, pageCount]);
 
+  // Scroll the editor area to a specific page's top. Stride = page height
+  // plus the visual gap between papers, which matches the rendered
+  // multi-paper stack so the page lands at the top of the viewport.
   const jumpToPage = useCallback((pageIndex: number) => {
-    const el = pageRefs.current[pageIndex];
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const area = editorAreaRef.current;
+    if (!area) return;
+    const stride = PAGE_HEIGHT_PX + PAGE_GAP_PX;
+    area.scrollTo({ top: (pageIndex - 1) * stride, behavior: 'smooth' });
   }, []);
 
   if (!screenplay.started) {
@@ -615,28 +678,47 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
         <div className="w-px h-5 bg-[var(--border)] mx-1" />
         <button
           onClick={() => {
-            // Add a real, named section. Each section acts like a page —
-            // selecting it scrolls / filters the editor to its content.
-            const id = addSection();
-            setActiveSection(id);
-            // Auto-open pages pane so user can see the new page
+            // Push the cursor down to a fresh blank page by appending
+            // enough empty action paragraphs to overflow the current
+            // page. The ResizeObserver picks the new height up, the
+            // page-count auto-increments, and the editor scrolls so the
+            // cursor lands on the new sheet.
+            //
+            // We measure the current ProseMirror height + how far into
+            // the last page we are, then insert (lines-per-page minus
+            // lines-on-current-page) empty paragraphs.
+            const pm = editorContentRef.current?.querySelector('.ProseMirror') as HTMLElement | null;
+            const lineHeight = 18; // px — matches our screenplay paragraph line-height
+            const linesPerPage = Math.floor(PAGE_INNER_HEIGHT_PX / lineHeight);
+            const usedHeight = pm?.scrollHeight ?? 0;
+            const heightIntoLastPage = usedHeight % PAGE_INNER_HEIGHT_PX;
+            const linesToFill = Math.max(
+              4,
+              Math.ceil((PAGE_INNER_HEIGHT_PX - heightIntoLastPage) / lineHeight),
+            );
+            const blanks = Array.from({ length: Math.min(linesToFill, linesPerPage) })
+              .map(() => '<p class="action">&nbsp;</p>')
+              .join('');
+            editor?.chain().focus('end').insertContent(blanks).insertContent('<p class="action"></p>').run();
             setPagesOpen(true);
-            // Drop an empty action paragraph at the end so the cursor lands
-            // in a fresh block right away.
-            editor
-              ?.chain()
-              .focus('end')
-              .insertContent('<p class="action"></p>')
-              .run();
-            // Announce the new page creation
-            import('sonner').then(({ toast }) => toast.success('New page created!'));
+            // Snap-scroll to the next page so the user lands on it.
+            setTimeout(() => jumpToPage(pageCount + 1), 80);
+            import('sonner').then(({ toast }) => toast.success('New page added'));
           }}
-          title="Add a new page / named section"
+          title="Push to a new blank page"
           className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] transition-colors flex-shrink-0"
         >
           <FilePlus2 className="w-3.5 h-3.5 flex-shrink-0" />
           <span className="hidden lg:inline">Add Page</span>
         </button>
+        {/* Page X of Y indicator — sticky in the toolbar so the user
+            always knows their position. */}
+        <span
+          className="hidden lg:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-mono text-[var(--text-muted)] bg-[var(--card)] border border-[var(--rule)] flex-shrink-0 ml-1"
+          title="Current page / total pages"
+        >
+          {currentPage} / {pageCount}
+        </span>
         <button
           onClick={() => setPagesOpen((v) => !v)}
           title={pagesOpen ? 'Hide page previews' : 'Show page previews'}
@@ -702,7 +784,12 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
                 <span className="text-[10px] text-[var(--text-muted)]">{pages.length}</span>
               </div>
               {pages.map((p) => {
-                const isActive = (p as any).sectionId && (p as any).sectionId === activeSectionId;
+                // Active = the page the user is currently scrolled into.
+                // (Named sections aren't used for the visual stack any more,
+                // but if the writer kept a section selected we still honour
+                // it as a secondary highlight.)
+                const isActive = p.index === currentPage
+                  || ((p as any).sectionId && (p as any).sectionId === activeSectionId);
                 return (
                   <button
                     key={p.index}
@@ -737,7 +824,10 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
 
         {/* Editor surface + Character workspace */}
         <div className="flex-1 overflow-hidden flex relative">
-          <div className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center gap-2 relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}>
+          <div
+            ref={editorAreaRef}
+            className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center gap-2 relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}
+          >
             {/* Dialogue density gutter — minimap-style strip on the left.
                 Hidden on small screens where it would crowd the paper, and
                 user-toggleable in Settings (defaults to on). */}
@@ -755,16 +845,73 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
                   <SceneHeatMap compact stayHere />
                 </div>
               )}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                onMouseDown={(e) => {
-                  if (e.target === e.currentTarget && editor) editor.commands.focus('end');
+              {/*
+                MULTI-PAGE STACK.
+
+                We render `pageCount` white paper sheets stacked vertically,
+                each 11in tall with a small gap between them — that gives the
+                visual "stacked pages" look the user is asking for (like Word
+                in Print Layout view). The TipTap EditorContent is absolutely
+                positioned on top of the stack so its text flows across all
+                pages from page 1 onward. The paper sheets are non-interactive
+                pointer-events:none so clicks pass straight through to the
+                editor.
+
+                Total height of the stack = pageCount × (page + gap) so the
+                scroll area sees one long document. The active page (computed
+                from scroll position) gets a faint highlight ring so the user
+                always knows where they are.
+              */}
+              <div
+                className="relative w-full"
+                style={{
+                  // Stack height = (page * count) + gaps between them.
+                  height: `${pageCount * PAGE_HEIGHT_PX + Math.max(0, pageCount - 1) * PAGE_GAP_PX}px`,
                 }}
-                className={`w-full min-h-[11in] bg-white text-black p-[0.6in] sm:p-[1in] shadow-2xl rounded-sm relative ${readingMode ? 'cursor-default' : 'cursor-text'}`}
               >
-                <EditorContent editor={editor} className="min-h-[9in] outline-none" />
-              </motion.div>
+                {Array.from({ length: pageCount }).map((_, i) => {
+                  const isActive = i + 1 === currentPage;
+                  return (
+                    <div
+                      key={i}
+                      ref={(el) => { pageRefs.current[i + 1] = el; }}
+                      className={`absolute left-0 right-0 bg-white shadow-2xl rounded-sm ${isActive ? 'ring-2 ring-[var(--accent)]/40' : ''}`}
+                      style={{
+                        top: `${i * (PAGE_HEIGHT_PX + PAGE_GAP_PX)}px`,
+                        height: `${PAGE_HEIGHT_PX}px`,
+                        pointerEvents: 'none', // editor text on top still receives clicks
+                      }}
+                      aria-hidden
+                    >
+                      {/* Page number badge in the bottom-right corner — like
+                          Word's status-bar page indicator but baked into the
+                          page itself. */}
+                      <div
+                        className="absolute bottom-2 right-3 text-[10px] text-zinc-400 font-mono"
+                      >
+                        {i + 1} / {pageCount}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* The editor itself — absolutely positioned over the stack
+                    starting at 1" margin from the top of page 1. The text
+                    flows naturally; the page boundaries above provide the
+                    visual structure. */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  onMouseDown={(e) => {
+                    if (e.target === e.currentTarget && editor) editor.commands.focus('end');
+                  }}
+                  ref={editorContentRef}
+                  className={`absolute left-0 right-0 top-0 p-[0.6in] sm:p-[1in] ${readingMode ? 'cursor-default' : 'cursor-text'}`}
+                  style={{ minHeight: `${PAGE_HEIGHT_PX}px` }}
+                >
+                  <EditorContent editor={editor} className="outline-none" />
+                </motion.div>
+              </div>
 
               {/* Floating "Coach ✨" pill — appears beside the dialogue line
                   the cursor is in, click to coach just that line. Disabled

@@ -258,6 +258,15 @@ export interface AppSettings {
   aiApiKey: string;
   aiModel: string;
   aiEndpoint: string;
+  // ---- Runway integration ----
+  // Optional API key for runwayml.com. When set, the agent unlocks two
+  // tools: generateShotImage (text -> still frame for a shot's storyboard
+  // slot) and generateShotVideo (text + still -> motion clip). Empty
+  // string = integration disabled.
+  runwayApiKey?: string;
+  // Model selection: gen4_image / gen4_turbo (video) / gen3a_turbo etc.
+  runwayImageModel?: string;
+  runwayVideoModel?: string;
   userDisplayName: string;
   // Mirrors the profile-level role choice (writer/director/producer/both).
   // admin / viewer kept for backward compat with older local-storage shapes.
