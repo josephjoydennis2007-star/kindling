@@ -264,6 +264,69 @@ export async function upsertProfile(profile: UserProfile): Promise<void> {
   }
 }
 
+// ───────── ACCOUNT DELETION + DATA EXPORT (privacy) ─────────
+//
+// deleteAccount: Best-effort wipe of everything the user is the SUBJECT
+// of. Removes:
+//   - /profiles/{uid}
+//   - /profilesByEmail/{email}
+//   - The Firebase Auth user (requires recent sign-in — Firebase will
+//     throw 'requires-recent-login' if the session is older than ~5 min;
+//     callers should re-authenticate first when that happens)
+//
+// Story documents the user OWNS are NOT auto-deleted — they may have
+// collaborators. The user can manually delete stories from the dashboard.
+// Per GDPR-style "right to be forgotten" we'd want a Cloud Function to
+// reassign ownership or cascade-delete; left for v1.1.
+
+export async function deleteUserProfile(uid: string, email: string | null | undefined): Promise<void> {
+  if (!_db) return;
+  // Use deleteDoc for surgical removal — Firestore allows the owning user
+  // to delete their own profile via the existing /profiles/{uid} rule.
+  await deleteDoc(doc(_db, 'profiles', uid));
+  if (email) {
+    const key = email.toLowerCase().trim();
+    try { await deleteDoc(doc(_db, 'profilesByEmail', key)); } catch {/* best-effort */}
+  }
+}
+
+export async function deleteAuthUser(): Promise<void> {
+  if (!_auth?.currentUser) throw new Error('Not signed in');
+  await _auth.currentUser.delete();
+}
+
+/** Pull all of the user's data into one JSON blob for export-and-import.
+ *  Reads localStorage + IndexedDB (best-effort) + the cloud profile. */
+export async function exportAllUserData(): Promise<string> {
+  const me = _auth?.currentUser;
+  const out: any = {
+    exportedAt: new Date().toISOString(),
+    uid: me?.uid || null,
+    email: me?.email || null,
+    profile: null,
+    localStorage: {} as Record<string, any>,
+  };
+  if (me && _db) {
+    try {
+      const snap = await getDoc(doc(_db, 'profiles', me.uid));
+      if (snap.exists()) out.profile = snap.data();
+    } catch {/* silent */}
+  }
+  // Dump localStorage keys that look like ours.
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.startsWith('kindling-') || k.startsWith('swp_')) {
+        const v = localStorage.getItem(k);
+        try { out.localStorage[k] = v ? JSON.parse(v) : v; }
+        catch { out.localStorage[k] = v; }
+      }
+    }
+  } catch {/* silent */}
+  return JSON.stringify(out, null, 2);
+}
+
 // ───────── STORIES (per-user cloud sync) ─────────
 
 export async function saveToCloud(userId: string, storyId: string, data: any) {

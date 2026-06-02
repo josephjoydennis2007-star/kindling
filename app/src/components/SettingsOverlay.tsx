@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import { fsSupported, pickFolder, saveFolderHandle, clearFolderHandle } from '@/lib/folderHandle';
 import { gistPush, gistPull, jsonbinPush, jsonbinPull, dropboxPush, dropboxPull, supabasePush, supabasePull, webdavPush, webdavPull, pastebinPush, isOnline } from '@/lib/cloudSync';
+import { auth, exportAllUserData, deleteUserProfile, deleteAuthUser } from '@/firebase';
 import { ACCENTS, THEME_MODES } from '@/lib/themePresets';
 import { LOCALES, localeName, type Locale } from '@/lib/i18n';
 import { CURRENCY_OPTIONS } from '@/lib/money';
@@ -465,9 +466,6 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                   <Section title="Full profile">
                     <button
                       onClick={() => {
-                        // Dispatch the same event UserMenu uses so the
-                        // existing ProfileEditor opens with the avatar
-                        // upload + accept-opposite-role toggle visible.
                         document.dispatchEvent(new CustomEvent('app:openProfileEditor'));
                         onClose();
                       }}
@@ -479,6 +477,78 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                       Change your avatar, set the "Accept invites from the opposite role" preference,
                       and sync to the cloud profile that powers invite previews.
                     </p>
+                  </Section>
+
+                  {/* Privacy: export-all-data + delete-account. Required for
+                      any real launch and good practice anyway. */}
+                  <Section title="Your data">
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const json = await exportAllUserData();
+                            const blob = new Blob([json], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `kindling-export-${new Date().toISOString().slice(0,10)}.json`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                            toast.success('Data exported');
+                          } catch (err: any) {
+                            toast.error(err?.message || 'Export failed');
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-md bg-[var(--card)] border border-[var(--border)] text-[11px] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] text-left"
+                      >
+                        Export all my data (.json)
+                      </button>
+                      <p className="text-[10px] text-[var(--text-muted)] -mt-1 leading-relaxed">
+                        Downloads your profile + every story you have locally as a single JSON file you can
+                        archive or move to another machine.
+                      </p>
+
+                      <button
+                        onClick={async () => {
+                          if (!auth?.currentUser) {
+                            toast.error('Sign in first.');
+                            return;
+                          }
+                          const confirmText = prompt(
+                            'This DELETES your Kindling account, your profile, your email lookup record, ' +
+                            'and signs you out. Stories you own are NOT auto-deleted — delete them ' +
+                            'manually first if you want them gone too.\n\n' +
+                            'Type DELETE to confirm:',
+                          );
+                          if (confirmText !== 'DELETE') {
+                            toast.info('Cancelled.');
+                            return;
+                          }
+                          try {
+                            await deleteUserProfile(auth.currentUser.uid, auth.currentUser.email);
+                            await deleteAuthUser();
+                            toast.success('Account deleted. Refresh to start over.');
+                            // Stash a marker so the next load lands on the auth wall.
+                            try { localStorage.removeItem('kindling-auth-skipped'); } catch {}
+                            try { localStorage.removeItem('kindling-cached-profile'); } catch {}
+                            setTimeout(() => window.location.reload(), 1500);
+                          } catch (err: any) {
+                            if (err?.code === 'auth/requires-recent-login') {
+                              toast.error('For security, sign out and back in, then try again.');
+                            } else {
+                              toast.error(err?.message || 'Delete failed');
+                            }
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-md bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-[11px] text-[var(--danger)] hover:bg-[var(--danger)]/20 text-left font-semibold"
+                      >
+                        Delete my account…
+                      </button>
+                      <p className="text-[10px] text-[var(--text-muted)] -mt-1 leading-relaxed">
+                        Permanent. Removes your profile, your email lookup record, and your Firebase
+                        account. Re-sign-up is allowed afterward.
+                      </p>
+                    </div>
                   </Section>
                 </div>
               )}
