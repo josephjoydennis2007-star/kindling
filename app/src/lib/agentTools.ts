@@ -273,6 +273,185 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     return { ok: true, message: `Added location ${name}`, id: loc.id };
   },
 
+  // ---- Editing existing things (full access) ----
+  async updateScene({ scene, name, description, status, color, heading }: { scene: string; name?: string; description?: string; status?: string; color?: string; heading?: string }) {
+    const s = findScene(scene);
+    if (!s) return { ok: false, message: `Scene "${scene}" not found` };
+    const updates: any = {};
+    if (typeof name === 'string') { updates.name = name; updates.heading = heading ?? name; }
+    if (typeof description === 'string') updates.description = description;
+    if (typeof status === 'string') updates.status = status;
+    if (typeof color === 'string') updates.color = color;
+    if (typeof heading === 'string') updates.heading = heading;
+    useAppStore.getState().updateScene(s.id, updates);
+    return { ok: true, message: `Updated scene ${s.name}` };
+  },
+  async deleteScene({ scene }: { scene: string }) {
+    const s = findScene(scene);
+    if (!s) return { ok: false, message: `Scene "${scene}" not found` };
+    useAppStore.getState().deleteScene(s.id);
+    return { ok: true, message: `Deleted scene ${s.name}` };
+  },
+  async updateShot({ shotId, description, shotType, camera, lens, durationSec }: { shotId: string; description?: string; shotType?: string; camera?: string; lens?: string; durationSec?: number }) {
+    const updates: any = {};
+    if (typeof description === 'string') updates.description = description;
+    if (typeof shotType === 'string') updates.shotType = shotType;
+    if (typeof camera === 'string') updates.camera = camera;
+    if (typeof lens === 'string') updates.lens = lens;
+    if (typeof durationSec === 'number') updates.durationSec = durationSec;
+    useAppStore.getState().updateShot(shotId, updates);
+    return { ok: true, message: `Updated shot` };
+  },
+  async deleteShot({ shotId }: { shotId: string }) {
+    useAppStore.getState().deleteShot(shotId);
+    return { ok: true, message: `Deleted shot` };
+  },
+  async updateCharacter({ character, name, description, archetype, want, fear, occupation, age, backstory, personality, motivation, conflict }: { character: string; name?: string; description?: string; archetype?: string; want?: string; fear?: string; occupation?: string; age?: string; backstory?: string; personality?: string; motivation?: string; conflict?: string }) {
+    const chars = useAppStore.getState().characters;
+    const c = chars.find((x) => x.id === character || x.name.toLowerCase() === character.toLowerCase());
+    if (!c) return { ok: false, message: `Character "${character}" not found` };
+    const updates: any = {};
+    if (typeof name === 'string') { updates.name = name.toUpperCase(); updates.displayName = name; }
+    if (typeof description === 'string') updates.description = description;
+    if (typeof archetype === 'string') updates.archetype = archetype;
+    if (typeof want === 'string') updates.want = want;
+    if (typeof fear === 'string') updates.fear = fear;
+    if (typeof occupation === 'string') updates.occupation = occupation;
+    if (typeof age === 'string') updates.age = age;
+    if (typeof backstory === 'string') updates.backstory = backstory;
+    if (typeof personality === 'string') updates.personality = personality;
+    if (typeof motivation === 'string') updates.motivation = motivation;
+    if (typeof conflict === 'string') updates.conflict = conflict;
+    useAppStore.getState().updateCharacter(c.id, updates);
+    return { ok: true, message: `Updated character ${c.name}` };
+  },
+  async deleteCharacter({ character }: { character: string }) {
+    const chars = useAppStore.getState().characters;
+    const c = chars.find((x) => x.id === character || x.name.toLowerCase() === character.toLowerCase());
+    if (!c) return { ok: false, message: `Character "${character}" not found` };
+    useAppStore.getState().deleteCharacter(c.id);
+    return { ok: true, message: `Deleted character ${c.name}` };
+  },
+  async updateAct({ act, title }: { act: string; title: string }) {
+    const a = findAct(act);
+    if (!a) return { ok: false, message: `Act "${act}" not found` };
+    useAppStore.getState().updateAct(a.id, { title: String(title).toUpperCase() });
+    return { ok: true, message: `Updated act` };
+  },
+  async deleteAct({ act }: { act: string }) {
+    const a = findAct(act);
+    if (!a) return { ok: false, message: `Act "${act}" not found` };
+    useAppStore.getState().deleteAct(a.id);
+    return { ok: true, message: `Deleted act ${a.title}` };
+  },
+  async updateBeat({ beatId, title, description }: { beatId: string; title?: string; description?: string }) {
+    const updates: any = {};
+    if (typeof title === 'string') updates.title = title;
+    if (typeof description === 'string') updates.description = description;
+    useAppStore.getState().updateBeat(beatId, updates);
+    return { ok: true, message: `Updated beat` };
+  },
+  async deleteBeat({ beatId }: { beatId: string }) {
+    useAppStore.getState().deleteBeat(beatId);
+    return { ok: true, message: `Deleted beat` };
+  },
+
+  // ---- Stories ----
+  async createStory({ title, type }: { title: string; type?: string }) {
+    if (!title) return { ok: false, message: 'title required' };
+    const newId = useAppStore.getState().createStory(title, (type as any) || 'movie');
+    useAppStore.getState().setActiveStory(newId);
+    return { ok: true, message: `Created story "${title}"`, id: newId };
+  },
+  async switchStory({ story }: { story: string }) {
+    const stories = useAppStore.getState().stories;
+    const s = stories.find((x) => x.id === story || x.title.toLowerCase() === story.toLowerCase());
+    if (!s) return { ok: false, message: `Story "${story}" not found` };
+    useAppStore.getState().setActiveStory(s.id);
+    return { ok: true, message: `Switched to "${s.title}"` };
+  },
+
+  // ---- Notes ----
+  async addNote({ text, category }: { text: string; category?: string }) {
+    useAppStore.getState().addNote(text, (category as any) || 'general');
+    return { ok: true, message: `Added note` };
+  },
+
+  // ---- Settings + app behavior ----
+  async setAppTheme({ theme }: { theme: 'light' | 'dark' }) {
+    useAppStore.getState().updateSettings({ theme: theme as any });
+    return { ok: true, message: `App theme set to ${theme}` };
+  },
+  async setLocale({ locale }: { locale: 'en' | 'es' | 'fr' }) {
+    useAppStore.getState().updateSettings({ locale } as any);
+    return { ok: true, message: `Locale set to ${locale}` };
+  },
+  async toggleFocusMode() {
+    useAppStore.getState().toggleFocusMode();
+    return { ok: true, message: `Focus mode toggled` };
+  },
+
+  // ---- Read-back tools — for the AI to inspect what's in the app ----
+  async listScenes() {
+    const scenes = useAppStore.getState().scenes;
+    return { ok: true, message: `${scenes.length} scenes`, data: scenes.map((s) => ({ id: s.id, name: s.name, status: s.status, shotCount: s.shotIds.length, description: s.description })) };
+  },
+  async listShots({ scene }: { scene?: string } = {}) {
+    const state = useAppStore.getState();
+    const shots = state.shots;
+    if (scene) {
+      const s = findScene(scene);
+      if (!s) return { ok: false, message: `Scene "${scene}" not found` };
+      const sc = state.scenes.find((x) => x.id === s.id)!;
+      return { ok: true, data: sc.shotIds.map((id) => shots[id]).filter(Boolean) };
+    }
+    return { ok: true, data: Object.values(shots) };
+  },
+  async listCharacters() {
+    const cs = useAppStore.getState().characters;
+    return { ok: true, message: `${cs.length} characters`, data: cs.map((c) => ({ id: c.id, name: c.name, description: c.description, want: (c as any).want, fear: (c as any).fear })) };
+  },
+  async listActsAndBeats() {
+    const state = useAppStore.getState();
+    return {
+      ok: true,
+      data: state.plotBoard.acts.map((a) => ({
+        id: a.id, title: a.title,
+        beats: a.beatIds.map((bid) => state.beats[bid]).filter(Boolean).map((b) => ({ id: b.id, title: b.title, description: b.description })),
+      })),
+    };
+  },
+  async listLocations() {
+    const locs = ((useAppStore.getState().screenplay as any).locations || []) as any[];
+    return { ok: true, message: `${locs.length} locations`, data: locs };
+  },
+  async listWorldItems() {
+    const items = ((useAppStore.getState().screenplay as any).world || []) as any[];
+    return { ok: true, message: `${items.length} world items`, data: items };
+  },
+  async getScreenplaySummary() {
+    const s = useAppStore.getState().screenplay as any;
+    return {
+      ok: true,
+      data: {
+        title: s.title, logline: s.logline, synopsis: s.synopsis, theme: s.theme,
+        outlinePoints: s.outlinePoints || [],
+        lineCount: (s.elements || []).length,
+        firstLines: (s.elements || []).slice(0, 20).map((el: any) => `${el.type}: ${el.content}`),
+      },
+    };
+  },
+
+  // ---- Trigger UI actions on the user's behalf ----
+  async triggerExport() {
+    document.dispatchEvent(new CustomEvent('app:openExport'));
+    return { ok: true, message: 'Opened export dialog' };
+  },
+  async triggerSave() {
+    document.dispatchEvent(new CustomEvent('app:save'));
+    return { ok: true, message: 'Saved' };
+  },
+
   // ---- Meta ----
   async think({ text }: { text: string }) {
     return { ok: true, message: String(text || '') };
@@ -379,9 +558,47 @@ export function toolsManual(): string {
     '### Locations (production scouting)',
     '- `addLocation(name, address, intExt, timeOfDay, cost, notes)` — intExt: int/ext/both, timeOfDay: day/night/both',
     '',
+    '### Edit / delete existing things (full access)',
+    '- `updateScene(scene, name?, description?, status?, color?, heading?)` — status ∈ todo/in-progress/shot/final',
+    '- `deleteScene(scene)`',
+    '- `updateShot(shotId, description?, shotType?, camera?, lens?, durationSec?)`',
+    '- `deleteShot(shotId)`',
+    '- `updateCharacter(character, name?, description?, archetype?, want?, fear?, occupation?, age?, backstory?, personality?, motivation?, conflict?)`',
+    '- `deleteCharacter(character)`',
+    '- `updateAct(act, title)`',
+    '- `deleteAct(act)`',
+    '- `updateBeat(beatId, title?, description?)`',
+    '- `deleteBeat(beatId)`',
+    '',
+    '### Stories',
+    '- `createStory(title, type?)` — type ∈ movie, tv-series, mini-series, short-film, documentary, music-video, commercial, youtube, web-series, stage-play, animation, thriller, tv-show. Auto-switches to the new story.',
+    '- `switchStory(story)` — id or title',
+    '',
+    '### Notes',
+    '- `addNote(text, category?)`',
+    '',
+    '### App / settings',
+    '- `setAppTheme(theme)` — light or dark (this changes the UI theme, NOT the story\'s thematic statement which is `setTheme`)',
+    '- `setLocale(locale)` — en, es, fr',
+    '- `toggleFocusMode()`',
+    '',
+    '### Read-back — inspect the app before acting',
+    'These return `data` you can read between turns. Use them whenever you need to know what already exists (e.g. to edit existing scenes instead of duplicating).',
+    '- `listScenes()`',
+    '- `listShots(scene?)`',
+    '- `listCharacters()`',
+    '- `listActsAndBeats()`',
+    '- `listLocations()`',
+    '- `listWorldItems()`',
+    '- `getScreenplaySummary()` — current title/logline/synopsis/outline + first 20 screenplay lines',
+    '',
+    '### UI triggers',
+    '- `triggerSave()`',
+    '- `triggerExport()` — opens the export dialog',
+    '',
     '### Meta',
-    '- `think(text)` — say what you are about to do, shows in the live log',
-    '- `done(summary)` — emit this LAST when the user\'s request is complete',
+    '- `think(text)` — narrate what you are about to do; shows in the live log',
+    '- `done(summary)` — emit this LAST when the user\'s request is fully complete. If the goal is big, DO NOT emit done early — keep iterating across turns. The runner will give you 30 turns.',
     '',
   ].join('\n');
 }
