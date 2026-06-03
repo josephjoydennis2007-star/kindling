@@ -678,18 +678,37 @@ async function callAI(opts: {
       body: JSON.stringify(body),
     });
     if (!r.ok) {
-      const body = (await r.text()).slice(0, 500);
+      const body = (await r.text()).slice(0, 800);
+      let parsed: any = null;
+      try { parsed = JSON.parse(body); } catch {/* not JSON */}
+      const errMsg = parsed?.error?.message || '';
+      const errStatus = parsed?.error?.status || '';
       if (r.status === 429) {
-        const m = body.match(/(\d+)\s*seconds?/i);
-        const wait = m ? ` Wait ~${m[1]}s.` : ' Wait a moment.';
-        throw new Error(`Gemini rate-limited (429).${wait}`);
+        // Real RPM/TPM rate limits include a QuotaFailure detail with
+        // a quotaId. If we DON'T see that, this is probably a brand-new
+        // Gemini key whose quota Google hasn't provisioned yet — surface
+        // that specifically so the user knows to wait + recheck.
+        const violations = parsed?.error?.details?.find?.((d: any) => d['@type']?.includes('QuotaFailure'))?.violations;
+        const quotaId = violations?.[0]?.quotaId;
+        if (quotaId) {
+          throw new Error(`Gemini real rate limit: ${quotaId}. Wait 60s and retry, or switch to Groq in Settings → AI.`);
+        }
+        if (/RESOURCE_EXHAUSTED/i.test(errMsg + errStatus)) {
+          throw new Error(
+            'Gemini 429 RESOURCE_EXHAUSTED with no quota detail. Most common cause: brand-new Google account — provisioning takes 5–15 min. Test the key in Settings → AI → "Test Gemini" for a clearer diagnosis.',
+          );
+        }
+        throw new Error(`Gemini rate-limited (429). ${errMsg || 'Wait a moment.'}`);
       }
-      if (r.status === 403 || r.status === 400) {
-        if (/api.?key|invalid/i.test(body)) {
-          throw new Error('Gemini key rejected — paste a fresh key from aistudio.google.com/apikey.');
+      if (r.status === 400 || r.status === 403) {
+        if (/api.?key.*not valid|API_KEY_INVALID/i.test(errMsg + body)) {
+          throw new Error('Google rejected the key. Generate a fresh one at aistudio.google.com/apikey (no card needed).');
+        }
+        if (/permission|PERMISSION_DENIED/i.test(errMsg + errStatus)) {
+          throw new Error('Permission denied. If this key is from console.cloud.google.com, enable Generative Language API on that project. Easier: get a key from aistudio.google.com — those are pre-enabled.');
         }
       }
-      throw new Error(`Gemini ${r.status}: ${body.slice(0, 200)}`);
+      throw new Error(`Gemini ${r.status}: ${errMsg || body.slice(0, 200)}`);
     }
     if (!wantStream || !r.body) {
       const j = await r.json();

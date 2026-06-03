@@ -163,16 +163,40 @@ export async function aiOnce(
         }),
       });
       if (!r.ok) {
-        const body = (await r.text()).slice(0, 600);
+        const body = (await r.text()).slice(0, 800);
+        let parsed: any = null;
+        try { parsed = JSON.parse(body); } catch {/* not JSON */}
+        const errMsg = parsed?.error?.message || '';
+        const errStatus = parsed?.error?.status || '';
         if (r.status === 429) {
           const retryAfter = parseRetryAfter(r, body);
+          // Differentiate real RPM/TPM cap from "quota not provisioned
+          // yet" — the latter is the most common reason a brand-new
+          // Gemini key 429s on the very first call.
+          const violations = parsed?.error?.details?.find?.((d: any) => d['@type']?.includes('QuotaFailure'))?.violations;
+          const quotaId = violations?.[0]?.quotaId;
+          if (!quotaId && /RESOURCE_EXHAUSTED/i.test(errMsg + errStatus)) {
+            return {
+              ok: false,
+              error:
+                'Gemini 429 RESOURCE_EXHAUSTED with no quota id — this is almost always a brand-new key whose quota Google hasn\'t provisioned yet (5–15 min). Test the key in Settings → AI → Test Gemini.',
+            };
+          }
           return {
             ok: false,
-            error: `Gemini rate-limited (429). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
-            retryAfter,
+            error: `Gemini rate-limited (429${quotaId ? ` ${quotaId}` : ''}). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
+            retryAfter: retryAfter || 30,
           };
         }
-        return { ok: false, error: `Gemini ${r.status}: ${body.slice(0, 300)}` };
+        if (r.status === 400 || r.status === 403) {
+          if (/api.?key.*not valid|API_KEY_INVALID/i.test(errMsg + body)) {
+            return { ok: false, error: 'Google rejected the key. Generate a fresh one at aistudio.google.com/apikey.' };
+          }
+          if (/permission|PERMISSION_DENIED/i.test(errMsg + errStatus)) {
+            return { ok: false, error: 'Gemini permission denied. Use a key from aistudio.google.com (pre-enabled) rather than console.cloud.google.com.' };
+          }
+        }
+        return { ok: false, error: `Gemini ${r.status}: ${errMsg || body.slice(0, 300)}` };
       }
       const j = await r.json();
       const text = (j.candidates?.[0]?.content?.parts || [])

@@ -569,8 +569,48 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                       className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]" />
                   </Section>
                   <Section title="API key (stays on this device)">
-                    <input type="password" value={draft.aiApiKey} onChange={(e) => setDraft({ ...draft, aiApiKey: e.target.value })} placeholder="sk-…"
-                      className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs font-mono outline-none focus:border-[var(--accent)]" />
+                    <input
+                      type="password"
+                      value={draft.aiApiKey}
+                      // Trim whitespace as the user types — a stray space
+                      // or newline from a copy-paste is the #1 reason
+                      // Gemini keys are rejected.
+                      onChange={(e) => setDraft({ ...draft, aiApiKey: e.target.value.trim() })}
+                      placeholder="sk-…"
+                      className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs font-mono outline-none focus:border-[var(--accent)]"
+                    />
+                    {draft.aiProvider === 'gemini' && (
+                      <button
+                        onClick={async () => {
+                          const key = (draft.aiApiKey || '').trim();
+                          if (!key) {
+                            import('sonner').then(({ toast }) => toast.error('Paste a Gemini key first'));
+                            return;
+                          }
+                          import('sonner').then(({ toast }) => toast.loading('Testing Gemini key…', { id: 'gem' }));
+                          const { testGeminiKey } = await import('@/lib/geminiTest');
+                          const result = await testGeminiKey(key, draft.aiModel || 'gemini-2.0-flash');
+                          import('sonner').then(({ toast }) => {
+                            if (result.ok) {
+                              toast.success(result.message, { id: 'gem', duration: 4000 });
+                            } else {
+                              // 12s so the user has time to read the
+                              // specific reason. New-account quota,
+                              // bad-key, billing — all distinct.
+                              toast.error(result.message, { id: 'gem', duration: 12_000 });
+                            }
+                          });
+                        }}
+                        className="mt-2 w-full px-3 py-2 rounded-md text-xs font-semibold bg-[var(--card)] border border-[var(--rule)] hover:border-[var(--accent)] transition-colors text-[var(--text)]"
+                      >
+                        Test Gemini key
+                      </button>
+                    )}
+                    {draft.aiProvider === 'gemini' && (
+                      <p className="mt-2 text-[10px] text-[var(--text-muted)] leading-snug">
+                        Brand-new Gemini keys can take 5–15 minutes for Google to provision quota. If Test returns 429 RESOURCE_EXHAUSTED with no quota id, that's what's happening — wait then test again.
+                      </p>
+                    )}
                   </Section>
                   {draft.aiProvider === 'custom' && (
                     <Section title="Endpoint">
