@@ -320,6 +320,21 @@ function App() {
       }
       useAppStore.setState(next);
       setInitialized(true);
+      // The TipTap editor reads `screenplay.elements` ONCE at mount —
+      // it does not re-render when the underlying store changes. So
+      // after a story switch we have to explicitly tell the writer to
+      // resync from the freshly-loaded snapshot, otherwise the user
+      // sees the previous story's text until a manual refresh. This
+      // event is the same one the agent dispatches when it writes
+      // screenplay lines; WriterView's listener calls editor.commands
+      // .setContent(html) which is the only way to make TipTap pick up
+      // the new content live.
+      // setTimeout(0) so the dispatch runs AFTER React commits the
+      // setState above and WriterView's effect has refreshed its
+      // reference to the new screenplay.
+      setTimeout(() => {
+        document.dispatchEvent(new CustomEvent('writer:rebuild'));
+      }, 0);
     });
   }, [ready, activeStoryId, stories.length, loadState]);
 

@@ -229,9 +229,9 @@ export default function PlotBoardView({
 function BeatSheetPicker() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
+    <>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(true)}
         title="Apply a famous beat structure"
         className="w-[140px] flex-shrink-0 flex flex-col items-center justify-center gap-2 px-3 py-4 bg-[var(--accent-soft)] border-2 border-dashed border-[var(--border)] rounded-xl text-[var(--accent)] hover:border-[var(--accent)] transition-all"
       >
@@ -240,73 +240,83 @@ function BeatSheetPicker() {
       </button>
       <AnimatePresence>
         {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            // Dropdown was rendered with `top-full left-0` which let it spill
-            // off the bottom of the page when the "Apply a Beat Sheet" button
-            // was near the lower edge. Anchor the panel to the bottom of the
-            // viewport-visible area with max-h + overflow-y-auto so the
-            // contents scroll instead of running past the StatusLine. The
-            // bottom-12 lifts it above the StatusBar; mt-2 keeps it tied to
-            // the button when there IS room above.
-            className="absolute left-0 top-full mt-2 w-72 z-50 bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden max-h-[60vh] flex flex-col"
-            style={{
-              // If the button is in the bottom half of the workspace, the
-              // dropdown opens UP instead of down. This keeps it inside the
-              // viewport regardless of scroll position.
-              ...(typeof window !== 'undefined' && (() => {
-                // We can't measure the button rect at render time without a
-                // ref, so we use a conservative bottom-anchor when the
-                // workspace is short. The flex-col + max-h handles overflow.
-                return {};
-              })()),
-            }}
-          >
-            <div className="px-3 py-2 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0">
-              <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">Choose a sheet</span>
-              <button onClick={() => setOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text)]" aria-label="Close">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {/* Scrollable list — was previously letting the panel grow off
-                the bottom of the screen. Now constrained to max-h + scroll. */}
-            <div className="overflow-y-auto flex-1">
-            {BEAT_SHEETS.map((s) => (
+          <>
+            {/* Backdrop — click anywhere to dismiss. Position fixed so it
+                covers the whole viewport regardless of where the trigger
+                button is on the page. This is what fixes the off-screen
+                bug: previously the picker was absolute-positioned under
+                its button, so when the Plot board scrolled or the button
+                was near the page bottom, the picker spilled below the
+                viewport and the user only saw its header. A fixed
+                centered modal can't go off-screen by definition. */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 bg-black/40 z-[100]"
+              aria-hidden
+            />
+            <motion.div
+              role="dialog"
+              aria-label="Choose a beat sheet"
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.15 }}
+              // Center the picker in the viewport using fixed + transform.
+              // max-h:80vh + flex flex-col + overflow-y-auto on the inner
+              // list mean it stays fully visible on every screen size,
+              // no matter where the trigger button is.
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[400px] max-h-[80vh] z-[101] bg-[var(--panel)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="px-3 py-2 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0">
+                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+                  Choose a sheet
+                </span>
                 <button
-                  key={s.id}
-                  onClick={async () => {
-                    if (!confirm(`Replace the current Plot board with the ${s.label} template? Your current beats and acts will be cleared.`)) return;
-                    const { useAppStore } = await import('@/store/useAppStore');
-                    const st = useAppStore.getState();
-                    // Wipe acts + beats, then rebuild
-                    useAppStore.setState({ beats: {}, plotBoard: { acts: [] } });
-                    for (const act of s.acts) {
-                      const actId = st.addAct();
-                      useAppStore.getState().updateAct(actId, { title: act.title });
-                      for (const b of act.beats) {
-                        const beatId = useAppStore.getState().addBeat(actId);
-                        useAppStore.getState().updateBeat(beatId, {
-                          title: b.title,
-                          description: b.hint,
-                          beatType: b.beatType,
-                        });
-                      }
-                    }
-                    setOpen(false);
-                  }}
-                  className="block w-full text-left px-3 py-2 hover:bg-[var(--hover)] border-t border-[var(--border)]"
+                  onClick={() => setOpen(false)}
+                  className="text-[var(--text-muted)] hover:text-[var(--text)]"
+                  aria-label="Close"
                 >
-                  <div className="text-xs font-bold text-[var(--text)]">{s.label}</div>
-                  <div className="text-[10px] text-[var(--text-muted)] truncate">{s.source} · {s.description}</div>
+                  <X className="w-3.5 h-3.5" />
                 </button>
-              ))}
-            </div>
-          </motion.div>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {BEAT_SHEETS.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={async () => {
+                      if (!confirm(`Replace the current Plot board with the ${s.label} template? Your current beats and acts will be cleared.`)) return;
+                      const { useAppStore } = await import('@/store/useAppStore');
+                      const st = useAppStore.getState();
+                      useAppStore.setState({ beats: {}, plotBoard: { acts: [] } });
+                      for (const act of s.acts) {
+                        const actId = st.addAct();
+                        useAppStore.getState().updateAct(actId, { title: act.title });
+                        for (const b of act.beats) {
+                          const beatId = useAppStore.getState().addBeat(actId);
+                          useAppStore.getState().updateBeat(beatId, {
+                            title: b.title,
+                            description: b.hint,
+                            beatType: b.beatType,
+                          });
+                        }
+                      }
+                      setOpen(false);
+                    }}
+                    className="block w-full text-left px-3 py-2 hover:bg-[var(--hover)] border-t border-[var(--border)]"
+                  >
+                    <div className="text-xs font-bold text-[var(--text)]">{s.label}</div>
+                    <div className="text-[10px] text-[var(--text-muted)] truncate">{s.source} · {s.description}</div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }
 
