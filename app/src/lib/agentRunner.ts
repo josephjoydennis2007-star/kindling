@@ -213,7 +213,7 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
         // Auto-fallback to Gemini if the user has set up a key.
         const s = useAppStore.getState().settings as any;
         const geminiKey = (s.geminiApiKey || s.aiApiKey || '').trim();
-        if (s.aiProvider === 'builtin' && geminiKey && /^AIza[\w-]{30,}/.test(geminiKey)) {
+        if (s.aiProvider === 'builtin' && geminiKey && geminiKey.startsWith('AIza') && geminiKey.length >= 30) {
           emitTurn({
             ts: Date.now(),
             kind: 'plan',

@@ -458,7 +458,11 @@ function App() {
       history: state.history,
     });
     setDirty(false); // mark clean — Ctrl+S succeeded
-    toast.success('Story saved');
+    // Auto-save fires this same path. We tag the dispatch with a
+    // `silent` flag so the toast only shows on EXPLICIT Ctrl+S /
+    // Save-button presses — not every 30 seconds of typing.
+    const triggeredByAutoSave = (window as any).__kindlingAutoSaveInProgress;
+    if (!triggeredByAutoSave) toast.success('Story saved');
     document.dispatchEvent(new CustomEvent('writer:saved'));
 
     // Push to Firestore IF the user is signed in. Errors don't block the
@@ -531,6 +535,93 @@ function App() {
       }
     } catch {/* network or import error — silent, local save already succeeded */}
   }, [activeStoryId, addHistory, saveState, updateSettings]);
+
+  // Auto-save — debounced 30s after the dirty flag flips.
+  //
+  // The previous "manual save only" model meant if the user forgot to
+  // hit Ctrl+S, anything they typed since opening the story was at risk
+  // (tab close, refresh, crash, switch story without saving). Now the
+  // moment something changes, a 30-second timer starts; if the user
+  // keeps editing, each new edit resets it; once they're quiet for 30s
+  // the save happens silently in the background (no toast). Manual save
+  // (Ctrl+S, the Save button) still works exactly as before and shows
+  // its own toast for explicit reassurance.
+  useEffect(() => {
+    if (!dirty || !activeStoryId) return;
+    const id = window.setTimeout(() => {
+      // Same save path as Ctrl+S but quieter — we don't want a toast
+      // every 30 seconds. handleManualSave dispatches the writer:saving
+      // event so the status indicator still flashes.
+      try {
+        (window as any).__kindlingAutoSaveInProgress = true;
+        handleManualSave();
+      } finally {
+        // Reset on next tick — the toast check in handleManualSave is
+        // synchronous, so as long as it runs in the same frame the
+        // flag is read correctly.
+        setTimeout(() => { (window as any).__kindlingAutoSaveInProgress = false; }, 0);
+      }
+    }, 30_000);
+    return () => window.clearTimeout(id);
+  }, [dirty, activeStoryId, handleManualSave]);
+
+  // Cloud-recovery pull on sign-in.
+  //
+  // Previously the K-drawer only showed stories present in this
+  // browser's IndexedDB. If the user signed in on a different device
+  // (or cleared their browser data) they'd see an empty drawer even
+  // though all their stories were safely in Firestore. This pulls
+  // every story they own / collaborate on at sign-in and merges any
+  // missing ones into the local store + hydrates each saved snapshot
+  // into IndexedDB so the K-drawer surfaces them immediately and
+  // switching to them works offline thereafter.
+  useEffect(() => {
+    if (!user || !ready) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { listMyStories } = await import('@/lib/cloudStories');
+        const cloudStories = await listMyStories();
+        if (cancelled || !cloudStories.length) return;
+        const known = new Set(useAppStore.getState().stories.map((s) => s.id));
+        const fresh: any[] = [];
+        for (const cs of cloudStories) {
+          if (known.has(cs.id)) continue;
+          fresh.push({
+            id: cs.id,
+            title: cs.title || 'Untitled Story',
+            type: 'movie',
+            createdAt: (cs as any).createdAt || cs.updatedAt || Date.now(),
+            updatedAt: cs.updatedAt || Date.now(),
+          });
+          // Hydrate the per-story snapshot into IndexedDB so opening
+          // the story later loads its actual content (not a blank
+          // shell). The cloud `data` field is a JSON string produced
+          // by exportStory().
+          try {
+            const parsed = (cs as any).data ? JSON.parse((cs as any).data) : null;
+            if (parsed) await saveState(cs.id, parsed);
+          } catch {
+            // Corrupt blob — leave it; user can still open the cloud
+            // story and re-save to fix.
+          }
+        }
+        if (fresh.length > 0 && !cancelled) {
+          useAppStore.setState((s: any) => ({ stories: [...s.stories, ...fresh] }));
+          toast.success(`Recovered ${fresh.length} stor${fresh.length === 1 ? 'y' : 'ies'} from cloud`, {
+            description: 'Open the stories drawer (K logo) to see them.',
+            duration: 6000,
+          });
+        }
+      } catch (err: any) {
+        // Firestore unreachable or rules block reads. Silent — local
+        // stories still work; the user can sign in again later.
+        // eslint-disable-next-line no-console
+        console.warn('[Kindling] Cloud story pull failed:', err?.code || err?.message || err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user, ready, saveState]);
 
   // Kept exported via a custom event so the Command Palette + Settings can
   // call it. The rail/context layout no longer surfaces an "Import" button

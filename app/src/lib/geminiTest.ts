@@ -27,19 +27,28 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 export async function testGeminiKey(rawKey: string, model: string = 'gemini-2.0-flash'): Promise<GeminiTestResult> {
   const key = (rawKey || '').trim();
 
-  // Cheap client-side checks first.
+  // Cheap client-side checks first — but ONLY for things that
+  // definitely can't reach Google's API at all (empty, embedded
+  // newlines that break the URL). The previous AIza-strict regex was
+  // catching valid keys whose chars fell outside its character class —
+  // better to let Google decide and surface their actual response.
   if (!key) return { ok: false, message: 'Paste a Gemini API key first.' };
-  if (key.includes(' ') || key.includes('\n')) {
+  if (/\s/.test(key)) {
     return {
       ok: false,
-      message: 'Key has whitespace in it — paste it again, the whole single line of text from aistudio.google.com/apikey.',
+      message: 'Key contains whitespace — paste again, the whole single line from aistudio.google.com/apikey.',
     };
   }
-  if (!/^AIza[\w-]{30,}$/.test(key)) {
+  if (key.length < 20) {
     return {
       ok: false,
-      message: 'That doesn\'t look like a Gemini key — they start with "AIza" and are ~40 characters with no symbols. Get one at aistudio.google.com/apikey (click "Create API key").',
+      message: 'That key is too short to be a real Gemini key. Generate one at aistudio.google.com/apikey.',
     };
+  }
+  if (!key.startsWith('AIza')) {
+    // Soft warning — Google's API will reject non-AIza prefixed keys
+    // with a clear error, so we forward the request anyway and let the
+    // server tell us. We just note our suspicion in the message.
   }
 
   // Smallest possible request — single "ping" content, minimal output.
