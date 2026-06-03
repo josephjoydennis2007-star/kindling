@@ -84,6 +84,32 @@ function parseRetryAfter(r: Response, body: string): number | undefined {
     if (m[2].startsWith('ms')) return Math.ceil(n / 1000);
     return Math.ceil(n);
   }
+  // 4. Pollinations 429 "Queue full for IP" has no Retry-After or
+  //    structured retry field, but the queue typically clears in 5–10
+  //    seconds. Default to 8 so the agent retries instead of bailing.
+  if (/queue full/i.test(body)) return 8;
+  return undefined;
+}
+
+/**
+ * OpenRouter (and a few other budget providers) return HTTP 402 when
+ * a request would exceed the remaining credit budget. The error body
+ * includes the exact affordable amount — "can only afford 1677 tokens"
+ * — which we parse out so we can retry the same request with a lower
+ * max_tokens cap and squeak it through.
+ */
+function parseAffordableMaxTokens(body: string): number | undefined {
+  const m = body.match(/(?:can only afford|maximum allowed[^\d]+)(\d+)\s*tokens?/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (Number.isFinite(n) && n >= 64) return Math.max(64, n - 8); // small safety margin
+  }
+  // Some providers phrase it as "max max_tokens is X".
+  const m2 = body.match(/max(?:imum)?\s+max_tokens\s+(?:is|allowed)[^\d]+(\d+)/i);
+  if (m2) {
+    const n = parseInt(m2[1], 10);
+    if (Number.isFinite(n) && n >= 64) return Math.max(64, n - 8);
+  }
   return undefined;
 }
 
@@ -229,12 +255,33 @@ export async function aiOnce(
         // Surface the cooldown so the agent loop can sleep instead of
         // killing the run. Groq's free tier hits this all the time —
         // 12k tokens/min on llama-3.3-70b — and their error body
-        // includes the exact retry-after value.
+        // includes the exact retry-after value. Pollinations queue-full
+        // is handled the same way via parseRetryAfter's queue heuristic.
         const retryAfter = parseRetryAfter(r, body);
         return {
           ok: false,
           error: `${provider} rate-limited (429). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
           retryAfter,
+        };
+      }
+      if (r.status === 402) {
+        // OpenRouter (and similar budget providers) return 402 with
+        // "can only afford N tokens" when the request would exceed the
+        // remaining credit budget. Auto-retry ONCE at that cap so the
+        // user's run continues until the credits actually hit zero.
+        const affordable = parseAffordableMaxTokens(body);
+        if (affordable && affordable < maxTokens && !(opts as any)._retriedAfford) {
+          return aiOnce(settings, system, user, {
+            ...opts,
+            maxTokens: affordable,
+            // sentinel so we don't loop forever
+            ...({ _retriedAfford: true } as any),
+          });
+        }
+        return {
+          ok: false,
+          error:
+            `${provider} out of credits (402). Top up at openrouter.ai/settings/credits or switch to a free provider in Settings → AI (Gemini is the most reliable free option).`,
         };
       }
       return { ok: false, error: `${provider} ${r.status}: ${body.slice(0, 300)}` };

@@ -593,14 +593,34 @@ async function callAI(opts: {
       body: JSON.stringify({
         model: opts.model || DEFAULT_MODELS[opts.provider] || 'gpt-4o-mini',
         messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
-        max_tokens: 1500,
+        // 1024 chosen to stay under OpenRouter's free-credit ceiling
+        // (the user there typically has ~1700 tokens of budget). Big
+        // enough for full chat responses, small enough to actually run.
+        max_tokens: 1024,
         temperature: 0.7,
         stream: wantStream,
       }),
     });
     if (!r.ok) {
-      const body = (await r.text()).slice(0, 300);
-      throw new Error(`${opts.provider} ${r.status}: ${body}`);
+      const body = (await r.text()).slice(0, 500);
+      // Friendly, specific messages so the chat panel doesn't just dump
+      // raw JSON. The most common cases for the free-tier providers:
+      //   - 429 with Pollinations "Queue full for IP" — their free tier
+      //     caps unauthenticated users to one in-flight request.
+      //   - 429 with Groq's "try again in 25.88s" — their TPM cap.
+      //   - 402 from OpenRouter — out of free credits.
+      if (r.status === 429) {
+        if (/queue full/i.test(body)) {
+          throw new Error('Built-in AI is queueing requests — wait ~10s and try again, or switch to Gemini for unlimited free chat (Settings → AI → Gemini).');
+        }
+        const m = body.match(/try again in (\d+(?:\.\d+)?)\s*s/i);
+        const wait = m ? ` Wait ~${Math.ceil(Number(m[1]))}s and retry.` : ' Wait a moment and retry.';
+        throw new Error(`${opts.provider} rate-limited (429).${wait}`);
+      }
+      if (r.status === 402) {
+        throw new Error(`${opts.provider} out of credits. Top up at openrouter.ai/settings/credits, or switch to a free provider in Settings → AI (Gemini is recommended).`);
+      }
+      throw new Error(`${opts.provider} ${r.status}: ${body.slice(0, 250)}`);
     }
     if (!wantStream || !r.body) {
       const j = await r.json();
@@ -657,7 +677,20 @@ async function callAI(opts: {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (!r.ok) throw new Error(`Gemini ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    if (!r.ok) {
+      const body = (await r.text()).slice(0, 500);
+      if (r.status === 429) {
+        const m = body.match(/(\d+)\s*seconds?/i);
+        const wait = m ? ` Wait ~${m[1]}s.` : ' Wait a moment.';
+        throw new Error(`Gemini rate-limited (429).${wait}`);
+      }
+      if (r.status === 403 || r.status === 400) {
+        if (/api.?key|invalid/i.test(body)) {
+          throw new Error('Gemini key rejected — paste a fresh key from aistudio.google.com/apikey.');
+        }
+      }
+      throw new Error(`Gemini ${r.status}: ${body.slice(0, 200)}`);
+    }
     if (!wantStream || !r.body) {
       const j = await r.json();
       return ((j.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || '').join('')).trim();
