@@ -614,21 +614,33 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                         className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs font-mono outline-none focus:border-[var(--accent)]"
                       />
                     </Section>
+                    {/* Image model — Runway's API only accepts a fixed
+                        set of model IDs. Free-text was letting users
+                        type display names like "Nano Banana 2" which
+                        Runway rejects with a 400. The dropdown lists
+                        only the IDs Runway's developer API currently
+                        accepts (per their docs as of 2026). */}
                     <Section title="Image model">
-                      <input
-                        value={(draft as any).runwayImageModel || ''}
+                      <select
+                        value={(draft as any).runwayImageModel || 'gen4_image'}
                         onChange={(e) => setDraft({ ...draft, runwayImageModel: e.target.value } as any)}
-                        placeholder="gen4_image"
                         className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]"
-                      />
+                      >
+                        <option value="gen4_image">gen4_image (Gen-4 — recommended)</option>
+                        <option value="nano_banana">nano_banana (Google Nano Banana — needs separate access)</option>
+                      </select>
                     </Section>
                     <Section title="Video model">
-                      <input
-                        value={(draft as any).runwayVideoModel || ''}
+                      <select
+                        value={(draft as any).runwayVideoModel || 'gen4_turbo'}
                         onChange={(e) => setDraft({ ...draft, runwayVideoModel: e.target.value } as any)}
-                        placeholder="gen4_turbo"
                         className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]"
-                      />
+                      >
+                        <option value="gen4_turbo">gen4_turbo (fast)</option>
+                        <option value="gen4.5">gen4.5 (newest — best quality)</option>
+                        <option value="gen3a_turbo">gen3a_turbo (older fallback)</option>
+                        <option value="seedance-pro-1-0">seedance-pro-1-0 (ByteDance Seedance)</option>
+                      </select>
                     </Section>
                     <button
                       onClick={async () => {
@@ -639,17 +651,44 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                         }
                         import('sonner').then(({ toast }) => toast.loading('Pinging Runway…', { id: 'rwy' }));
                         const { runwayPing } = await import('@/lib/runwayClient');
-                        const ok = await runwayPing(key);
-                        import('sonner').then(({ toast }) =>
-                          ok
-                            ? toast.success('Runway key works', { id: 'rwy' })
-                            : toast.error('Runway rejected the key', { id: 'rwy' }),
-                        );
+                        const result = await runwayPing(key);
+                        // Result is now structured — surface the SPECIFIC
+                        // reason so the user can act on it (e.g. "you
+                        // pasted a regular-Runway key, not a Developer
+                        // API key" vs. "CORS is blocking the browser").
+                        import('sonner').then(({ toast }) => {
+                          if (result.ok) {
+                            toast.success(result.message, { id: 'rwy', duration: 4000 });
+                          } else {
+                            toast.error(result.message, { id: 'rwy', duration: 12_000 });
+                          }
+                        });
                       }}
                       className="mt-2 w-full px-3 py-2 rounded-md text-xs font-semibold bg-[var(--card)] border border-[var(--rule)] hover:border-[var(--accent)] transition-colors text-[var(--text)]"
                     >
                       Test connection
                     </button>
+                    <p className="mt-2 text-[10px] text-[var(--text-muted)] leading-snug">
+                      <strong className="text-[var(--text-secondary)]">Important:</strong> Runway has TWO products. Your regular runwayml.com subscription does NOT give you an API key — you need a separate <strong>Developer</strong> account at{' '}
+                      <a
+                        href="https://dev.runwayml.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[var(--accent)] underline"
+                      >
+                        dev.runwayml.com
+                      </a>{' '}
+                      with its own credit balance. Developer keys start with <code>key_</code> or <code>rwk_</code>. If your key works in their{' '}
+                      <a
+                        href="https://dev.runwayml.com/playground"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[var(--accent)] underline"
+                      >
+                        playground
+                      </a>{' '}
+                      but the Test button here fails, it's almost certainly a browser CORS block on the API — your key is fine, the browser just can't reach the API directly.
+                    </p>
                   </div>
                 </div>
               )}
