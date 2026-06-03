@@ -244,22 +244,83 @@ function App() {
     })();
   }, [authChecked, user]);
 
-  // Load story data
+  // Load story data when activeStoryId changes.
+  //
+  // CRITICAL: always reset every per-story field BEFORE merging in the
+  // saved snapshot. The previous behavior only called setState(state)
+  // when there was something saved, which meant switching to a brand-new
+  // story left the OLD story's screenplay/scenes/characters/etc. in
+  // place — that's exactly the "click a different story, title changes
+  // but content is still from the old one" bug the user reported.
+  //
+  // Hardcoded blank values mirror the store's `defaultState` for the
+  // per-story slots. Cross-story fields (activeStoryId, stories[],
+  // settings, etc.) are deliberately NOT touched.
   useEffect(() => {
     if (!ready) return;
-    if (activeStoryId) {
-      loadState(activeStoryId).then(state => {
-        if (state) {
-          useAppStore.setState(state);
-        }
-        setInitialized(true);
-      });
-    } else {
+    if (!activeStoryId) {
       setInitialized(true);
       if (stories.length === 0) {
         setShowStorySelector(true);
       }
+      return;
     }
+    loadState(activeStoryId).then((state) => {
+      // Blank-slate template — exactly the same shape as defaultState's
+      // per-story slots so any field absent from the saved snapshot
+      // (e.g. a story saved before `world`/`locations`/`outlinePoints`
+      // existed) gets a clean default rather than inheriting stale data
+      // from the previously-active story.
+      const blank: any = {
+        screenplay: {
+          title: '',
+          author: '',
+          contact: '',
+          logline: '',
+          synopsis: '',
+          instructions: '',
+          started: false,
+          elements: [],
+          sections: [],
+          activeSectionId: null,
+          assets: [],
+          world: [],
+          locations: [],
+          outlinePoints: [],
+          theme: '',
+        },
+        scenes: [],
+        shots: {},
+        bRolls: {},
+        characters: [],
+        plotBoard: { acts: [] },
+        beats: {},
+        notes: [],
+        history: [],
+        activeSceneId: null,
+        activeDirectorSceneId: null,
+        focusCharacterId: null,
+        rightPanel: null,
+      };
+      // Merge order: blank first, then the saved snapshot on top. The
+      // store-level merge keeps cross-story fields (stories, settings,
+      // user, activeStoryId) untouched because they aren't in `blank`.
+      const next: any = { ...blank };
+      if (state) {
+        // For `screenplay` specifically we want field-level merge so a
+        // partial saved snapshot doesn't blow away a newer field that
+        // happens to live on it.
+        if (state.screenplay) {
+          next.screenplay = { ...blank.screenplay, ...state.screenplay };
+        }
+        for (const k of Object.keys(state)) {
+          if (k === 'screenplay') continue;
+          next[k] = (state as any)[k];
+        }
+      }
+      useAppStore.setState(next);
+      setInitialized(true);
+    });
   }, [ready, activeStoryId, stories.length, loadState]);
 
   // ── Manual-save model ──────────────────────────────────────────────────
@@ -327,11 +388,42 @@ function App() {
     return storyId;
   }, [createStory]);
 
-  // Handle story selection
-  const handleSelectStory = useCallback((storyId: string) => {
+  // Handle story selection.
+  //
+  // The user reported "I click a different story, the name changes but
+  // the content stays the same." Root cause was two-fold:
+  //   1. Switching without saving first → the in-memory edits to the
+  //      OUTGOING story were lost the moment its slot got overwritten.
+  //   2. The load effect didn't reset per-story slots, so an empty
+  //      INCOMING story inherited the previous story's editor content.
+  //
+  // Fix here is (1): snapshot the current story to IndexedDB BEFORE we
+  // change activeStoryId. The load effect handles (2) with the blank-
+  // template merge.
+  const handleSelectStory = useCallback(async (storyId: string) => {
+    const s = useAppStore.getState();
+    const currentId = s.activeStoryId;
+    if (currentId && currentId !== storyId) {
+      try {
+        await saveState(currentId, {
+          screenplay: s.screenplay,
+          scenes: s.scenes,
+          shots: s.shots,
+          bRolls: s.bRolls,
+          characters: s.characters,
+          plotBoard: s.plotBoard,
+          beats: s.beats,
+          notes: s.notes,
+          history: s.history,
+        });
+      } catch {
+        // IndexedDB hiccup — proceed anyway. Worst case the user loses
+        // a few seconds of work; previously the entire load was broken.
+      }
+    }
     loadStory(storyId);
     setShowStorySelector(false);
-  }, [loadStory]);
+  }, [loadStory, saveState]);
 
   const handleManualSave = useCallback(async () => {
     if (!activeStoryId) return;
