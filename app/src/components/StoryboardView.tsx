@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3 } from 'lucide-react';
+import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { Shot } from '@/types';
+import { sendPromptToRunway } from '@/lib/sendToRunway';
 
 /**
  * StoryboardView — a full-page grid of every storyboard image across all
@@ -165,6 +166,38 @@ export default function StoryboardView() {
                       {shot.description}
                     </div>
                   )}
+                  {/* Send-to-Runway buttons. Image button always shown,
+                      video button only when a still already exists
+                      (since Runway image_to_video needs a source frame). */}
+                  <div className="mt-2 flex gap-1">
+                    <button
+                      onClick={() => sendPromptToRunway({
+                        prompt: buildRunwayPrompt(shot, sceneName),
+                        shotId: shot.id,
+                        shotLabel: `${sceneName} · ${shot.shotType || 'shot'}`,
+                        target: 'image',
+                      })}
+                      title="Copy this shot's prompt + open Runway. Free if you use Explore mode."
+                      className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" />
+                      Image
+                    </button>
+                    <button
+                      onClick={() => sendPromptToRunway({
+                        prompt: buildRunwayPrompt(shot, sceneName),
+                        shotId: shot.id,
+                        shotLabel: `${sceneName} · ${shot.shotType || 'shot'}`,
+                        target: 'video',
+                      })}
+                      disabled={!shot.storyboard}
+                      title={shot.storyboard ? 'Send to Runway video. Free in Explore mode.' : 'Generate or upload an image first.'}
+                      className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Film className="w-2.5 h-2.5" />
+                      Video
+                    </button>
+                  </div>
                 </figcaption>
               </figure>
             ))}
@@ -181,4 +214,19 @@ export default function StoryboardView() {
       />
     </motion.div>
   );
+}
+
+/**
+ * Build a Runway-friendly prompt from a shot. We weave the scene name,
+ * shot type, description, lens, and camera notes into a single concise
+ * sentence the user can paste straight into Runway's text field.
+ */
+function buildRunwayPrompt(shot: Shot, sceneName: string): string {
+  const bits: string[] = [];
+  if (shot.shotType) bits.push(shot.shotType.toLowerCase());
+  if (shot.description) bits.push(shot.description);
+  bits.push(`scene: ${sceneName}`);
+  if (shot.camera) bits.push(`camera: ${shot.camera}`);
+  if (shot.lens) bits.push(`lens: ${shot.lens}`);
+  return `Cinematic ${bits.join(', ')}. Photoreal, 16:9, atmospheric lighting, film grain.`;
 }

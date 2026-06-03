@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Kindling Runway Bridge",
+  "version": "1.0.0",
+  "description": "Send shot prompts from Kindling to Runway in one click, then send the generated frame URL back to Kindling. Uses your existing Runway login — you still click Generate yourself.",
+  "permissions": ["activeTab", "tabs", "scripting", "clipboardWrite"],
+  "host_permissions": [
+    "https://kindling-1d29d.web.app/*",
+    "https://*.kindling-1d29d.web.app/*",
+    "http://localhost/*",
+    "https://app.runwayml.com/*",
+    "https://runwayml.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://kindling-1d29d.web.app/*",
+        "https://*.kindling-1d29d.web.app/*",
+        "http://localhost:*/*"
+      ],
+      "js": ["content-kindling.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://app.runwayml.com/*",
+        "https://runwayml.com/*"
+      ],
+      "js": ["content-runway.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Kindling Runway Bridge"
+  }
+}

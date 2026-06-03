@@ -48,6 +48,7 @@ import AltTakeOverlay from '@/components/AltTakeOverlay';
 import ExportDialog from '@/components/ExportDialog';
 import SettingsOverlay from '@/components/SettingsOverlay';
 import AgentPanel from '@/components/AgentPanel';
+import { installRunwayBridge } from '@/lib/sendToRunway';
 import FloatingActionButton from '@/components/FloatingActionButton';
 import './App.css';
 
@@ -575,6 +576,14 @@ function App() {
     const onOpenAgent = () => setShowAgent(true);
     document.addEventListener('app:openAgent', onOpenAgent);
     return () => document.removeEventListener('app:openAgent', onOpenAgent);
+  }, []);
+
+  // Install the Runway browser-bridge listeners once at boot. The
+  // bridge listens for postMessages from the Kindling Runway Bridge
+  // extension and attaches returned image / video URLs to the matching
+  // shot. Without the extension installed the listeners are inert.
+  useEffect(() => {
+    installRunwayBridge();
   }, []);
 
   // Live-sync poller — when settings.liveSync is on AND a cloud provider is
