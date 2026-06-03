@@ -24,17 +24,6 @@ export interface GeminiTestResult {
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
-// Same fallback chain aiClient uses. Each model has its own separate
-// daily free-tier quota bucket, so the Test button walks the chain to
-// find ANY model the key can use today.
-const FALLBACK_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
-  'gemini-2.5-flash',
-];
-
 export async function testGeminiKey(rawKey: string, model: string = 'gemini-2.0-flash'): Promise<GeminiTestResult> {
   const key = (rawKey || '').trim();
 
@@ -62,38 +51,28 @@ export async function testGeminiKey(rawKey: string, model: string = 'gemini-2.0-
     // server tell us. We just note our suspicion in the message.
   }
 
-  // Try the chosen model first, then the fallback chain. Each model has a
-  // SEPARATE daily free-tier bucket, so if the primary is exhausted we
-  // report whichever one DOES work — and Kindling will auto-use it.
-  const chain = [model, ...FALLBACK_MODELS.filter((m) => m !== model)];
-  let lastDailyExhausted = false;
-  for (const m of chain) {
-    const res = await pingOne(key, m);
-    if (res.kind === 'ok') {
-      return {
-        ok: true,
-        status: 200,
-        message: m === model ? 'Gemini key works.' : `Gemini key works on ${m} (your default ${model} is out of daily quota, so Kindling will use ${m}).`,
-      };
-    }
-    // Key-level failures apply to every model — stop immediately.
-    if (res.kind === 'key' || res.kind === 'permission' || res.kind === 'billing' || res.kind === 'perminute') {
-      return { ok: false, status: res.status, message: res.message, quotaId: res.quotaId };
-    }
-    // Daily-quota / resource-exhausted → try the next model.
-    if (res.kind === 'daily') { lastDailyExhausted = true; continue; }
-    // Anything else (network, unknown) — surface it.
-    return { ok: false, status: res.status, message: res.message };
+  // Test ONLY the configured model — a SINGLE request. (The previous
+  // version walked all 5 models, which drained one request from each
+  // model's separate daily bucket per click — a big reason fresh keys
+  // looked rate-limited. One ping, one model.)
+  const { markGeminiExhausted } = await import('@/lib/geminiQuota');
+  const res = await pingOne(key, model);
+  if (res.kind === 'ok') {
+    return { ok: true, status: 200, message: 'Gemini key works.' };
   }
-  // Every model in the chain was out of daily quota.
-  if (lastDailyExhausted) {
+  if (res.kind === 'key' || res.kind === 'permission' || res.kind === 'billing' || res.kind === 'perminute') {
+    return { ok: false, status: res.status, message: res.message, quotaId: res.quotaId };
+  }
+  if (res.kind === 'daily') {
+    markGeminiExhausted(model);
     return {
       ok: false,
+      status: res.status,
       message:
-        'Every Gemini free model is out of daily quota on this Google account (resets midnight Pacific). This happens fast on brand-new accounts. For a more generous free option right now, use Groq — free key at console.groq.com/keys, then pick Groq in Settings → AI.',
+        `${model} is out of today's free quota (resets ~midnight Pacific). Fresh Google accounts get a very small free daily allowance. The reliable free option is Groq — far more generous, free key at console.groq.com/keys, then pick Groq in Settings → AI.`,
     };
   }
-  return { ok: false, message: 'Gemini test failed for an unknown reason.' };
+  return { ok: false, status: res.status, message: res.message };
 }
 
 type PingOutcome =

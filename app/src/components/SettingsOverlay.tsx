@@ -626,9 +626,40 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                       </button>
                     )}
                     {draft.aiProvider === 'gemini' && (
-                      <p className="mt-2 text-[10px] text-[var(--text-muted)] leading-snug">
-                        Brand-new Gemini keys can take 5–15 minutes for Google to provision quota. If Test returns 429 RESOURCE_EXHAUSTED with no quota id, that's what's happening — wait then test again.
-                      </p>
+                      <>
+                        <p className="mt-2 text-[10px] text-[var(--text-muted)] leading-snug">
+                          Heads up: Google's free Gemini tier has a <strong>small daily request cap</strong> (especially on brand-new accounts). For building whole movies — which fires dozens of AI calls — it runs out fast. <strong className="text-[var(--text-secondary)]">Groq is the better free choice</strong>: much higher limits, no tiny daily cap.
+                        </p>
+                        <button
+                          onClick={() => {
+                            // One-click switch to Groq. Clears the model
+                            // (so Groq's default is used) and any cached
+                            // gemini-exhausted stamps. The user still pastes
+                            // a Groq key, but the provider + sensible model
+                            // are pre-set.
+                            setDraft({ ...draft, aiProvider: 'groq', aiModel: 'llama-3.3-70b-versatile', aiApiKey: '' });
+                            import('@/lib/geminiQuota').then((m) => m.clearGeminiExhausted());
+                            import('sonner').then(({ toast }) =>
+                              toast.success('Switched to Groq — paste your free Groq key above', {
+                                description: 'Get one in 1 click at console.groq.com/keys',
+                                duration: 8000,
+                              }),
+                            );
+                          }}
+                          className="mt-2 w-full px-3 py-2 rounded-md text-xs font-bold transition-colors"
+                          style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}
+                        >
+                          Switch to Groq (recommended for heavy use) →
+                        </button>
+                        <a
+                          href="https://console.groq.com/keys"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1.5 block text-center text-[10px] text-[var(--accent)] underline"
+                        >
+                          Get a free Groq key (1-click Google sign-in)
+                        </a>
+                      </>
                     )}
                   </Section>
                   {draft.aiProvider === 'custom' && (

@@ -186,14 +186,32 @@ export async function aiOnce(
       // (deduped). Per-minute limits + non-quota errors short-circuit
       // immediately; only PER-DAY quota exhaustion advances to the next
       // model.
+      const { markGeminiExhausted, isGeminiExhausted } = await import('@/lib/geminiQuota');
       const chain = [model, ...GEMINI_FALLBACK_MODELS.filter((m) => m !== model)];
+      let triedAny = false;
       for (const m of chain) {
+        // Skip models we already know are out of daily quota — firing a
+        // request at them would just waste the user's remaining quota on
+        // the OTHER buckets via the chain. No network call.
+        if (isGeminiExhausted(m)) continue;
+        triedAny = true;
         const res = await geminiGenerateOne(m, apiKey, system, user, maxTokens, temperature);
         if (res.ok) return res;
         // Only continue the fallback loop when THIS model's daily quota
         // is the blocker. Anything else (bad key, per-minute, no text)
         // applies to all models, so stop and surface it.
         if (!res._dailyQuotaExhausted) return res;
+        // Stamp this model dead for the rest of the day so future calls
+        // skip it entirely.
+        markGeminiExhausted(m);
+      }
+      // If every model was already cached-exhausted we never sent a
+      // request — tell the user clearly + recommend the durable fix.
+      if (!triedAny) {
+        return {
+          ok: false,
+          error: 'All Gemini free models are out of daily quota for today (resets ~midnight Pacific). Switch to Groq for a far more generous free tier — Settings → AI → Groq, free key at console.groq.com/keys.',
+        };
       }
       // Every model in the chain was daily-exhausted.
       return {
