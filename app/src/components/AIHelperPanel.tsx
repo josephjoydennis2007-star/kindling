@@ -347,6 +347,33 @@ export default function AIHelperPanel({ onClose }: Props) {
               </>
             )}
 
+            {settings.aiProvider === 'ollama' && (
+              <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--bg)] p-2.5 space-y-1.5">
+                <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--accent)]">
+                  Ollama setup — important
+                </div>
+                <p className="text-[10.5px] text-[var(--text-secondary)] leading-snug">
+                  Ollama runs on YOUR computer. Two things block it from a website:
+                </p>
+                <p className="text-[10.5px] text-[var(--text-secondary)] leading-snug">
+                  <strong className="text-[var(--text)]">1. HTTPS → HTTP block.</strong> This live site is https://, Ollama is http://localhost. Browsers refuse that mix. Ollama only works if you run Kindling locally:{' '}
+                  <code className="text-[var(--accent)] text-[10px]">npm run dev</code> → open{' '}
+                  <code className="text-[var(--accent)] text-[10px]">http://localhost:5173</code>.
+                </p>
+                <p className="text-[10.5px] text-[var(--text-secondary)] leading-snug">
+                  <strong className="text-[var(--text)]">2. CORS.</strong> Let Ollama accept browser calls — set this env var then restart Ollama:
+                </p>
+                <pre className="text-[10px] bg-[var(--card)] border border-[var(--border)] rounded p-1.5 overflow-x-auto text-[var(--text)]">{`# Windows (PowerShell)
+setx OLLAMA_ORIGINS "*"
+# Mac/Linux
+export OLLAMA_ORIGINS="*"
+ollama serve`}</pre>
+                <p className="text-[10.5px] text-[var(--text-muted)] leading-snug">
+                  Then pull a model: <code className="text-[var(--accent)] text-[10px]">ollama pull llama3.2</code>. Honestly, unless you have a good GPU, the cloud free options (Groq, Gemini) are faster + easier.
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 mt-3">
               <button
                 onClick={saveSettings}
@@ -809,7 +836,18 @@ async function callAI(opts: {
   if (opts.provider === 'groq') return openAIStyle('https://api.groq.com/openai/v1/chat/completions');
   if (opts.provider === 'ollama') {
     const base = (opts.endpoint || 'http://localhost:11434').replace(/\/$/, '');
-    return openAIStyle(`${base}/v1/chat/completions`);
+    // Mixed-content guard: an HTTPS page can't call http://localhost.
+    if (typeof location !== 'undefined' && location.protocol === 'https:' && base.startsWith('http://')) {
+      throw new Error('Ollama (http://localhost) can\'t be reached from this https:// site — browsers block it. Run Kindling locally (npm run dev → http://localhost) to use Ollama. See the Ollama setup notes in AI settings.');
+    }
+    try {
+      return await openAIStyle(`${base}/v1/chat/completions`);
+    } catch (e: any) {
+      if (/failed to fetch|networkerror|cors/i.test(e?.message || '')) {
+        throw new Error('Could not reach Ollama. Make sure it\'s running (ollama serve), you pulled a model (ollama pull llama3.2), and OLLAMA_ORIGINS="*" is set so it accepts browser calls. See the Ollama setup notes in AI settings.');
+      }
+      throw e;
+    }
   }
 
   // custom

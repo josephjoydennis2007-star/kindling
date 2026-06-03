@@ -265,6 +265,20 @@ export async function aiOnce(
 
     if (!url) return { ok: false, error: 'Custom endpoint not set in AI settings.' };
 
+    // Proactive mixed-content guard for Ollama. The deployed app is on
+    // HTTPS; Ollama serves plain HTTP on localhost. Browsers BLOCK an
+    // HTTPS page from calling an http:// URL, so the request would die
+    // with an opaque "Failed to fetch". Catch it up-front with a clear,
+    // actionable message instead.
+    if (provider === 'ollama' && typeof location !== 'undefined'
+        && location.protocol === 'https:' && url.startsWith('http://')) {
+      return {
+        ok: false,
+        error:
+          'Ollama runs locally over http://, but this app is served over https:// — browsers block that combination (mixed content). To use Ollama you must run Kindling locally (npm run dev → http://localhost) OR expose Ollama over https via a tunnel. See Settings → AI → Ollama for the steps.',
+      };
+    }
+
     const extraHeaders: Record<string, string> =
       provider === 'openrouter'
         ? { 'HTTP-Referer': typeof location !== 'undefined' ? location.origin : '', 'X-Title': 'Kindling' }
@@ -332,6 +346,17 @@ export async function aiOnce(
     const text = (j.choices?.[0]?.message?.content || j.content || '').toString().trim();
     return { ok: true, text };
   } catch (e: any) {
+    // Ollama-specific failure guidance. A "Failed to fetch" from Ollama
+    // almost always means one of: Ollama isn't running, OR Ollama is
+    // running but rejected the cross-origin browser request because
+    // OLLAMA_ORIGINS isn't set to allow this site.
+    if (provider === 'ollama') {
+      return {
+        ok: false,
+        error:
+          'Could not reach Ollama. Check: (1) Ollama is running (`ollama serve`), (2) you pulled a model (`ollama pull llama3.2`), (3) Ollama allows this browser origin — set OLLAMA_ORIGINS="*" then restart Ollama. See Settings → AI → Ollama for the exact commands.',
+      };
+    }
     return { ok: false, error: e?.message || 'Network error' };
   }
 }
