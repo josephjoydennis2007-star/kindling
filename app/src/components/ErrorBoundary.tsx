@@ -7,21 +7,37 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  crashCount: number;
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, error: null };
+  state: State = { hasError: false, error: null, crashCount: 0 };
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, crashCount: 0 };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('Unhandled error in app:', error, info);
+    // Count consecutive crashes so we can escalate the recovery offer
+    // (just-dismiss → reset-to-safe-view → full-reload) if the same
+    // view keeps blowing up.
+    this.setState((s) => ({ crashCount: s.crashCount + 1 }));
   }
 
+  // Dismiss: clear the error AND move the app to a known-safe state so
+  // the crashing view isn't immediately re-rendered into the same
+  // exception. We reset to the Dashboard tab + close any open right
+  // panel, which are the simplest, most defensively-coded surfaces.
+  // Done via a dynamic store import so the boundary stays decoupled.
   handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    import('@/store/useAppStore')
+      .then(({ useAppStore }) => {
+        try {
+          useAppStore.setState({ activeTab: 'dashboard', rightPanel: null } as any);
+        } catch { /* store unavailable — dismiss anyway */ }
+      })
+      .finally(() => this.setState({ hasError: false, error: null }));
   };
 
   render() {
@@ -43,12 +59,12 @@ export default class ErrorBoundary extends Component<Props, State> {
                 {this.state.error.message}
               </pre>
             )}
-            <div className="flex gap-2 justify-center">
+            <div className="flex gap-2 justify-center flex-wrap">
               <button
                 onClick={this.handleReset}
                 className="px-4 py-2 bg-[var(--accent)] text-[var(--bg)] rounded-lg text-sm font-semibold hover:brightness-110 transition-all"
               >
-                Dismiss
+                Dismiss &amp; go to Dashboard
               </button>
               <button
                 onClick={() => window.location.reload()}
@@ -57,6 +73,27 @@ export default class ErrorBoundary extends Component<Props, State> {
                 Reload
               </button>
             </div>
+            {/* Escalated recovery — only shown if the app has crashed
+                repeatedly, which usually means corrupt local state. This
+                clears the cached UI/session keys (NOT the user's stories,
+                which live in IndexedDB + cloud) and reloads clean. */}
+            {this.state.crashCount >= 2 && (
+              <button
+                onClick={() => {
+                  try {
+                    // Wipe only volatile UI/session caches — never the
+                    // story data stores.
+                    Object.keys(localStorage)
+                      .filter((k) => k.startsWith('kindling-') && !k.includes('comments-seen'))
+                      .forEach((k) => { try { localStorage.removeItem(k); } catch {} });
+                  } catch {}
+                  window.location.reload();
+                }}
+                className="mt-3 text-[11px] text-[var(--text-muted)] underline hover:text-[var(--danger)]"
+              >
+                Still broken? Reset app settings &amp; reload (your stories are safe)
+              </button>
+            )}
           </div>
         </div>
       );
