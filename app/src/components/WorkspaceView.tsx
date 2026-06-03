@@ -162,7 +162,16 @@ export default function WorkspaceView() {
 }
 
 function LinkCard({ link, tileClass, onDelete }: { link: WorkspaceLink; tileClass?: string; onDelete: () => void }) {
-  const open = () => window.open(link.url, '_blank', 'noopener,noreferrer');
+  // CRUCIAL for "stay logged in": use a STABLE named window per link.
+  // The browser keeps the same window/tab tied to that name, so clicking
+  // the same tool a second time RE-USES the existing tab (where the
+  // user is already signed in) instead of spawning a fresh one. If the
+  // tab was closed, a new one opens — but the cookies for that domain
+  // persist in the main browser profile so login still survives.
+  // We deliberately do NOT pass 'noopener' here because that forces the
+  // browser to spawn a brand-new top-level window every time, which
+  // breaks the tab-reuse behaviour and loses the "stay logged in" win.
+  const open = () => window.open(link.url, `kindling_tool_${link.id}`);
   return (
     <motion.div
       whileHover={{ y: -2 }}
