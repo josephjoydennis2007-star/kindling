@@ -41,10 +41,51 @@ export interface AIMsg {
 /**
  * Result of an AI call. We keep the `ok: false` path explicit so callers can
  * render a friendly error inline instead of try/catching.
+ *
+ * `retryAfter` (seconds) is populated when the provider returned a 429
+ * rate-limit response. Callers (the agent loop) can sleep that long and
+ * retry the same turn instead of failing outright.
  */
 export type AIResult =
   | { ok: true; text: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; retryAfter?: number };
+
+/**
+ * Extract retry-after seconds from a rate-limit response. Providers
+ * communicate the cooldown in different ways:
+ *   - Standard HTTP `Retry-After` header (seconds OR HTTP-date)
+ *   - Inside the error body: "Please try again in 25.88s"
+ *   - Inside a `retry_after_ms` field on Groq's error shape
+ */
+function parseRetryAfter(r: Response, body: string): number | undefined {
+  // 1. HTTP Retry-After header.
+  const header = r.headers.get('retry-after') || r.headers.get('Retry-After');
+  if (header) {
+    const n = Number(header);
+    if (Number.isFinite(n) && n > 0) return Math.ceil(n);
+    const date = Date.parse(header);
+    if (!Number.isNaN(date)) {
+      const diff = Math.ceil((date - Date.now()) / 1000);
+      if (diff > 0) return diff;
+    }
+  }
+  // 2. Try parsing the body as JSON for a retry_after_ms field.
+  try {
+    const j = JSON.parse(body);
+    const ms = j?.error?.retry_after_ms ?? j?.retry_after_ms;
+    if (typeof ms === 'number' && ms > 0) return Math.ceil(ms / 1000);
+    const sec = j?.error?.retry_after ?? j?.retry_after;
+    if (typeof sec === 'number' && sec > 0) return Math.ceil(sec);
+  } catch { /* not JSON */ }
+  // 3. Fall back to the "try again in 25.88s" hint in the error string.
+  const m = body.match(/try again in (\d+(?:\.\d+)?)\s*(s|sec|seconds|ms)/i);
+  if (m) {
+    const n = Number(m[1]);
+    if (m[2].startsWith('ms')) return Math.ceil(n / 1000);
+    return Math.ceil(n);
+  }
+  return undefined;
+}
 
 /**
  * Returns true if the provider is reachable WITHOUT an API key (e.g. local
@@ -96,7 +137,16 @@ export async function aiOnce(
         }),
       });
       if (!r.ok) {
-        return { ok: false, error: `Gemini ${r.status}: ${(await r.text()).slice(0, 300)}` };
+        const body = (await r.text()).slice(0, 600);
+        if (r.status === 429) {
+          const retryAfter = parseRetryAfter(r, body);
+          return {
+            ok: false,
+            error: `Gemini rate-limited (429). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
+            retryAfter,
+          };
+        }
+        return { ok: false, error: `Gemini ${r.status}: ${body.slice(0, 300)}` };
       }
       const j = await r.json();
       const text = (j.candidates?.[0]?.content?.parts || [])
@@ -124,7 +174,18 @@ export async function aiOnce(
           temperature,
         }),
       });
-      if (!r.ok) return { ok: false, error: `Anthropic ${r.status}: ${(await r.text()).slice(0, 200)}` };
+      if (!r.ok) {
+        const body = (await r.text()).slice(0, 600);
+        if (r.status === 429) {
+          const retryAfter = parseRetryAfter(r, body);
+          return {
+            ok: false,
+            error: `Anthropic rate-limited (429). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
+            retryAfter,
+          };
+        }
+        return { ok: false, error: `Anthropic ${r.status}: ${body.slice(0, 200)}` };
+      }
       const j = await r.json();
       return { ok: true, text: (j.content?.[0]?.text || '').trim() };
     }
@@ -163,8 +224,20 @@ export async function aiOnce(
       }),
     });
     if (!r.ok) {
-      const body = (await r.text()).slice(0, 300);
-      return { ok: false, error: `${provider} ${r.status}: ${body}` };
+      const body = (await r.text()).slice(0, 600);
+      if (r.status === 429) {
+        // Surface the cooldown so the agent loop can sleep instead of
+        // killing the run. Groq's free tier hits this all the time —
+        // 12k tokens/min on llama-3.3-70b — and their error body
+        // includes the exact retry-after value.
+        const retryAfter = parseRetryAfter(r, body);
+        return {
+          ok: false,
+          error: `${provider} rate-limited (429). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
+          retryAfter,
+        };
+      }
+      return { ok: false, error: `${provider} ${r.status}: ${body.slice(0, 300)}` };
     }
     const j = await r.json();
     const text = (j.choices?.[0]?.message?.content || j.content || '').toString().trim();

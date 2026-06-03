@@ -582,26 +582,27 @@ export async function runTool(tool: string, args: any): Promise<AgentEvent> {
 /** Return a compact, JSON-friendly summary of current app state so the
  *  agent can decide whether it's done. */
 export function snapshotState() {
+  // Compact state summary fed to the AI in every system prompt. Kept
+  // small to fit Groq's free-tier 12k tokens/minute budget — capped
+  // arrays at 12 items, truncated long strings. The agent can always
+  // call listScenes/listCharacters/etc. to read more.
   const s = useAppStore.getState();
   const sp = s.screenplay as any;
   return {
-    activeTab: s.activeTab,
-    title: sp.title || '',
-    logline: sp.logline || '',
-    synopsis: (sp.synopsis || '').slice(0, 200),
-    theme: sp.theme || '',
-    outlinePointCount: Array.isArray(sp.outlinePoints) ? sp.outlinePoints.length : 0,
-    screenplayLineCount: (sp.elements || []).length,
+    tab: s.activeTab,
+    title: (sp.title || '').slice(0, 80),
+    logline: (sp.logline || '').slice(0, 140),
+    theme: (sp.theme || '').slice(0, 60),
+    scriptLines: (sp.elements || []).length,
+    scenes: s.scenes.slice(0, 12).map((sc) => sc.name),
     sceneCount: s.scenes.length,
-    sceneNames: s.scenes.map((sc) => sc.name).slice(0, 20),
-    shotCount: Object.keys(s.shots).length,
+    shots: Object.keys(s.shots).length,
+    characters: s.characters.slice(0, 12).map((c) => c.name),
     characterCount: s.characters.length,
-    characterNames: s.characters.map((c) => c.name).slice(0, 20),
-    actCount: s.plotBoard.acts.length,
-    actTitles: s.plotBoard.acts.map((a) => a.title),
-    beatCount: Object.keys(s.beats).length,
-    worldItemCount: Array.isArray(sp.world) ? sp.world.length : 0,
-    locationCount: Array.isArray(sp.locations) ? sp.locations.length : 0,
+    acts: s.plotBoard.acts.map((a) => a.title),
+    beats: Object.keys(s.beats).length,
+    worldItems: Array.isArray(sp.world) ? sp.world.length : 0,
+    locations: Array.isArray(sp.locations) ? sp.locations.length : 0,
   };
 }
 

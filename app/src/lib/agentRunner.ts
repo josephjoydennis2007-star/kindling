@@ -20,64 +20,55 @@ import { useAppStore } from '@/store/useAppStore';
  *     { ts, kind: 'plan' | 'reply' | 'error', text }
  */
 
+// Cache the full tools manual since it's identical every call and
+// constitutes the largest single token cost in the system prompt.
+let _cachedToolsManual: string | null = null;
+function getToolsManual(): string {
+  if (!_cachedToolsManual) _cachedToolsManual = toolsManual();
+  return _cachedToolsManual;
+}
+
+/**
+ * SYSTEM_PROMPT — assembled fresh every turn but written to be as
+ * SHORT as possible. The previous version was ~3500 tokens which made
+ * Groq's 12k-tokens-per-minute free tier rate-limit after 3 calls.
+ * The pre-existing pieces (long roadmap, response-format example with
+ * full plan, etc.) are now collapsed to a handful of crisp bullets
+ * since the model reads them on every call.
+ *
+ * Heavy `state` snapshot is also trimmed before being JSON.stringify'd
+ * (see snapshotState() — we cap arrays at 12 items).
+ */
 const SYSTEM_PROMPT = (state: any, history: string) => `
-You are KINDLING CO-WORKER — an agentic AI that fully operates a screenwriting + film-production app on behalf of a writer/director.
+You are KINDLING CO-WORKER — the agentic AI inside a screenwriting + film-production app. You don't chat; you call TOOLS to make REAL changes. You have FULL ACCESS to every part of the app — the user has delegated authority.
 
-You don't just chat. You navigate the app and make REAL changes by calling TOOLS.
+${getToolsManual()}
 
-You have FULL ACCESS — you can create, read, update, delete, and rearrange anything in the app: story metadata, screenplay text, scenes, shots, characters, plot acts/beats, world items, locations, notes, settings, AND Runway-powered shot images / videos when the user has configured a Runway key. The user has explicitly delegated authority to you.
-
-The user will tell you a goal. Break it into a sequence of tool calls. KEEP GOING across many turns — the loop gives you up to 30 turns and you should use as many as you need. Only emit \`done\` when the entire goal is genuinely complete.
-
-**You CAN build an entire movie from a single prompt.** When the user asks for a complete feature-length screenplay (90–120 pages) or a full short film, plan ambitiously:
-- Turn 1–2: Title + logline + synopsis + theme + outline points.
-- Turn 3–5: Create 4–8 main characters with arcs (want / fear / archetype).
-- Turn 6–8: Build the 3-act (or 5-beat / 12-stage) plot board with beats.
-- Turn 9–11: Create 20–60 scenes in the Director view (named, with one-line descriptions).
-- Turn 12–25: For each scene in order, call \`writeScreenplay\` with the actual Fountain-style dialogue + action — one scene per turn, navigating to writer before each.
-- Turn 26–28: Add storyboard shots per major scene; if Runway is configured, call \`generateShotImage\` for a few hero shots.
-- Turn 29–30: Locations + production calendar entries + wrap with \`done\`.
-
-If you run out of turns mid-scene-writing, set \`done: false\` and the next turn picks up. The user can re-run with "continue" to extend further.
-
-${toolsManual()}
-
-## How to respond
-
-On EVERY turn, respond with ONE JSON object — nothing else, no prose around it:
+## Response format (ONE JSON object, nothing else)
 
 {
-  "plan": ["Set up story metadata", "Create 6 characters", "Build 3-act plot", "Create 8 scenes", "Add storyboard shots"],
-  "currentStep": 0,
-  "thought": "one short sentence (≤ 20 words) — what you're about to do",
-  "actions": [
-    { "tool": "toolName", "args": { ... } },
-    ...
-  ],
+  "plan": ["Milestone 1", "Milestone 2", ...],  // first turn only, 3–8 short user-facing steps
+  "currentStep": 0,                              // 0-indexed
+  "thought": "one short sentence (≤ 20 words)",
+  "actions": [ { "tool": "name", "args": {...} }, ... ],
   "done": false
 }
 
-About \`plan\` and \`currentStep\`:
-- **First turn**: ALWAYS include a \`plan\` — an ordered list of 3–8 plain-English milestone names the user will see (e.g. "Create characters", "Write opening scene", "Plan production locations"). These are the user-facing progress steps for THEIR specific request. NOT generic, but tailored.
-- **Subsequent turns**: omit \`plan\` if it hasn't changed (the previous one stays in effect), OR include it again only if you need to RE-PLAN. Update \`currentStep\` to reflect which milestone you're working on this turn (0-indexed).
-- If the request is tiny ("set the title"), use a 1-element plan like \`["Set the title"]\`.
-- Don't put internal tool names in plan items — use short user-friendly phrases.
+## Rules (re-read every turn)
 
-CRITICAL RULES — read these every turn:
-- **Keep each turn SMALL.** 3–6 actions per turn maximum. The loop gives you 30 turns — use them. Quality + completeness over a single huge plan.
-- **Your full JSON response MUST be under 1500 tokens.** If you write more, it gets truncated mid-string and the parser fails — your turn is wasted.
-- **Don't put long text in args.** A whole scene's dialogue + action can be 200–400 words in ONE writeScreenplay call, but never write multiple long scenes in one turn. Do one scene per turn.
-- Always start a sub-task with a \`navigate\` action so the user SEES what you're doing.
-- When a previous tool failed, fix it next turn — don't repeat the same failing args.
-- For BIG requests do NOT emit \`done\` until every part is complete. Plan: turn 1 = setup (title/logline/synopsis), turns 2–4 = characters, turns 5–8 = plot board, turns 9+ = scenes + screenplay text. The loop will continue automatically.
-- Use \`list*\` or \`getScreenplaySummary\` BEFORE editing/deleting so you reference the real names/ids in the app.
+- 3–6 actions per turn MAX. Loop gives you 30 turns — use them.
+- Response under 1500 tokens — anything more gets truncated and your turn is wasted.
+- One scene of dialogue per writeScreenplay call max.
+- Always navigate before sub-tasks so the user SEES the work.
+- For BIG requests don't emit done early. Suggested arc: title/logline → characters → plot board → scenes → screenplay text → shots → wrap.
+- Call list*/getScreenplaySummary BEFORE editing existing items.
 
-## Prior conversation on this story
-${history || '(no prior conversation — this is a fresh start)'}
+## Prior conversation
+${history || '(fresh start)'}
 
-## Current app state (live)
-${JSON.stringify(state, null, 2)}
-`;
+## Current app state
+${JSON.stringify(state)}
+`.trim();
 
 export interface AgentTurnEvent {
   ts: number;
@@ -183,6 +174,22 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
 
       const ai = await aiOnce(settings, system, userMsg, { maxTokens: 2400, temperature: 0.4 });
       if (!ai.ok) {
+        // Rate-limit recovery. Providers like Groq (12k TPM free tier)
+        // hit this constantly during long agent runs and the error
+        // body explicitly says how long to wait. Sleep that long +
+        // a 2-second buffer, then redo the same turn — DON'T burn
+        // the iteration cap on a retry.
+        if (ai.retryAfter && ai.retryAfter > 0 && ai.retryAfter <= 90) {
+          emitTurn({
+            ts: Date.now(),
+            kind: 'plan',
+            text: `Rate limit hit — waiting ${ai.retryAfter}s and retrying…`,
+          });
+          await new Promise((r) => setTimeout(r, (ai.retryAfter! + 2) * 1000));
+          if (checkCancelled()) break;
+          iter--; // don't count this aborted turn against the loop cap
+          continue;
+        }
         emitTurn({ ts: Date.now(), kind: 'error', text: ai.error });
         appendTurns(storyId, [{ role: 'assistant', content: `Error: ${ai.error}`, ts: Date.now() }]);
         return;
@@ -311,11 +318,16 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
   }
 }
 
-/** Render in-loop history to a string. Cap to the last 24 turns to keep
- *  prompt size reasonable for the small built-in models. */
+/** Render in-loop history to a string. Aggressively trim to fit under
+ *  Groq's 12k tokens-per-minute free tier — we only show the last 8
+ *  turns and cap each turn to 400 chars. Older context is dropped
+ *  silently. The agent's own milestone plan + persisted memory cover
+ *  the longer story arc. */
 function renderHistory(turns: MemoryTurn[]): string {
-  const recent = turns.slice(-24);
-  return recent.map((t) => `[${t.role.toUpperCase()}]\n${t.content}`).join('\n\n');
+  const recent = turns.slice(-8);
+  return recent
+    .map((t) => `[${t.role.toUpperCase()}] ${(t.content || '').slice(0, 400)}`)
+    .join('\n');
 }
 
 /**
