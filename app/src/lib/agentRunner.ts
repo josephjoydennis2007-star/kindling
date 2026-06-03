@@ -148,6 +148,11 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
   // bail after repeated failure rather than spinning forever.
   let consecutiveParseFails = 0;
   let consecutiveHtmlErrors = 0;
+  // Consecutive rate-limit waits. Per-minute caps clear after one wait,
+  // so a healthy run resets this to 0 on the next success. If it climbs
+  // past the cap the user has hit a genuine daily/quota wall and we stop
+  // with an actionable message rather than waiting forever.
+  let consecutiveRateLimits = 0;
 
   try {
     for (let iter = 0; iter < max; iter++) {
@@ -175,15 +180,28 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
       const ai = await aiOnce(settings, system, userMsg, { maxTokens: 2400, temperature: 0.4 });
       if (!ai.ok) {
         // Rate-limit recovery. Providers like Groq (12k TPM free tier)
-        // hit this constantly during long agent runs and the error
-        // body explicitly says how long to wait. Sleep that long +
-        // a 2-second buffer, then redo the same turn — DON'T burn
-        // the iteration cap on a retry.
-        if (ai.retryAfter && ai.retryAfter > 0 && ai.retryAfter <= 90) {
+        // hit this constantly during long agent runs. Sleep the cooldown
+        // + a 2s buffer, then redo the SAME turn without burning the
+        // iteration cap. A per-minute cap clears after one wait, so a
+        // healthy run keeps going. But if we keep getting rate-limited
+        // turn after turn, the user has hit a genuine daily/token wall —
+        // bail after 8 in a row with an actionable message instead of
+        // waiting forever.
+        if (ai.retryAfter && ai.retryAfter > 0 && ai.retryAfter <= 120) {
+          consecutiveRateLimits++;
+          if (consecutiveRateLimits > 8) {
+            emitTurn({
+              ts: Date.now(),
+              kind: 'error',
+              text: 'Hit the AI provider\'s rate limit repeatedly — you\'ve likely reached its daily free quota. Wait a while, or switch providers in Settings → AI (Groq + Gemini have separate quotas, so swapping gets you going again).',
+            });
+            appendTurns(storyId, [{ role: 'assistant', content: 'Stopped: repeated rate limits (likely daily quota).', ts: Date.now() }]);
+            return;
+          }
           emitTurn({
             ts: Date.now(),
             kind: 'plan',
-            text: `Rate limit hit — waiting ${ai.retryAfter}s and retrying…`,
+            text: `Rate limit hit — waiting ${ai.retryAfter}s and continuing (${consecutiveRateLimits}/8)…`,
           });
           await new Promise((r) => setTimeout(r, (ai.retryAfter! + 2) * 1000));
           if (checkCancelled()) break;
@@ -194,6 +212,8 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
         appendTurns(storyId, [{ role: 'assistant', content: `Error: ${ai.error}`, ts: Date.now() }]);
         return;
       }
+      // Successful AI call — reset the rate-limit streak.
+      consecutiveRateLimits = 0;
 
       // Detect upstream HTML error pages (Cloudflare 524, 502, etc.) —
       // Pollinations occasionally returns these instead of JSON.

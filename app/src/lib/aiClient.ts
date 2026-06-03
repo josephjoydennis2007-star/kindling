@@ -292,13 +292,17 @@ export async function aiOnce(
       if (r.status === 429) {
         // Surface the cooldown so the agent loop can sleep instead of
         // killing the run. Groq's free tier hits this all the time —
-        // 12k tokens/min on llama-3.3-70b — and their error body
-        // includes the exact retry-after value. Pollinations queue-full
-        // is handled the same way via parseRetryAfter's queue heuristic.
-        const retryAfter = parseRetryAfter(r, body);
+        // 12k tokens/min on llama-3.3-70b. Their error body USUALLY
+        // includes the exact retry-after, but not always. When it's
+        // missing we DEFAULT to 20s: Groq's TPM window is one minute, so
+        // ~20s reliably clears a per-minute cap. Crucially this means the
+        // agent ALWAYS gets a retryAfter and auto-resumes instead of
+        // stalling on "wait a moment". The runner caps consecutive
+        // rate-limit waits so a genuine daily cap still bails eventually.
+        const retryAfter = parseRetryAfter(r, body) || 20;
         return {
           ok: false,
-          error: `${provider} rate-limited (429). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
+          error: `${provider} rate-limited (429). Retry in ${retryAfter}s.`,
           retryAfter,
         };
       }
