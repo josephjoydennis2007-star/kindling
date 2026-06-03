@@ -269,6 +269,16 @@ export interface AppSettings {
   // Model selection: gen4_image / gen4_turbo (video) / gen3a_turbo etc.
   runwayImageModel?: string;
   runwayVideoModel?: string;
+  /**
+   * URL of a CORS-enabled proxy in front of api.dev.runwayml.com.
+   * Runway's Developer API does not currently send Access-Control-Allow-
+   * Origin headers, so browsers block direct calls. The user deploys a
+   * 5-line Cloudflare Worker (template in /docs/runway-cors-proxy.js)
+   * and pastes its public URL here. When set, runwayClient routes every
+   * request through this proxy instead of hitting Runway directly.
+   * Empty = direct (works only from server-side test tools).
+   */
+  runwayProxyUrl?: string;
   userDisplayName: string;
   // Mirrors the profile-level role choice (writer/director/producer/both).
   // admin / viewer kept for backward compat with older local-storage shapes.

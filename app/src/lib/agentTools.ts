@@ -468,6 +468,7 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     const result = await runwayTextToImage({
       apiKey,
       prompt,
+      proxyUrl: settings.runwayProxyUrl,
       model: settings.runwayImageModel || 'gen4_image',
       ratio: ratio || '1920:1080',
     });
@@ -526,6 +527,7 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
       apiKey,
       promptImage: sourceUrl,
       promptText: promptText || '',
+      proxyUrl: settings.runwayProxyUrl,
       model: settings.runwayVideoModel || 'gen4_turbo',
       duration: duration || 5,
     });

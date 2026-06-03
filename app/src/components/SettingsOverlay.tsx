@@ -614,6 +614,45 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                         className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs font-mono outline-none focus:border-[var(--accent)]"
                       />
                     </Section>
+
+                    {/* Proxy URL — REQUIRED for browser-side use.
+                        Runway's Developer API doesn't send CORS headers,
+                        so we route every request through a Cloudflare
+                        Worker the user deploys once (5 minutes, free,
+                        no card). The script is checked into the repo at
+                        docs/runway-cors-proxy.js and a button below
+                        opens it. When this URL is set, runwayClient
+                        replaces api.dev.runwayml.com with this prefix
+                        in every call. */}
+                    <Section title="Proxy URL (Cloudflare Worker)">
+                      <input
+                        value={(draft as any).runwayProxyUrl || ''}
+                        onChange={(e) => setDraft({ ...draft, runwayProxyUrl: e.target.value } as any)}
+                        placeholder="https://kindling-runway.your-name.workers.dev"
+                        className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs font-mono outline-none focus:border-[var(--accent)]"
+                      />
+                      <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-snug">
+                        Without this, Runway calls fail with a CORS error from the browser. The proxy is a one-time 5-minute setup on Cloudflare's free tier.
+                      </p>
+                      <div className="mt-2 flex gap-2">
+                        <a
+                          href="https://github.com/josephjoydennis2007-star/kindling/blob/main/docs/runway-cors-proxy.js"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 text-center text-[10px] font-bold uppercase tracking-wider px-2 py-1.5 rounded-md bg-[var(--card)] border border-[var(--rule)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                        >
+                          1. View worker script
+                        </a>
+                        <a
+                          href="https://dash.cloudflare.com/sign-up"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 text-center text-[10px] font-bold uppercase tracking-wider px-2 py-1.5 rounded-md bg-[var(--card)] border border-[var(--rule)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                        >
+                          2. Deploy on Cloudflare
+                        </a>
+                      </div>
+                    </Section>
                     {/* Image model — Runway's API only accepts a fixed
                         set of model IDs. Free-text was letting users
                         type display names like "Nano Banana 2" which
@@ -651,7 +690,7 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                         }
                         import('sonner').then(({ toast }) => toast.loading('Pinging Runway…', { id: 'rwy' }));
                         const { runwayPing } = await import('@/lib/runwayClient');
-                        const result = await runwayPing(key);
+                        const result = await runwayPing(key, (draft as any).runwayProxyUrl);
                         // Result is now structured — surface the SPECIFIC
                         // reason so the user can act on it (e.g. "you
                         // pasted a regular-Runway key, not a Developer

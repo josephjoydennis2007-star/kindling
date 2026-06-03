@@ -17,8 +17,24 @@
  * track usage here — that's a UI concern for the agent panel.
  */
 
-const RUNWAY_BASE = 'https://api.dev.runwayml.com/v1';
+const RUNWAY_DIRECT_BASE = 'https://api.dev.runwayml.com/v1';
 const RUNWAY_VERSION = '2024-11-06'; // X-Runway-Version header required by API
+
+/**
+ * Returns the URL prefix all Runway calls should go to. When the user
+ * has deployed their own CORS-enabled proxy (Cloudflare Worker etc.)
+ * we route through that — required for browser-side calls because
+ * Runway doesn't currently send Access-Control-Allow-Origin headers.
+ * Falls back to the direct API URL, which works from Node/Python but
+ * fails in the browser with a CORS error.
+ */
+function runwayBase(proxyUrl?: string): string {
+  const p = (proxyUrl || '').trim().replace(/\/+$/, '');
+  if (!p) return RUNWAY_DIRECT_BASE;
+  // If the user pasted e.g. https://abc.workers.dev we append /v1.
+  // If they pasted https://abc.workers.dev/v1 we leave it alone.
+  return /\/v1$/.test(p) ? p : `${p}/v1`;
+}
 
 export interface RunwayResult {
   ok: boolean;
@@ -33,6 +49,7 @@ export interface RunwayResult {
 interface PollOpts {
   apiKey: string;
   taskId: string;
+  proxyUrl?: string;
   maxWaitMs?: number;
   intervalMs?: number;
   onProgress?: (status: string) => void;
@@ -44,7 +61,7 @@ async function pollTask(opts: PollOpts): Promise<RunwayResult> {
   const interval = opts.intervalMs ?? 4_000;
   while (Date.now() - start < maxWait) {
     try {
-      const r = await fetch(`${RUNWAY_BASE}/tasks/${opts.taskId}`, {
+      const r = await fetch(`${runwayBase(opts.proxyUrl)}/tasks/${opts.taskId}`, {
         headers: {
           authorization: `Bearer ${opts.apiKey}`,
           'X-Runway-Version': RUNWAY_VERSION,
@@ -79,6 +96,7 @@ async function pollTask(opts: PollOpts): Promise<RunwayResult> {
 export async function runwayTextToImage(opts: {
   apiKey: string;
   prompt: string;
+  proxyUrl?: string;
   model?: string;
   ratio?: string;        // e.g. '1920:1080'
   onProgress?: (status: string) => void;
@@ -87,7 +105,7 @@ export async function runwayTextToImage(opts: {
   const model = opts.model || 'gen4_image';
   const ratio = opts.ratio || '1920:1080';
   try {
-    const r = await fetch(`${RUNWAY_BASE}/text_to_image`, {
+    const r = await fetch(`${runwayBase(opts.proxyUrl)}/text_to_image`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -106,14 +124,11 @@ export async function runwayTextToImage(opts: {
     }
     const j = await r.json();
     if (!j.id) return { ok: false, error: 'Runway returned no task id' };
-    return pollTask({ apiKey: opts.apiKey, taskId: j.id, onProgress: opts.onProgress });
+    return pollTask({ apiKey: opts.apiKey, taskId: j.id, proxyUrl: opts.proxyUrl, onProgress: opts.onProgress });
   } catch (e: any) {
-    // Distinguish browser CORS block from real network errors — the
-    // agent's log otherwise just shows "Network error" which is
-    // misleading when the issue is Runway not whitelisting the origin.
     const msg = (e?.message || '').toLowerCase();
     if (msg.includes('failed to fetch') || msg.includes('cors')) {
-      return { ok: false, error: 'Runway API is blocked by the browser (CORS). The Developer API needs a server-side proxy to call from a web app.' };
+      return { ok: false, error: 'Runway API is blocked by the browser (CORS). Deploy the Cloudflare Worker proxy from docs/runway-cors-proxy.js and paste its URL into Settings → AI → Runway → Proxy URL.' };
     }
     return { ok: false, error: e?.message || 'Network error' };
   }
@@ -128,6 +143,7 @@ export async function runwayImageToVideo(opts: {
   apiKey: string;
   promptImage: string;
   promptText?: string;
+  proxyUrl?: string;
   model?: string;
   duration?: 5 | 10;
   ratio?: string;
@@ -138,7 +154,7 @@ export async function runwayImageToVideo(opts: {
   const ratio = opts.ratio || '1280:720';
   const duration = opts.duration || 5;
   try {
-    const r = await fetch(`${RUNWAY_BASE}/image_to_video`, {
+    const r = await fetch(`${runwayBase(opts.proxyUrl)}/image_to_video`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -162,13 +178,14 @@ export async function runwayImageToVideo(opts: {
     return pollTask({
       apiKey: opts.apiKey,
       taskId: j.id,
+      proxyUrl: opts.proxyUrl,
       maxWaitMs: 10 * 60_000, // video can take longer
       onProgress: opts.onProgress,
     });
   } catch (e: any) {
     const msg = (e?.message || '').toLowerCase();
     if (msg.includes('failed to fetch') || msg.includes('cors')) {
-      return { ok: false, error: 'Runway API is blocked by the browser (CORS). The Developer API needs a server-side proxy to call from a web app.' };
+      return { ok: false, error: 'Runway API is blocked by the browser (CORS). Deploy the Cloudflare Worker proxy from docs/runway-cors-proxy.js and paste its URL into Settings → AI → Runway → Proxy URL.' };
     }
     return { ok: false, error: e?.message || 'Network error' };
   }
@@ -210,7 +227,7 @@ export interface RunwayPingResult {
  * Runway subscription instead of from dev.runwayml.com — surfaces as a
  * 401 with a specific body shape that we sniff for.
  */
-export async function runwayPing(apiKey: string): Promise<RunwayPingResult> {
+export async function runwayPing(apiKey: string, proxyUrl?: string): Promise<RunwayPingResult> {
   const key = (apiKey || '').trim();
   if (!key) return { ok: false, message: 'No key entered' };
   if (!/^key_/.test(key) && !/^rwk_/.test(key) && key.length < 30) {
@@ -220,7 +237,7 @@ export async function runwayPing(apiKey: string): Promise<RunwayPingResult> {
     };
   }
   try {
-    const r = await fetch(`${RUNWAY_BASE}/organization`, {
+    const r = await fetch(`${runwayBase(proxyUrl)}/organization`, {
       method: 'GET',
       headers: {
         authorization: `Bearer ${key}`,
@@ -253,7 +270,9 @@ export async function runwayPing(apiKey: string): Promise<RunwayPingResult> {
       return {
         ok: false,
         message:
-          'Cannot reach Runway from the browser (CORS block). Runway\'s Developer API does not currently allow direct browser calls. You\'ll need to wait for them to enable CORS for your origin, or use a server-side proxy. Your key may still be perfectly valid — we just can\'t verify it from here.',
+          proxyUrl
+            ? `Cannot reach the proxy URL you set (${proxyUrl}). Check the worker is deployed + responding. Did you copy the .workers.dev URL exactly?`
+            : 'Cannot reach Runway from the browser (CORS block). Deploy the free Cloudflare Worker proxy — see the instructions below the proxy URL field. Your key is probably fine; we just can\'t verify it without the proxy.',
       };
     }
     return { ok: false, message: `Connection error: ${e?.message || 'unknown'}` };
