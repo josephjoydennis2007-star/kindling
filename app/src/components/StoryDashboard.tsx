@@ -98,6 +98,31 @@ export default function StoryDashboard() {
     return list.find((s) => s.id === screenplay.activeSectionId) || list[list.length - 1];
   }, [screenplay.sections, screenplay.activeSectionId]);
 
+  // Goal/progress computed BEFORE any early return so the hooks below
+  // run in a stable order on every render. (Previously the page-goal
+  // useEffect lived after the `if (!activeStory) return` early-out,
+  // which violated the rules of hooks: when a story appeared/disappeared
+  // the hook count changed between renders → React error. Computing
+  // defensively here keeps the hook order constant.)
+  const goalPages = !activeStory ? 110
+    : activeStory.type === 'short-film' ? 15
+    : activeStory.type === 'youtube' || activeStory.type === 'music-video' || activeStory.type === 'commercial' ? 4
+    : activeStory.type === 'tv-show' ? 35
+    : activeStory.type === 'tv-series' || activeStory.type === 'mini-series' ? 55
+    : 110;
+  const pageProgress = Math.min(100, Math.round((stats.pages / goalPages) * 100));
+
+  // Fire a confetti burst the first time the writer hits the page goal
+  // each day. markGoalCelebrated() is a localStorage one-shot per
+  // YYYY-MM-DD. Guarded on activeStory so it never celebrates the empty
+  // state.
+  useEffect(() => {
+    if (activeStory && pageProgress >= 100 && markGoalCelebrated()) {
+      celebrate(28);
+      toast.success('🎉 Page goal hit! Keep going — every word counts.', { duration: 5000 });
+    }
+  }, [pageProgress, activeStory]);
+
   if (!activeStory) {
     return (
       <div className="h-full flex items-center justify-center text-[var(--text-muted)] text-sm">
@@ -105,23 +130,6 @@ export default function StoryDashboard() {
       </div>
     );
   }
-
-  const goalPages = activeStory.type === 'short-film' ? 15
-    : activeStory.type === 'youtube' || activeStory.type === 'music-video' || activeStory.type === 'commercial' ? 4
-    : activeStory.type === 'tv-show' ? 35
-    : activeStory.type === 'tv-series' || activeStory.type === 'mini-series' ? 55
-    : 110;
-  const pageProgress = Math.min(100, Math.round((stats.pages / goalPages) * 100));
-
-  // Fire a confetti burst the first time the writer hits the page goal each
-  // day. markGoalCelebrated() is a localStorage one-shot per YYYY-MM-DD, so
-  // re-renders don't re-fire and tomorrow's session can celebrate again.
-  useEffect(() => {
-    if (pageProgress >= 100 && markGoalCelebrated()) {
-      celebrate(28);
-      toast.success('🎉 Page goal hit! Keep going — every word counts.', { duration: 5000 });
-    }
-  }, [pageProgress]);
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--bg)]">

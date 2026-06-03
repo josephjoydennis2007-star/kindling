@@ -110,7 +110,7 @@ export default function ShareDialog({ user, onOpenAuth }: Props) {
             exit={{ scale: 0.96, y: 8 }}
             transition={{ type: 'spring', stiffness: 320, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-[var(--panel)] border border-[var(--rule)] rounded-lg shadow-2xl overflow-hidden"
+            className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-[var(--panel)] border border-[var(--rule)] rounded-lg shadow-2xl"
             role="dialog"
             aria-label="Share story"
           >

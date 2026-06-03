@@ -61,10 +61,13 @@ export default function CoachInlinePill({ enabled }: Props) {
         }
         const rect = dialogue.getBoundingClientRect();
         // Position the pill just outside the right edge of the dialogue para,
-        // vertically centered with the line. If the paper is wide and we'd
-        // overflow the viewport, fall back to anchoring above-right.
-        const left = Math.min(window.innerWidth - 140, rect.right + 8);
-        const top = Math.max(8, rect.top + rect.height / 2 - 14);
+        // vertically centered with the line. Clamp on ALL four edges so the
+        // pill can never land off-screen regardless of scroll position,
+        // paper width, or viewport size. (~120px wide × ~26px tall pill.)
+        const PILL_W = 120;
+        const PILL_H = 26;
+        const left = Math.max(8, Math.min(window.innerWidth - PILL_W - 8, rect.right + 8));
+        const top = Math.max(8, Math.min(window.innerHeight - PILL_H - 8, rect.top + rect.height / 2 - 14));
         setPos({ top, left, speaker, line });
       } catch {
         setPos(null);

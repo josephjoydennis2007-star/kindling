@@ -764,9 +764,15 @@ function App() {
         ? sel!.toString().trim().slice(0, 240)
         : (onCommentable?.textContent || '').trim().slice(0, 240);
 
-      // Build a small floating menu near the click.
+      // Build a small floating menu near the click. Clamp X/Y so the
+      // ~190px-wide menu never spills off the right or bottom edge when
+      // the user right-clicks near a screen border.
+      const MENU_W = 190;
+      const MENU_H = 48;
+      const menuX = Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W));
+      const menuY = Math.max(8, Math.min(e.clientY, window.innerHeight - MENU_H));
       menuEl = document.createElement('div');
-      menuEl.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:400;background:var(--panel);border:1px solid var(--rule);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;min-width:180px;font:12px Inter,system-ui,sans-serif;color:var(--text);`;
+      menuEl.style.cssText = `position:fixed;left:${menuX}px;top:${menuY}px;z-index:400;background:var(--panel);border:1px solid var(--rule);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;min-width:180px;font:12px Inter,system-ui,sans-serif;color:var(--text);`;
       const item = document.createElement('button');
       item.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border:none;background:transparent;color:var(--text-secondary);text-align:left;cursor:pointer;border-radius:4px;font-size:12px';
       item.innerHTML = '<span style="color:var(--accent)">💬</span><span>Add comment</span>';
@@ -808,7 +814,11 @@ function App() {
       // the console. Bail early when there's no key to act on.
       if (typeof e.key !== 'string' || !e.key) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); handleManualSave(); }
+      // Ctrl/Cmd+S = manual save. The `!e.shiftKey` guard is essential:
+      // without it this branch also swallowed Ctrl+Shift+S, so the Style
+      // assistant shortcut (defined later in this same if-else chain)
+      // could never fire — a dead branch ESLint flagged via no-dupe-else-if.
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); handleManualSave(); }
       else if (mod && e.key === '\\') { e.preventDefault(); toggleSidebar(); }
       else if (mod && e.key === '.') { e.preventDefault(); toggleFocusMode(); }
       else if (mod && e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); setShowExport(true); }

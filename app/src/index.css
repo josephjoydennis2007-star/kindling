@@ -211,6 +211,32 @@
     height: 100%;
     width: 100%;
     overflow: hidden;
+    /* Hard cap so nothing can make the document itself wider than the
+       viewport — a last-resort guard against horizontal overflow. */
+    max-width: 100vw;
+  }
+
+  /* GLOBAL OFF-SCREEN SAFETY NET.
+     Long unbreakable strings (pasted URLs, very long character names,
+     file paths) were the most common cause of a panel growing wider
+     than its container and pushing buttons / send icons off-screen.
+     Force wrapping on the text-bearing elements app-wide. Inputs +
+     editors are excluded so the user's own typing isn't reflowed
+     mid-line. */
+  p, span, div, li, button, label, h1, h2, h3, h4, td, th, a {
+    overflow-wrap: anywhere;
+  }
+  /* …but NOT the screenplay editor — it manages its own line breaks,
+     and forcing overflow-wrap there breaks Courier alignment. */
+  .ProseMirror, .ProseMirror * {
+    overflow-wrap: normal;
+  }
+  /* Any fixed/absolute-positioned popover gets a viewport-relative max
+     so even a mis-computed coordinate can't make it wider/taller than
+     the screen. */
+  [role="dialog"], [role="menu"], .popover, .dropdown {
+    max-width: 100vw;
+    max-height: 100vh;
   }
 
   body {

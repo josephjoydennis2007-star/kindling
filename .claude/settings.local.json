@@ -43,7 +43,11 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(npx firebase-tools *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(echo \"=== TSC EXIT: $? ===\")",
+      "Bash(grep -vE \"//|/\\\\*\")",
+      "Bash(grep -rnE \"w-\\\\[[0-9]{3,}px\\\\]\" src/components/SettingsOverlay.tsx src/components/ExportDialog.tsx src/components/InviteDialog.tsx src/components/ShareDialog.tsx src/components/StorySelector.tsx src/components/Onboarding.tsx src/components/CompareOverlay.tsx)",
+      "Bash(grep -nE 'max-h-\\\\[|max-w-\\\\[|overflow-y' src/components/__TRACKED_VAR__.tsx)"
     ]
   }
 }

@@ -41,7 +41,7 @@ function fountainToElements(text: string): ScreenplayElement[] {
       while (i < lines.length && lines[i].trim()) i++;
       continue;
     }
-    if (/^(int|ext|i\/e|est)[\. ]/i.test(stripped) || (/^\.[A-Z]/.test(stripped) && !stripped.startsWith('...'))) {
+    if (/^(int|ext|i\/e|est)[. ]/i.test(stripped) || (/^\.[A-Z]/.test(stripped) && !stripped.startsWith('...'))) {
       out.push({ id: genId(), type: 'scene-heading', content: escape(stripped.replace(/^\./, '')), sceneId: null });
       inDialogue = false; continue;
     }

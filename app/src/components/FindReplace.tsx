@@ -127,7 +127,7 @@ export default function FindReplace() {
                 ref={findRef}
                 value={find}
                 onChange={(e) => setFind(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') (e.shiftKey ? prev() : next()); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { if (e.shiftKey) prev(); else next(); } }}
                 placeholder="Find"
                 className="bg-[var(--card)] border border-[var(--border)] rounded-md px-2 py-1.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)] flex-1 min-w-0 sm:max-w-[180px]"
               />
