@@ -33,6 +33,23 @@ const DEFAULT_MODELS: Record<string, string> = {
 // out-of-the-box "AI co-worker" experience.
 const POLLINATIONS_TEXT_URL = 'https://text.pollinations.ai/openai';
 
+/**
+ * Gemini free-tier model fallback chain. CRUCIALLY, each model has its
+ * OWN separate daily quota bucket on the free tier. So when the user's
+ * preferred model returns "GenerateRequestsPerDayPerProjectPerModel-
+ * FreeTier" exhausted, we transparently retry against the next model
+ * in this list — which still has its own untouched daily allowance.
+ * Ordered fastest/best first. We dedupe the user's chosen model so it
+ * isn't retried twice.
+ */
+const GEMINI_FALLBACK_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+  'gemini-2.5-flash',
+];
+
 export interface AIMsg {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -48,7 +65,16 @@ export interface AIMsg {
  */
 export type AIResult =
   | { ok: true; text: string }
-  | { ok: false; error: string; retryAfter?: number };
+  | {
+      ok: false;
+      error: string;
+      retryAfter?: number;
+      /** Internal: set by the Gemini path when the failure is a PER-DAY
+       *  free-tier quota exhaustion specifically, so aiOnce can fall
+       *  through to the next model in the fallback chain. Not meant for
+       *  callers. */
+      _dailyQuotaExhausted?: boolean;
+    };
 
 /**
  * Extract retry-after seconds from a rate-limit response. Providers
@@ -147,64 +173,34 @@ export async function aiOnce(
     // ---- Google AI Studio (Gemini) ----
     // Different request shape from OpenAI: uses `contents` + `systemInstruction`
     // + `generationConfig`. Key goes in the query string per Google's docs.
-    // Free tier: 1500 req/day on gemini-2.0-flash, no credit card required.
+    //
+    // FREE-TIER DAILY QUOTA FALLBACK: every Gemini model has a SEPARATE
+    // daily request bucket. When the user's chosen model is exhausted
+    // ("GenerateRequestsPerDayPerProjectPerModel-FreeTier"), we
+    // transparently retry the SAME prompt against the next model in
+    // GEMINI_FALLBACK_MODELS, which still has untouched daily quota.
+    // This is what makes Gemini usable on a brand-new account whose
+    // primary model's quota is already drained.
     if (provider === 'gemini') {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: 'user', parts: [{ text: user }] }],
-          generationConfig: {
-            temperature,
-            maxOutputTokens: maxTokens,
-          },
-        }),
-      });
-      if (!r.ok) {
-        const body = (await r.text()).slice(0, 800);
-        let parsed: any = null;
-        try { parsed = JSON.parse(body); } catch {/* not JSON */}
-        const errMsg = parsed?.error?.message || '';
-        const errStatus = parsed?.error?.status || '';
-        if (r.status === 429) {
-          const retryAfter = parseRetryAfter(r, body);
-          // Differentiate real RPM/TPM cap from "quota not provisioned
-          // yet" — the latter is the most common reason a brand-new
-          // Gemini key 429s on the very first call.
-          const violations = parsed?.error?.details?.find?.((d: any) => d['@type']?.includes('QuotaFailure'))?.violations;
-          const quotaId = violations?.[0]?.quotaId;
-          if (!quotaId && /RESOURCE_EXHAUSTED/i.test(errMsg + errStatus)) {
-            return {
-              ok: false,
-              error:
-                'Gemini 429 RESOURCE_EXHAUSTED with no quota id — this is almost always a brand-new key whose quota Google hasn\'t provisioned yet (5–15 min). Test the key in Settings → AI → Test Gemini.',
-            };
-          }
-          return {
-            ok: false,
-            error: `Gemini rate-limited (429${quotaId ? ` ${quotaId}` : ''}). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
-            retryAfter: retryAfter || 30,
-          };
-        }
-        if (r.status === 400 || r.status === 403) {
-          if (/api.?key.*not valid|API_KEY_INVALID/i.test(errMsg + body)) {
-            return { ok: false, error: 'Google rejected the key. Generate a fresh one at aistudio.google.com/apikey.' };
-          }
-          if (/permission|PERMISSION_DENIED/i.test(errMsg + errStatus)) {
-            return { ok: false, error: 'Gemini permission denied. Use a key from aistudio.google.com (pre-enabled) rather than console.cloud.google.com.' };
-          }
-        }
-        return { ok: false, error: `Gemini ${r.status}: ${errMsg || body.slice(0, 300)}` };
+      // Try the user's chosen model first, then the rest of the chain
+      // (deduped). Per-minute limits + non-quota errors short-circuit
+      // immediately; only PER-DAY quota exhaustion advances to the next
+      // model.
+      const chain = [model, ...GEMINI_FALLBACK_MODELS.filter((m) => m !== model)];
+      for (const m of chain) {
+        const res = await geminiGenerateOne(m, apiKey, system, user, maxTokens, temperature);
+        if (res.ok) return res;
+        // Only continue the fallback loop when THIS model's daily quota
+        // is the blocker. Anything else (bad key, per-minute, no text)
+        // applies to all models, so stop and surface it.
+        if (!res._dailyQuotaExhausted) return res;
       }
-      const j = await r.json();
-      const text = (j.candidates?.[0]?.content?.parts || [])
-        .map((p: any) => p.text || '')
-        .join('')
-        .trim();
-      if (!text) return { ok: false, error: `Gemini returned no text (finishReason=${j.candidates?.[0]?.finishReason || 'unknown'})` };
-      return { ok: true, text };
+      // Every model in the chain was daily-exhausted.
+      return {
+        ok: false,
+        error:
+          'All Gemini free-tier models are out of daily quota on this Google account. Quota resets at midnight Pacific. For a more generous free option right now, switch to Groq in Settings → AI (free key at console.groq.com/keys).',
+      };
     }
 
     if (provider === 'anthropic') {
@@ -316,6 +312,102 @@ export async function aiOnce(
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Network error' };
   }
+}
+
+/**
+ * One Gemini generateContent call against a SPECIFIC model. Returns the
+ * normal AIResult, plus an internal `_dailyQuotaExhausted` flag when the
+ * failure is specifically a per-day free-tier quota cap — which is the
+ * signal aiOnce uses to advance to the next model in the fallback chain.
+ */
+async function geminiGenerateOne(
+  model: string,
+  apiKey: string,
+  system: string,
+  user: string,
+  maxTokens: number,
+  temperature: number,
+): Promise<AIResult> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: user }] }],
+        generationConfig: { temperature, maxOutputTokens: maxTokens },
+      }),
+    });
+  } catch (e: any) {
+    return { ok: false, error: `Could not reach Gemini: ${e?.message || 'network error'}` };
+  }
+
+  if (!r.ok) {
+    const body = (await r.text()).slice(0, 800);
+    let parsed: any = null;
+    try { parsed = JSON.parse(body); } catch {/* not JSON */}
+    const errMsg = parsed?.error?.message || '';
+    const errStatus = parsed?.error?.status || '';
+    if (r.status === 429) {
+      const retryAfter = parseRetryAfter(r, body);
+      const violations = parsed?.error?.details?.find?.((d: any) => d['@type']?.includes('QuotaFailure'))?.violations;
+      const quotaId: string = violations?.[0]?.quotaId || '';
+      // PER-DAY quota → advance to next model (separate bucket).
+      if (/PerDay/i.test(quotaId)) {
+        return {
+          ok: false,
+          error: `Gemini ${model} out of daily quota (${quotaId}).`,
+          _dailyQuotaExhausted: true,
+        };
+      }
+      // PER-MINUTE quota → waiting helps (same model).
+      if (/PerMinute/i.test(quotaId)) {
+        return {
+          ok: false,
+          error: `Gemini ${model} per-minute cap hit (${quotaId}). Retry in ${retryAfter || 30}s.`,
+          retryAfter: retryAfter || 30,
+        };
+      }
+      // No quota id — brand-new key provisioning, OR generic. Treat as
+      // daily-exhausted so we still TRY other models (cheap, might work).
+      if (/RESOURCE_EXHAUSTED/i.test(errMsg + errStatus)) {
+        return {
+          ok: false,
+          error: `Gemini ${model} 429 RESOURCE_EXHAUSTED (no quota id — possibly new-key provisioning).`,
+          _dailyQuotaExhausted: true,
+        };
+      }
+      return {
+        ok: false,
+        error: `Gemini rate-limited (429). ${retryAfter ? `Retry in ${retryAfter}s.` : 'Wait a moment.'}`,
+        retryAfter: retryAfter || 30,
+      };
+    }
+    if (r.status === 400 || r.status === 403) {
+      if (/api.?key.*not valid|API_KEY_INVALID/i.test(errMsg + body)) {
+        return { ok: false, error: 'Google rejected the key. Generate a fresh one at aistudio.google.com/apikey.' };
+      }
+      if (/permission|PERMISSION_DENIED/i.test(errMsg + errStatus)) {
+        return { ok: false, error: 'Gemini permission denied. Use a key from aistudio.google.com (pre-enabled) rather than console.cloud.google.com.' };
+      }
+      // A model the account can't access (e.g. 2.5 preview) — treat like
+      // daily-exhausted so the chain skips to one it CAN use.
+      if (/not found|not supported|does not have access/i.test(errMsg)) {
+        return { ok: false, error: `Gemini ${model} unavailable on this account.`, _dailyQuotaExhausted: true };
+      }
+    }
+    return { ok: false, error: `Gemini ${r.status}: ${errMsg || body.slice(0, 300)}` };
+  }
+
+  const j = await r.json();
+  const text = (j.candidates?.[0]?.content?.parts || [])
+    .map((p: any) => p.text || '')
+    .join('')
+    .trim();
+  if (!text) return { ok: false, error: `Gemini returned no text (finishReason=${j.candidates?.[0]?.finishReason || 'unknown'})` };
+  return { ok: true, text };
 }
 
 /**

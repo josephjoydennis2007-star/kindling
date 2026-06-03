@@ -565,8 +565,27 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                     </div>
                   </Section>
                   <Section title="Model">
-                    <input value={draft.aiModel} onChange={(e) => setDraft({ ...draft, aiModel: e.target.value })} placeholder="claude-opus-4-7 / gpt-4o / …"
-                      className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]" />
+                    {draft.aiProvider === 'gemini' ? (
+                      <>
+                        <select
+                          value={draft.aiModel || 'gemini-2.0-flash'}
+                          onChange={(e) => setDraft({ ...draft, aiModel: e.target.value })}
+                          className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]"
+                        >
+                          <option value="gemini-2.0-flash">gemini-2.0-flash (default)</option>
+                          <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite (higher RPM)</option>
+                          <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                          <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b (lightest)</option>
+                          <option value="gemini-2.5-flash">gemini-2.5-flash (newest)</option>
+                        </select>
+                        <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-snug">
+                          Each model has its own separate daily free quota. If one is exhausted, Kindling automatically falls through to the others — so you don't have to switch manually.
+                        </p>
+                      </>
+                    ) : (
+                      <input value={draft.aiModel} onChange={(e) => setDraft({ ...draft, aiModel: e.target.value })} placeholder="claude-opus-4-7 / gpt-4o / …"
+                        className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]" />
+                    )}
                   </Section>
                   <Section title="API key (stays on this device)">
                     <input
