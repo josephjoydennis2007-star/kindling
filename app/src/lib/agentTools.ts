@@ -1,6 +1,38 @@
 import { useAppStore } from '@/store/useAppStore';
 import type { ScreenplayElement } from '@/types';
-import { BUILD_STEPS, STEP_LABEL, nextIncompleteStep } from '@/lib/agentBuildState';
+import { BUILD_STEPS, STEP_LABEL, nextIncompleteStep, markStepComplete, type BuildStep } from '@/lib/agentBuildState';
+
+// ─── Auto-advance the build: the program tracks progress, not the model ───
+// The agent used to get STUCK: it finished a step's content but forgot to
+// call markStepDone, so the step gate blocked the next step AND the dedupe
+// guard blocked re-adding the (already-present) content — an infinite
+// thrash that burned credits and spewed errors. Instead, the PROGRAM now
+// detects when a step's deliverables actually exist and marks it done on
+// its own, IN ORDER. The agent just keeps building; it never has to manage
+// the workflow or fight the guardrails.
+function stepDeliverablesExist(): Record<BuildStep, boolean> {
+  const s = useAppStore.getState();
+  const sp = s.screenplay as any;
+  const outline = Array.isArray(sp.outlinePoints) ? sp.outlinePoints.length : 0;
+  const scenesAllHaveShots = s.scenes.length >= 1 && s.scenes.every((sc: any) => (sc.shotIds || []).length >= 1);
+  return {
+    instructions: !!(sp.title && sp.logline) && (!!sp.synopsis || outline >= 2),
+    acts: s.plotBoard.acts.length >= 1 && Object.keys(s.beats).length >= 2,
+    characters: s.characters.length >= 1,
+    screenplay: (sp.elements || []).length >= 10,
+    scenes: scenesAllHaveShots,
+  };
+}
+/** Mark steps complete as their content appears, strictly in order (stop at
+ *  the first step whose deliverables don't exist yet). Cheap + idempotent. */
+export function autoAdvanceBuild(): void {
+  const storyId = useAppStore.getState().activeStoryId;
+  const built = stepDeliverablesExist();
+  for (const step of BUILD_STEPS) {
+    if (built[step]) markStepComplete(storyId, step);
+    else break;
+  }
+}
 import { loadStoryPlan, upsertStoryPlan, type StoryPlan } from '@/lib/agentBlueprint';
 
 // ─── Repetition guard: detect near-duplicate text ────────────────────────
@@ -111,17 +143,19 @@ function stepGateBlock(tool: string): string | null {
   if (!stepGateEnabled) return null;
   const toolStep = TOOL_STEP[tool];
   if (!toolStep) return null; // not a gated tool (read/nav/meta/optional)
+  // FIRST: let the program advance any finished steps on its own, so a step
+  // the agent already completed never blocks the next one. This is what
+  // stops the "finished instructions but forgot markStepDone → stuck" thrash.
+  autoAdvanceBuild();
   const storyId = useAppStore.getState().activeStoryId;
   const current = nextIncompleteStep(storyId);
   if (!current) return null; // everything already done — allow edits
   const currentIdx = BUILD_STEPS.indexOf(current);
   const toolIdx = BUILD_STEPS.indexOf(toolStep);
   if (toolIdx <= currentIdx) return null; // current step or going back = fine
-  // Trying to work AHEAD — block and tell it exactly what to do.
-  return `⛔ OUT OF ORDER. You are on step ${currentIdx + 1}/5 — "${STEP_LABEL[current]}". `
-    + `Finish that step COMPLETELY, then call markStepDone({step:"${current}"}). `
-    + `Only after that may you do "${STEP_LABEL[toolStep]}" work like ${tool}. `
-    + `For now, keep working on ${STEP_LABEL[current]} (or call getBuildStatus to see what's left).`;
+  // Genuinely jumping ahead (e.g. shots before any acts/characters exist).
+  // Soft redirect — tell it the ONE thing to do now, not a scary rule.
+  return `Not yet — build "${STEP_LABEL[current]}" first (that's the next step), then ${STEP_LABEL[toolStep]} will be ready. Add the next "${STEP_LABEL[current]}" item now.`;
 }
 
 function emit(ev: AgentEvent) {
@@ -201,7 +235,10 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     // Hard repeat-guard: refuse a point that just restates an existing one.
     const dup = findDuplicateIndex(t, current);
     if (dup >= 0) {
-      return { ok: false, message: `Skipped — outline point #${dup + 1} already says this ("${current[dup].slice(0, 60)}"). There are already ${current.length} points; don't repeat — move on to the next NEW beat or mark the step done.` };
+      // The outline is already covered. Tell the agent to STOP here and move
+      // to the next step rather than retry — and advance the build so it can.
+      autoAdvanceBuild();
+      return { ok: false, message: `Already have this (#${dup + 1}). The outline is DONE (${current.length} points). Stop adding outline — move on to ACTS now (createAct / addBeat).` };
     }
     useAppStore.getState().updateScreenplayField('outlinePoints' as any, [...current, t]);
     const n = current.length + 1;
@@ -697,6 +734,9 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
   // ordered step it's on + what already exists (so it never repeats or
   // skips), and markStepDone when an ENTIRE step is finished.
   async getBuildStatus() {
+    // Advance any finished steps first, so nextStep is always accurate and
+    // the agent is never told to re-do something it already completed.
+    autoAdvanceBuild();
     const { loadBuildState, nextIncompleteStep, BUILD_STEPS, STEP_LABEL } = await import('@/lib/agentBuildState');
     const s = useAppStore.getState();
     const sp = s.screenplay as any;
@@ -945,6 +985,9 @@ export async function runTool(tool: string, args: any): Promise<AgentEvent> {
  *  the cause of dozens of duplicate outline points), this lists EVERYTHING,
  *  just trimmed per item to stay token-light. */
 export function snapshotState() {
+  // Keep the build progress in sync before we report state, so the nextStep
+  // the agent sees each turn is always accurate (finished steps auto-advance).
+  try { autoAdvanceBuild(); } catch { /* no story / fresh */ }
   const s = useAppStore.getState();
   const sp = s.screenplay as any;
   const storyId = s.activeStoryId;

@@ -6,7 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary.tsx'
 
 // Stamp a build marker on window + console so we can see at a glance whether
 // the fresh bundle actually loaded. Bump on every deploy with intent.
-const KINDLING_BUILD = 'v64-2026.06.04-sanitize-api-key-401-fix'
+const KINDLING_BUILD = 'v66-2026.06.04-auto-advance-build-no-thrash'
 ;(window as any).__KINDLING_BUILD__ = KINDLING_BUILD;
 // eslint-disable-next-line no-console
 console.log(`%c⚙ Kindling ${KINDLING_BUILD}`, 'color:#a855f7;font-weight:bold;font-size:14px');

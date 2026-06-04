@@ -112,13 +112,13 @@ export default function AIHelperPanel({ onClose }: Props) {
   }, []);
 
   const handleProviderChange = (p: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'deepseek' | 'ollama' | 'custom') => {
-    updateSettings({ aiProvider: p as any });
+    // ALWAYS switch to the recommended model for the new provider. An API
+    // key never carries a model, so the user shouldn't have to pick one —
+    // and a model left over from the PREVIOUS provider would be invalid
+    // here (e.g. a Groq model name sent to OpenRouter → 400). Auto-set it.
     const wantModel = DEFAULT_MODELS[p] || '';
-    if (!modelDraft || MODEL_SUGGESTIONS[(settings.aiProvider as string)]?.includes(modelDraft)) {
-      // Auto-replace stale default when switching providers
-      setModelDraft(wantModel);
-      updateSettings({ aiModel: wantModel });
-    }
+    updateSettings({ aiProvider: p as any, aiModel: wantModel });
+    setModelDraft(wantModel);
   };
 
   // Persist the draft key/model/endpoint into settings. `silent` is used by
@@ -306,7 +306,17 @@ export default function AIHelperPanel({ onClose }: Props) {
               )}
             </p>
 
-            <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)] mt-2">Model</div>
+            <div className="flex items-center justify-between mt-2">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Model <span className="text-[var(--accent)] normal-case tracking-normal">· auto, optional</span></div>
+              {modelDraft !== (DEFAULT_MODELS[settings.aiProvider] || '') && (
+                <button
+                  onClick={() => { const d = DEFAULT_MODELS[settings.aiProvider] || ''; setModelDraft(d); updateSettings({ aiModel: d }); }}
+                  className="text-[10px] text-[var(--accent)] hover:underline"
+                >
+                  Use recommended
+                </button>
+              )}
+            </div>
             <input
               value={modelDraft}
               onChange={(e) => setModelDraft(e.target.value)}
@@ -314,6 +324,9 @@ export default function AIHelperPanel({ onClose }: Props) {
               placeholder={DEFAULT_MODELS[settings.aiProvider] || 'model name'}
               className="w-full px-3 py-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs outline-none focus:border-[var(--accent)] font-mono"
             />
+            <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">
+              Your API key does NOT choose a model — you do, per request. We already filled in a recommended one for {PROVIDER_HELP[settings.aiProvider]?.name || settings.aiProvider}, so you can just paste your key and go. Only change this if you want a specific model.
+            </p>
             {(MODEL_SUGGESTIONS[settings.aiProvider] || []).length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {MODEL_SUGGESTIONS[settings.aiProvider].map((m) => (

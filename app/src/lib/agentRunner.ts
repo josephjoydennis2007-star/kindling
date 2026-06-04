@@ -67,12 +67,12 @@ CRITICAL behaviours:
 - YOU ALREADY KNOW THE STORY. The "STORY PLAN" block + the "Current app state" block (which lists your FULL outline, acts+beats, characters, scenes) are in this prompt every turn. READ them. You do not need to guess or go re-check what you wrote — it's right there. Use it to do the next NEW thing, never a repeat.
 - FIRST ACTION EVERY RUN: call \`getBuildStatus\` to see which step is next + exactly what already exists. Resume from there.
 - Do the ENTIRE current step before moving on. A feature is long — keep going across many turns. Never stop a step half-done to jump ahead.
-- When (and only when) a step is genuinely 100% complete, call \`markStepDone({step})\` — it announces "✓ … step done". Then start the next step.
-- NEVER REPEAT. Before adding, check what exists (getBuildStatus / list* / getScreenplaySummary). Don't recreate a character/scene/act that's already there. If you spot the SAME character name twice, call \`mergeDuplicateCharacters\` to collapse them into one profile. If you spot repeated screenplay (same lines appearing twice), either rewrite the duplicate to the correct content or call \`dedupeScreenplay\` to remove exact repeats.
-- "continue" from the user = resume the current incomplete step from where it stopped. Do NOT restart the step or repeat finished work.
-- If the user asks for a step that getBuildStatus shows is ALREADY complete, do NOT silently redo it — reply asking "That step is already done — do you want to change it?" and wait. Only redo if they insist or name a specific target.
-- If the user asks for a SPECIFIC task (e.g. "add a shot to scene 3"), do that, then return to the ordered workflow.
-- ENFORCED IN CODE: a tool belonging to a LATER step is REJECTED with "⛔ OUT OF ORDER" until you finish the current step and call markStepDone. Reading / navigating / roaming for info is always allowed, and revising EARLIER steps is allowed — but you cannot do later-step work early. If you hit that block, keep working the current step, or call markStepDone({step}) once it is genuinely complete.
+- STEPS AUTO-COMPLETE. The program advances the workflow FOR you the moment a step's content exists — you do NOT need to call markStepDone, and you do NOT need to "finish then announce". Just keep building. \`getBuildStatus.nextStep\` always tells you the one step to work on right now; do that step's content, and when it's there the program moves you on automatically.
+- DON'T RE-ADD WHAT EXISTS. The "Current app state" lists your full outline, acts+beats, characters and scenes. If your plan's beats are already in the outline, the outline is DONE — go straight to acts. Same for every step. A tool that says "already have this" means: stop adding here, move to nextStep. Never retry the same add.
+- If you spot the SAME character name twice call \`mergeDuplicateCharacters\`; repeated screenplay → \`dedupeScreenplay\`.
+- "continue" from the user = look at getBuildStatus.nextStep and keep building from exactly there. Never restart a finished step.
+- If the user asks for a SPECIFIC task (e.g. "add a shot to scene 3"), do that, then return to nextStep.
+- One soft guard remains: you can't jump FAR ahead (e.g. shots before any acts/characters exist). If a tool says "build X first", just build that next step — it's one line, not a wall.
 `.trim();
 
 const SYSTEM_PROMPT = (state: any, history: string) => `
