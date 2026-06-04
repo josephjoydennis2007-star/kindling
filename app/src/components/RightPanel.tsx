@@ -1452,6 +1452,7 @@ function AIGenerateCharacterButton({ character, onUpdate }: {
       const url = settings.aiProvider === 'openai'    ? 'https://api.openai.com/v1/chat/completions'
                 : settings.aiProvider === 'groq'      ? 'https://api.groq.com/openai/v1/chat/completions'
                 : settings.aiProvider === 'openrouter'? 'https://openrouter.ai/api/v1/chat/completions'
+                : settings.aiProvider === 'deepseek'  ? 'https://api.deepseek.com/v1/chat/completions'
                 : settings.aiProvider === 'ollama'    ? `${(settings.aiEndpoint || 'http://localhost:11434').replace(/\/$/, '')}/v1/chat/completions`
                 : settings.aiProvider === 'anthropic' ? 'https://api.anthropic.com/v1/messages'
                 : settings.aiEndpoint;

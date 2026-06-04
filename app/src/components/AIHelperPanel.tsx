@@ -15,6 +15,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   openrouter: 'openai/gpt-4o-mini',
   groq: 'llama-3.3-70b-versatile',
   ollama: 'llama3.2',
+  deepseek: 'deepseek-chat',
   custom: '',
 };
 
@@ -26,6 +27,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
   openrouter: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-flash-1.5'],
   groq: ['meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b'],
   ollama: ['llama3.2', 'mistral', 'qwen2.5-coder'],
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
   custom: [],
 };
 
@@ -36,7 +38,8 @@ const PROVIDER_HELP: Record<string, { name: string; url: string; note: string }>
   anthropic: { name: 'Anthropic', url: 'https://console.anthropic.com/', note: 'Paid' },
   openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', note: '✨ FREE models (":free" suffix). Co-worker uses NATIVE tool-calling here — most reliable agent. Try meta-llama/llama-3.3-70b-instruct:free.' },
   groq: { name: 'Groq', url: 'https://console.groq.com/keys', note: '✨ FREE + fast. For the Co-worker (movie builds), pick meta-llama/llama-4-scout-17b-16e-instruct — it has 30K tokens/min vs llama-3.3\'s 12K, so far fewer rate-limit pauses.' },
-  ollama: { name: 'Ollama', url: 'http://localhost:11434', note: '✨ FREE — runs locally, no key needed' },
+  deepseek: { name: 'DeepSeek', url: 'https://platform.deepseek.com/api_keys', note: '💸 CHEAPEST SMART OPTION. Prepay $5–$10 → acts like a budget that just stops at $0 (no auto-renew, no surprise bills). deepseek-chat is very capable for full movie builds. Add credit at platform.deepseek.com → API Keys.' },
+  ollama: { name: 'Ollama', url: 'http://localhost:11434', note: '✨ FREE — runs locally, no key needed (needs a strong GPU + run Kindling locally).' },
   custom: { name: 'Custom endpoint', url: '', note: 'Any OpenAI-compatible endpoint' },
 };
 
@@ -107,7 +110,7 @@ export default function AIHelperPanel({ onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleProviderChange = (p: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom') => {
+  const handleProviderChange = (p: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'deepseek' | 'ollama' | 'custom') => {
     updateSettings({ aiProvider: p as any });
     const wantModel = DEFAULT_MODELS[p] || '';
     if (!modelDraft || MODEL_SUGGESTIONS[(settings.aiProvider as string)]?.includes(modelDraft)) {
@@ -266,7 +269,7 @@ export default function AIHelperPanel({ onClose }: Props) {
           >
             <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Provider</div>
             <div className="grid grid-cols-3 gap-1.5">
-              {(['builtin', 'gemini', 'openai', 'anthropic', 'openrouter', 'groq', 'ollama', 'custom'] as const).map((p) => (
+              {(['builtin', 'gemini', 'openai', 'anthropic', 'openrouter', 'groq', 'deepseek', 'ollama', 'custom'] as const).map((p) => (
                 <button
                   key={p}
                   onClick={() => handleProviderChange(p)}
@@ -598,7 +601,7 @@ function buildContext({ screenplay, characters, scenes }: any): string {
 }
 
 async function callAI(opts: {
-  provider: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'ollama' | 'custom';
+  provider: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'deepseek' | 'ollama' | 'custom';
   endpoint: string;
   apiKey: string;
   model: string;
@@ -834,6 +837,7 @@ async function callAI(opts: {
     'X-Title': 'Kindling',
   });
   if (opts.provider === 'groq') return openAIStyle('https://api.groq.com/openai/v1/chat/completions');
+  if (opts.provider === 'deepseek') return openAIStyle('https://api.deepseek.com/v1/chat/completions');
   if (opts.provider === 'ollama') {
     const base = (opts.endpoint || 'http://localhost:11434').replace(/\/$/, '');
     // Mixed-content guard: an HTTPS page can't call http://localhost.

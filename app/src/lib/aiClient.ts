@@ -25,6 +25,10 @@ const DEFAULT_MODELS: Record<string, string> = {
   openrouter: 'openai/gpt-4o-mini',
   groq: 'llama-3.3-70b-versatile',
   ollama: 'llama3.2',
+  // DeepSeek — OpenAI-compatible, very capable, and extremely cheap
+  // (cents per million tokens). Prepay $5–10 → behaves like a budget that
+  // simply stops at $0 (no auto-renew). deepseek-chat is V3.
+  deepseek: 'deepseek-chat',
   custom: '',
 };
 
@@ -261,6 +265,7 @@ export async function aiOnce(
       provider === 'openai'     ? 'https://api.openai.com/v1/chat/completions' :
       provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
       provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :
+      provider === 'deepseek'   ? 'https://api.deepseek.com/v1/chat/completions' :
       provider === 'ollama'     ? `${(settings.aiEndpoint || 'http://localhost:11434').replace(/\/$/, '')}/v1/chat/completions` :
       /* custom */                (settings.aiEndpoint || '');
 
