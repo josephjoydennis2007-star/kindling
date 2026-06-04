@@ -21,6 +21,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { fsSupported, pickFolder, saveFolderHandle, clearFolderHandle } from '@/lib/folderHandle';
 import { gistPush, gistPull, jsonbinPush, jsonbinPull, dropboxPush, dropboxPull, supabasePush, supabasePull, webdavPush, webdavPull, pastebinPush, isOnline } from '@/lib/cloudSync';
 import { auth, exportAllUserData, deleteUserProfile, deleteAuthUser } from '@/firebase';
+import { setConnectorPassword } from '@/lib/connectorAuth';
 import { ACCENTS, THEME_MODES } from '@/lib/themePresets';
 import { LOCALES, localeName, type Locale } from '@/lib/i18n';
 import { CURRENCY_OPTIONS } from '@/lib/money';
@@ -478,6 +479,8 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                       and sync to the cloud profile that powers invite previews.
                     </p>
                   </Section>
+
+                  <ConnectToClaudeSection />
 
                   {/* Privacy: export-all-data + delete-account. Required for
                       any real launch and good practice anyway. */}
@@ -1014,6 +1017,75 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2">{title}</div>
       {children}
     </div>
+  );
+}
+
+/**
+ * "Connect to Claude" — set an email+password on the (possibly Google-only)
+ * account so the Kindling Connector (Cloudflare Worker) can sign in as you and
+ * build stories straight into THIS account. Shows the exact email + the two
+ * wrangler commands to run.
+ */
+function ConnectToClaudeSection() {
+  const email = auth?.currentUser?.email || '';
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await setConnectorPassword(pw);
+      setDone(true);
+      toast.success('Connector password set — now put it in your Worker secrets.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not set password');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section title="Connect to Claude (build stories from Claude)">
+      {!email ? (
+        <p className="text-[11px] text-[var(--text-muted)]">Sign in first to set a connector password.</p>
+      ) : (
+        <>
+          <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed mb-2">
+            Set a password on your account so the Kindling Connector can sign in as you. Stories Claude
+            builds will appear right here in <strong>{email}</strong>.
+          </p>
+          <input
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder="Choose a password (min 6 chars)"
+            className="w-full px-3 py-2 mb-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs outline-none focus:border-[var(--accent)] font-mono"
+          />
+          <button
+            onClick={save}
+            disabled={busy || pw.length < 6}
+            className="w-full px-3 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[11px] font-bold hover:brightness-110 disabled:opacity-40"
+          >
+            {busy ? 'Setting…' : done ? 'Update password' : 'Set connector password'}
+          </button>
+          {done && (
+            <div className="mt-2 p-2 rounded-md bg-[var(--bg)] border border-[var(--border)]">
+              <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
+                ✅ Done. Now give it to your Worker — in the connector terminal run:
+              </p>
+              <pre className="mt-1 text-[10px] text-[var(--accent)] whitespace-pre-wrap break-all">{`npx wrangler secret put KINDLING_EMAIL
+  → ${email}
+npx wrangler secret put KINDLING_PASSWORD
+  → (the password you just set)`}</pre>
+              <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                Then tell Claude: “build me a movie with Kindling.”
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </Section>
   );
 }
 
