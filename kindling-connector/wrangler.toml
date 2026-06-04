@@ -1,0 +1,13 @@
+name = "kindling-connector"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Secrets are NOT stored here — set them with `wrangler secret put`:
+#   wrangler secret put KINDLING_EMAIL
+#   wrangler secret put KINDLING_PASSWORD
+#
+# Optional overrides (defaults already point at the Kindling project):
+# [vars]
+# FIREBASE_PROJECT = "kindling-1d29d"
+# FIREBASE_DB = "default"
+# APP_URL = "https://kindling-1d29d.web.app"
