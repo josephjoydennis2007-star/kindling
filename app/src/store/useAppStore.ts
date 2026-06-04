@@ -143,6 +143,125 @@ const defaultState: AppState = {
 
 const SCENE_COLORS = ['#3b82f6', '#2a9d8f', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb5607', '#e76f51'];
 
+/**
+ * Make ANY imported story safe to render. A story built outside the app
+ * (the Claude connector, an old export, a shared link) might be missing
+ * fields the UI iterates — e.g. shot.bRollIds, scene.heading, beat.color.
+ * One undefined array there (`shot.bRollIds.map(...)`) white-screens the
+ * whole app. This backfills EVERY field with the same defaults the store's
+ * own add* actions use, so an imported story renders identically to one
+ * created inside the app — same colors, same structure, no crashes.
+ */
+function normalizeStoryData(data: any) {
+  const scenes: Scene[] = (Array.isArray(data?.scenes) ? data.scenes : []).map((s: any, i: number) => ({
+    id: s?.id || genId(),
+    name: s?.name || `Scene ${i + 1}`,
+    heading: s?.heading || s?.name || `Scene ${i + 1}`,
+    content: typeof s?.content === 'string' ? s.content : '',
+    description: typeof s?.description === 'string' ? s.description : '',
+    color: s?.color || SCENE_COLORS[i % SCENE_COLORS.length],
+    status: s?.status || 'todo',
+    shotIds: Array.isArray(s?.shotIds) ? s.shotIds : [],
+    order: typeof s?.order === 'number' ? s.order : i,
+    ...(s?.shootDate ? { shootDate: s.shootDate } : {}),
+    ...(s?.budget ? { budget: s.budget } : {}),
+    ...(s?.revisionColor ? { revisionColor: s.revisionColor } : {}),
+    ...(typeof s?.lastEditedAt === 'number' ? { lastEditedAt: s.lastEditedAt } : {}),
+  }));
+
+  const rawShots = data?.shots && typeof data.shots === 'object' ? data.shots : {};
+  const shots: Record<string, Shot> = {};
+  let si = 0;
+  for (const key of Object.keys(rawShots)) {
+    const sh = rawShots[key] || {};
+    shots[key] = {
+      id: sh.id || key,
+      sceneId: sh.sceneId || '',
+      description: typeof sh.description === 'string' ? sh.description : '',
+      shotType: sh.shotType || '',
+      camera: typeof sh.camera === 'string' ? sh.camera : '',
+      bRollIds: Array.isArray(sh.bRollIds) ? sh.bRollIds : [],
+      order: typeof sh.order === 'number' ? sh.order : si,
+      ...(sh.audioNote ? { audioNote: sh.audioNote } : {}),
+      ...(sh.audioFile ? { audioFile: sh.audioFile } : {}),
+      ...(sh.storyboard ? { storyboard: sh.storyboard } : {}),
+      ...(typeof sh.durationSec === 'number' ? { durationSec: sh.durationSec } : {}),
+      ...(sh.lens ? { lens: sh.lens } : {}),
+    };
+    si++;
+  }
+
+  const rawBeats = data?.beats && typeof data.beats === 'object' ? data.beats : {};
+  const beats: Record<string, Beat> = {};
+  let bi = 0;
+  for (const key of Object.keys(rawBeats)) {
+    const b = rawBeats[key] || {};
+    beats[key] = {
+      id: b.id || key,
+      actId: b.actId || '',
+      title: typeof b.title === 'string' ? b.title : '',
+      description: typeof b.description === 'string' ? b.description : '',
+      tags: Array.isArray(b.tags) ? b.tags : [],
+      color: b.color || COLORS[bi % COLORS.length],
+      ...(b.beatType ? { beatType: b.beatType } : {}),
+      ...(typeof b.order === 'number' ? { order: b.order } : {}),
+    };
+    bi++;
+  }
+
+  const characters: Character[] = (Array.isArray(data?.characters) ? data.characters : []).map((c: any, i: number) => ({
+    ...c,
+    id: c?.id || genId(),
+    name: c?.name || 'CHARACTER',
+    displayName: c?.displayName || c?.name || 'Character',
+    description: typeof c?.description === 'string' ? c.description : '',
+    color: c?.color || COLORS[i % COLORS.length],
+    image: c?.image ?? null,
+    backstory: c?.backstory || '',
+    goals: c?.goals || '',
+    personality: c?.personality || '',
+    age: c?.age || '',
+    occupation: c?.occupation || '',
+    motivation: c?.motivation || '',
+    conflict: c?.conflict || '',
+    relationships: c?.relationships || '',
+    notes: c?.notes || '',
+    voiceAudio: c?.voiceAudio ?? null,
+    tags: Array.isArray(c?.tags) ? c.tags : [],
+    createdAt: typeof c?.createdAt === 'number' ? c.createdAt : Date.now(),
+  }));
+
+  const rawActs = Array.isArray(data?.plotBoard?.acts) ? data.plotBoard.acts : null;
+  const plotBoard = rawActs
+    ? {
+        acts: rawActs.map((a: any, i: number) => ({
+          id: a?.id || genId(),
+          title: a?.title || `ACT ${i + 1}`,
+          beatIds: Array.isArray(a?.beatIds) ? a.beatIds : [],
+          order: typeof a?.order === 'number' ? a.order : i,
+        })),
+      }
+    : defaultState.plotBoard;
+
+  const screenplay = {
+    ...defaultState.screenplay,
+    ...(data?.screenplay || {}),
+    elements: Array.isArray(data?.screenplay?.elements) ? data.screenplay.elements : [],
+    sections: Array.isArray(data?.screenplay?.sections) ? data.screenplay.sections : [],
+  };
+
+  return {
+    screenplay,
+    scenes,
+    shots,
+    bRolls: data?.bRolls && typeof data.bRolls === 'object' ? data.bRolls : {},
+    characters,
+    plotBoard,
+    beats,
+    notes: Array.isArray(data?.notes) ? data.notes : [],
+  };
+}
+
 interface AppActions {
   // Stories
   createStory: (title: string, type?: StoryType) => string;
@@ -898,15 +1017,16 @@ export const useAppStore = create<AppState & AppActions>()(
         try {
           const data = JSON.parse(json);
           if (!data.screenplay || !data.scenes) return false;
+          const n = normalizeStoryData(data);
           set({
-            screenplay: { ...defaultState.screenplay, ...data.screenplay },
-            scenes: data.scenes,
-            shots: data.shots || {},
-            bRolls: data.bRolls || {},
-            characters: data.characters || [],
-            plotBoard: data.plotBoard || defaultState.plotBoard,
-            beats: data.beats || {},
-            notes: data.notes || [],
+            screenplay: n.screenplay,
+            scenes: n.scenes,
+            shots: n.shots,
+            bRolls: n.bRolls,
+            characters: n.characters,
+            plotBoard: n.plotBoard,
+            beats: n.beats,
+            notes: n.notes,
           });
           return true;
         } catch {
@@ -938,17 +1058,18 @@ export const useAppStore = create<AppState & AppActions>()(
                     updatedAt: Date.now(),
                   },
                 ];
+            const n = normalizeStoryData(data);
             return {
               stories: newStories,
               activeStoryId: cloudId,
-              screenplay: { ...defaultState.screenplay, ...data.screenplay },
-              scenes: data.scenes,
-              shots: data.shots || {},
-              bRolls: data.bRolls || {},
-              characters: data.characters || [],
-              plotBoard: data.plotBoard || defaultState.plotBoard,
-              beats: data.beats || {},
-              notes: data.notes || [],
+              screenplay: n.screenplay,
+              scenes: n.scenes,
+              shots: n.shots,
+              bRolls: n.bRolls,
+              characters: n.characters,
+              plotBoard: n.plotBoard,
+              beats: n.beats,
+              notes: n.notes,
             };
           });
           return true;

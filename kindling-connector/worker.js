@@ -201,10 +201,13 @@ function buildStoryData(spec) {
     imagePrompt: c.imagePrompt || '',
   }));
 
-  // scenes + shots
+  // scenes + shots — match the app's addScene/addShot shapes EXACTLY so an
+  // imported story renders identically (heading, order, bRollIds, colors).
+  const SCENE_COLORS = ['#3b82f6', '#2a9d8f', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb5607', '#e76f51'];
   const scenes = [];
   const shots = {};
-  for (const s of (spec.scenes || [])) {
+  let shotOrder = 0;
+  (spec.scenes || []).forEach((s, sceneIndex) => {
     const sceneId = genId('scene');
     const shotIds = [];
     for (const sh of (s.shots || [])) {
@@ -215,28 +218,33 @@ function buildStoryData(spec) {
         description: sh.description || '',
         shotType: sh.shotType || '',
         camera: sh.camera || '',
+        bRollIds: [],
+        order: shotOrder++,
         lens: sh.lens || '',
         durationSec: typeof sh.durationSec === 'number' ? sh.durationSec : 0,
         audioNote: sh.audioNote || '',
-        image: null,
-        status: 'todo',
       };
       shotIds.push(shotId);
     }
+    const name = s.name || `Scene ${sceneIndex + 1}`;
     scenes.push({
       id: sceneId,
-      name: s.name || 'Scene',
-      description: s.description || '',
+      name,
+      heading: name,
       content: '',
-      shotIds,
+      description: s.description || '',
+      color: SCENE_COLORS[sceneIndex % SCENE_COLORS.length],
       status: 'todo',
-      color: '',
+      shotIds,
+      order: sceneIndex,
     });
-  }
+  });
 
-  // plot board: acts + beats
+  // plot board: acts + beats (beat colors from the app's beat palette)
+  const BEAT_COLORS = ['#e76f51', '#f4a261', '#2a9d8f', '#264653', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb5607', '#8338ec'];
   const acts = [];
   const beats = {};
+  let beatCount = 0;
   (spec.acts || []).forEach((a, ai) => {
     const actId = genId('act');
     const beatIds = [];
@@ -248,10 +256,11 @@ function buildStoryData(spec) {
         title: b.title || '',
         description: b.description || '',
         tags: [],
-        color: '',
+        color: BEAT_COLORS[beatCount % BEAT_COLORS.length],
         order: bi,
       };
       beatIds.push(beatId);
+      beatCount++;
     });
     acts.push({ id: actId, title: String(a.title || `ACT ${ai + 1}`).toUpperCase(), beatIds, order: ai });
   });
