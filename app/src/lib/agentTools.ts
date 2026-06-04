@@ -311,10 +311,42 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     }
     if (newEls.length === 0) return { ok: false, message: 'No content provided' };
     const state = useAppStore.getState();
-    const merged = [...(state.screenplay.elements || []), ...newEls];
+    const existing: any[] = state.screenplay.elements || [];
+
+    // ── Repeat-guard (the big one) ──────────────────────────────────────
+    // Weak/free models loop, rewriting the SAME scene with tiny wording
+    // changes (the "INT. HACKER'S LAIR" wall). The action + dialogue lines
+    // are the "meaty" content. If most of this block's meaty lines just
+    // restate lines already in the screenplay (or each other), REFUSE the
+    // whole block so the agent writes the NEXT scene instead of looping.
+    const isMeaty = (e: any) => e.type === 'action' || e.type === 'dialogue';
+    const existingMeaty = existing.filter(isMeaty).map((e) => String(e.content || ''));
+    const newMeaty = newEls.filter(isMeaty).map((e) => String(e.content || ''));
+    if (newMeaty.length > 0) {
+      let dup = 0;
+      const acc: string[] = [];
+      let sample = '';
+      for (const line of newMeaty) {
+        if (findDuplicateIndex(line, existingMeaty) >= 0 || findDuplicateIndex(line, acc) >= 0) {
+          dup++; if (!sample) sample = line;
+        } else acc.push(line);
+      }
+      if (dup / newMeaty.length >= 0.5) {
+        const next = nextIncompleteStep(state.activeStoryId);
+        const moveOn = next && next !== 'screenplay'
+          ? ` The screenplay already has enough — move to the "${STEP_LABEL[next as keyof typeof STEP_LABEL] || next}" step now.`
+          : ' Write the NEXT, DIFFERENT scene (new location, new action, new dialogue) from your plan.';
+        return {
+          ok: false,
+          message: `Skipped — this scene REPEATS what's already written (e.g. "${sample.slice(0, 60)}…"). Stop rewriting the same scene.${moveOn} Or call dedupeScreenplay to clean existing repeats.`,
+        };
+      }
+    }
+
+    const merged = [...existing, ...newEls];
     state.updateScreenplayField('elements', merged);
     dispatchWriterRebuild();
-    return { ok: true, message: `Wrote ${newEls.length} screenplay line${newEls.length === 1 ? '' : 's'}` };
+    return { ok: true, message: `Wrote ${newEls.length} screenplay line${newEls.length === 1 ? '' : 's'}`, data: { totalLines: merged.length } };
   },
 
   // ---- Characters (FULL field access) ----
@@ -804,11 +836,12 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     const state = useAppStore.getState();
     const els: any[] = state.screenplay.elements || [];
     if (els.length < 2) return { ok: true, message: 'Nothing to dedupe' };
-    const norm = (e: any) => `${e.type}|${(e.content || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().toLowerCase()}`;
-    const out: any[] = [];
-    const seenBlock = new Set<string>();
+    const clean = (s: string) => String(s || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    const norm = (e: any) => `${e.type}|${clean(e.content).toLowerCase()}`;
     let removed = 0;
+
     // Pass 1: drop consecutive exact duplicates.
+    const out: any[] = [];
     let prevKey = '';
     for (const e of els) {
       const k = norm(e);
@@ -816,9 +849,9 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
       out.push(e);
       prevKey = k;
     }
-    // Pass 2: drop a line that exactly repeats a NON-adjacent earlier line
-    // of meaningful length (catches "comes back and uses the same stuff").
+    // Pass 2: drop a line that exactly repeats a NON-adjacent earlier line.
     const out2: any[] = [];
+    const seenBlock = new Set<string>();
     for (const e of out) {
       const k = norm(e);
       const content = k.split('|')[1] || '';
@@ -826,10 +859,32 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
       if (content.length > 25) seenBlock.add(k);
       out2.push(e);
     }
-    if (removed === 0) return { ok: true, message: 'No repeated lines found' };
-    state.updateScreenplayField('elements', out2);
+    // Pass 3: drop whole NEAR-duplicate SCENES. Group into scene blocks by
+    // scene-heading; a block's signature is its action+dialogue text. If a
+    // block is ~the same as an earlier kept one, drop the entire block. This
+    // is what collapses the "INT. HACKER'S LAIR ×15" wall into one scene.
+    const blocks: any[][] = [];
+    for (const e of out2) {
+      if (e.type === 'scene-heading' || blocks.length === 0) blocks.push([e]);
+      else blocks[blocks.length - 1].push(e);
+    }
+    const sigOf = (blk: any[]) => clean(
+      blk.filter((e) => e.type === 'action' || e.type === 'dialogue').map((e) => e.content).join(' '),
+    );
+    const keptBlocks: any[][] = [];
+    const keptSigs: string[] = [];
+    for (const blk of blocks) {
+      const s = sigOf(blk);
+      if (s.length > 20 && findDuplicateIndex(s, keptSigs, 0.6) >= 0) { removed += blk.length; continue; }
+      if (s.length > 20) keptSigs.push(s);
+      keptBlocks.push(blk);
+    }
+    const out3 = keptBlocks.flat();
+
+    if (removed === 0) return { ok: true, message: 'No repeated lines or scenes found' };
+    state.updateScreenplayField('elements', out3);
     dispatchWriterRebuild();
-    return { ok: true, message: `Removed ${removed} repeated screenplay line${removed === 1 ? '' : 's'}` };
+    return { ok: true, message: `Removed ${removed} repeated element${removed === 1 ? '' : 's'} (incl. duplicate scenes). ${out3.length} remain.`, data: { remaining: out3.length } };
   },
 
   // ---- Trigger UI actions on the user's behalf ----

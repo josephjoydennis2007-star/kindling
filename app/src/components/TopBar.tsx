@@ -5,7 +5,7 @@ import {
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
   LogOut, UserCircle2, Share2, UserPlus, PanelRight, Lightbulb, StickyNote,
   Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X, Stethoscope,
-  MessageCircle, Briefcase, ExternalLink,
+  MessageCircle, Briefcase, ExternalLink, Copy,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { openInlineCommentFromSelection } from './InlineCommentPopup';
@@ -476,6 +476,18 @@ export default function TopBar({
                     label="Style Assistant"
                     shortcut={`${FMT_SHIFT}${FMT_MOD}S`}
                     onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('writer:openStyle')); }}
+                  />
+                  <Item
+                    icon={Copy}
+                    label="Clean duplicate scenes"
+                    onClick={async () => {
+                      setOpen(false);
+                      const { runTool } = await import('@/lib/agentTools');
+                      const ev = await runTool('dedupeScreenplay', {});
+                      const { toast } = await import('sonner');
+                      if (ev.ok) toast.success(ev.message || 'Cleaned duplicates');
+                      else toast.error(ev.message || 'Nothing to clean');
+                    }}
                   />
                 </Group>
 
