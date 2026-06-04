@@ -21,7 +21,7 @@ const DEFAULT_MODELS: Record<string, string> = {
 
 const MODEL_SUGGESTIONS: Record<string, string[]> = {
   builtin: ['openai', 'mistral', 'llama', 'qwen-coder', 'claude-hybridspace'],
-  gemini: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-2.5-flash-preview-05-20'],
+  gemini: ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-flash-lite'],
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
   openrouter: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-flash-1.5'],
@@ -120,17 +120,23 @@ export default function AIHelperPanel({ onClose }: Props) {
     }
   };
 
-  const saveSettings = () => {
+  // Persist the draft key/model/endpoint into settings. `silent` is used by
+  // the auto-save-on-blur so the key is committed the moment the user clicks
+  // away from the field — no more "I pasted my key but it says no key".
+  const persistDrafts = (silent = false) => {
     const cleanedModel = (modelDraft || DEFAULT_MODELS[settings.aiProvider] || '').trim();
     updateSettings({
       aiApiKey: keyDraft.trim(),
       aiModel: cleanedModel,
       aiEndpoint: endpointDraft.trim(),
     });
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 1600);
-    toast.success('AI settings saved');
+    if (!silent) {
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 1600);
+      toast.success('AI settings saved');
+    }
   };
+  const saveSettings = () => persistDrafts(false);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
@@ -299,6 +305,7 @@ export default function AIHelperPanel({ onClose }: Props) {
             <input
               value={modelDraft}
               onChange={(e) => setModelDraft(e.target.value)}
+              onBlur={() => persistDrafts(true)}
               placeholder={DEFAULT_MODELS[settings.aiProvider] || 'model name'}
               className="w-full px-3 py-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs outline-none focus:border-[var(--accent)] font-mono"
             />
@@ -325,6 +332,7 @@ export default function AIHelperPanel({ onClose }: Props) {
               <input
                 value={keyDraft}
                 onChange={(e) => setKeyDraft(e.target.value)}
+                onBlur={() => persistDrafts(true)}
                 type={showKey ? 'text' : 'password'}
                 placeholder={settings.aiProvider === 'ollama' ? '(local Ollama needs no key)' : 'sk-… / paste here'}
                 className="w-full pr-9 px-3 py-2 rounded-md bg-[var(--bg)] border border-[var(--border)] text-xs font-mono outline-none focus:border-[var(--accent)]"

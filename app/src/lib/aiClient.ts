@@ -47,11 +47,14 @@ const POLLINATIONS_TEXT_URL = 'https://text.pollinations.ai/openai';
  * isn't retried twice.
  */
 const GEMINI_FALLBACK_MODELS = [
+  // Current, free-tier models only — each has its OWN separate daily
+  // bucket, so the chain falls through them for maximum free throughput.
+  // The Gemini 1.5 line was retired for new API projects in 2025, so it's
+  // gone (it would just 404 on fresh keys and waste a round-trip).
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-8b',
   'gemini-2.5-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-flash-lite',
 ];
 
 export interface AIMsg {
