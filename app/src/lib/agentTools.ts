@@ -1,5 +1,6 @@
 import { useAppStore } from '@/store/useAppStore';
 import type { ScreenplayElement } from '@/types';
+import { BUILD_STEPS, STEP_LABEL, nextIncompleteStep } from '@/lib/agentBuildState';
 
 /**
  * agentTools — the action vocabulary the AI co-worker can use to actually
@@ -27,6 +28,57 @@ export interface AgentEvent {
 let agentRunning = false;
 export function isAgentRunning(): boolean { return agentRunning; }
 export function setAgentRunning(v: boolean): void { agentRunning = v; }
+
+// ─── Step gate: enforce the ordered build IN CODE ────────────────────────
+// The prompt alone doesn't stop the model from jumping between steps. This
+// gate blocks any WRITE tool that belongs to a step AHEAD of the current
+// incomplete one, so the agent physically cannot do acts/characters/etc.
+// work until the earlier step is marked done. Read-only + navigation tools
+// are never gated (roaming for information is fine). The runner turns this
+// ON for whole-story builds and OFF for specific one-off tasks.
+let stepGateEnabled = false;
+export function setStepGate(on: boolean): void { stepGateEnabled = on; }
+
+// Which ordered build step each WRITE tool belongs to. Tools not listed
+// (navigate, getBuildStatus, list*, getScreenplaySummary, markStepDone,
+// done, addWorldItem, addLocation, generateShotImage…) are NEVER gated.
+const TOOL_STEP: Record<string, (typeof BUILD_STEPS)[number]> = {
+  // 1. instructions
+  setTitle: 'instructions', setLogline: 'instructions', setSynopsis: 'instructions',
+  setTheme: 'instructions', setInstructions: 'instructions', addOutlinePoint: 'instructions',
+  // 2. acts
+  createAct: 'acts', addBeat: 'acts', updateAct: 'acts', deleteAct: 'acts',
+  updateBeat: 'acts', deleteBeat: 'acts',
+  // 3. characters
+  createCharacter: 'characters', updateCharacter: 'characters', deleteCharacter: 'characters',
+  mergeDuplicateCharacters: 'characters',
+  // 4. screenplay
+  writeScreenplay: 'screenplay', addSceneHeading: 'screenplay', addAction: 'screenplay',
+  addDialogue: 'screenplay', addCharacterCue: 'screenplay', addParenthetical: 'screenplay',
+  addTransition: 'screenplay', dedupeScreenplay: 'screenplay',
+  // 5. scenes & shots
+  createScene: 'scenes', updateSceneDescription: 'scenes', addShot: 'scenes',
+  updateShot: 'scenes', addBRoll: 'scenes', updateBRoll: 'scenes',
+};
+
+/** If the gate is on and `tool` belongs to a step AHEAD of the current
+ *  incomplete step, returns a block message. Otherwise null (allowed). */
+function stepGateBlock(tool: string): string | null {
+  if (!stepGateEnabled) return null;
+  const toolStep = TOOL_STEP[tool];
+  if (!toolStep) return null; // not a gated tool (read/nav/meta/optional)
+  const storyId = useAppStore.getState().activeStoryId;
+  const current = nextIncompleteStep(storyId);
+  if (!current) return null; // everything already done — allow edits
+  const currentIdx = BUILD_STEPS.indexOf(current);
+  const toolIdx = BUILD_STEPS.indexOf(toolStep);
+  if (toolIdx <= currentIdx) return null; // current step or going back = fine
+  // Trying to work AHEAD — block and tell it exactly what to do.
+  return `⛔ OUT OF ORDER. You are on step ${currentIdx + 1}/5 — "${STEP_LABEL[current]}". `
+    + `Finish that step COMPLETELY, then call markStepDone({step:"${current}"}). `
+    + `Only after that may you do "${STEP_LABEL[toolStep]}" work like ${tool}. `
+    + `For now, keep working on ${STEP_LABEL[current]} (or call getBuildStatus to see what's left).`;
+}
 
 function emit(ev: AgentEvent) {
   document.dispatchEvent(new CustomEvent('agent:step', { detail: ev }));
@@ -723,6 +775,15 @@ export async function runTool(tool: string, args: any): Promise<AgentEvent> {
   const fn = TOOLS[tool];
   if (!fn) {
     const ev: AgentEvent = { ts, tool, args, ok: false, message: `Unknown tool "${tool}"` };
+    emit(ev);
+    return ev;
+  }
+  // Enforce the ordered build: refuse write tools that belong to a later
+  // step than the one currently in progress. The agent gets a clear
+  // correction back and stays on the current step.
+  const block = stepGateBlock(tool);
+  if (block) {
+    const ev: AgentEvent = { ts, tool, args, ok: false, message: block, result: { ok: false, message: block, blocked: true } };
     emit(ev);
     return ev;
   }

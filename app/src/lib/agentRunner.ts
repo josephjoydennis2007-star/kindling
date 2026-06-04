@@ -1,5 +1,5 @@
 import { aiOnce, aiToolCall } from '@/lib/aiClient';
-import { runTool, snapshotState, toolsManual, setAgentRunning, type AgentEvent } from '@/lib/agentTools';
+import { runTool, snapshotState, toolsManual, setAgentRunning, setStepGate, type AgentEvent } from '@/lib/agentTools';
 import { appendTurns, loadMemory, type MemoryTurn } from '@/lib/agentMemory';
 import { AGENT_TOOLS, providerSupportsTools } from '@/lib/agentToolSchemas';
 import { useAppStore } from '@/store/useAppStore';
@@ -61,6 +61,7 @@ CRITICAL behaviours:
 - "continue" from the user = resume the current incomplete step from where it stopped. Do NOT restart the step or repeat finished work.
 - If the user asks for a step that getBuildStatus shows is ALREADY complete, do NOT silently redo it — reply asking "That step is already done — do you want to change it?" and wait. Only redo if they insist or name a specific target.
 - If the user asks for a SPECIFIC task (e.g. "add a shot to scene 3"), do that, then return to the ordered workflow.
+- ENFORCED IN CODE: a tool belonging to a LATER step is REJECTED with "⛔ OUT OF ORDER" until you finish the current step and call markStepDone. Reading / navigating / roaming for info is always allowed, and revising EARLIER steps is allowed — but you cannot do later-step work early. If you hit that block, keep working the current step, or call markStepDone({step}) once it is genuinely complete.
 `.trim();
 
 const SYSTEM_PROMPT = (state: any, history: string) => `
@@ -166,10 +167,34 @@ function interruptibleSleep(ms: number): Promise<void> {
 const MAX_ITERATIONS = 30;
 const STEP_DELAY_MS = 140;
 
+/**
+ * Decide whether to ENFORCE the strict ordered-build step gate for this
+ * goal. We enforce for whole-story builds + "continue" (the cases the user
+ * wants kept in order), and we DON'T enforce for a narrow one-off edit
+ * ("add a shot to scene 3", "change LENA's age") so those still work.
+ */
+function shouldEnforceStepOrder(goal: string): boolean {
+  const g = (goal || '').toLowerCase().trim();
+  if (!g) return true;
+  // "continue" resumes the ordered build → always enforce.
+  if (/^continue\b/.test(g)) return true;
+  // Whole-story language → enforce.
+  if (/\b(whole|entire|complete|full|everything|all of (the|it|them))\b/.test(g)) return true;
+  if (/\b(build|make|create|generate|write|draft|do)\b[\s\S]*\b(movie|film|story|screenplay|script|feature)\b/.test(g)) return true;
+  // Narrow edit verbs aimed at a SPECIFIC element → don't enforce.
+  if (/\b(add a|add one|add the|change|rename|rewrite|fix|update|tweak|adjust|delete|remove)\b/.test(g)) return false;
+  if (/\bscene\s*\d+\b|\bshot\b|\bact\s*(one|two|three|four|five|\d+)\b/.test(g)) return false;
+  // Default: treat as a build and enforce order.
+  return true;
+}
+
 export async function runAgent(goal: string, opts: { maxIterations?: number } = {}): Promise<void> {
   cancelRequested = false;
   runAbort = new AbortController(); // fresh signal for this run
   setAgentRunning(true);
+  // Turn the in-code ordered-build gate on for builds / "continue", off for
+  // narrow one-off tasks so they aren't blocked.
+  setStepGate(shouldEnforceStepOrder(goal));
 
   const max = opts.maxIterations ?? MAX_ITERATIONS;
   const storyId = useAppStore.getState().activeStoryId;
@@ -187,6 +212,7 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
       await runAgentNative(goal, max, storyId, settings);
     } finally {
       setAgentRunning(false);
+      setStepGate(false);
     }
     return;
   }
@@ -407,6 +433,7 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
     }
   } finally {
     setAgentRunning(false);
+    setStepGate(false);
   }
 }
 
