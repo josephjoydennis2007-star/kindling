@@ -112,14 +112,41 @@ function looksLikeHtmlError(text: string): boolean {
 }
 
 let cancelRequested = false;
-export function cancelAgent(): void { cancelRequested = true; }
+// AbortController for the active run. cancelAgent() aborts it, which
+// instantly kills any in-flight fetch (AI request) so Stop is
+// responsive even mid-request. Reset at the start of every run.
+let runAbort: AbortController | null = null;
+
+export function cancelAgent(): void {
+  cancelRequested = true;
+  try { runAbort?.abort(); } catch { /* already aborted */ }
+}
 function checkCancelled(): boolean { return cancelRequested; }
+
+/** The signal for the active run's fetches. Null when no run is active. */
+export function currentAbortSignal(): AbortSignal | undefined {
+  return runAbort?.signal;
+}
+
+/** Sleep that resolves EARLY if the run is cancelled, so Stop doesn't
+ *  have to wait out a 20-second rate-limit cooldown. Polls every 250ms. */
+function interruptibleSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const tick = () => {
+      if (cancelRequested || Date.now() - start >= ms) { resolve(); return; }
+      setTimeout(tick, 250);
+    };
+    tick();
+  });
+}
 
 const MAX_ITERATIONS = 30;
 const STEP_DELAY_MS = 140;
 
 export async function runAgent(goal: string, opts: { maxIterations?: number } = {}): Promise<void> {
   cancelRequested = false;
+  runAbort = new AbortController(); // fresh signal for this run
   setAgentRunning(true);
 
   const max = opts.maxIterations ?? MAX_ITERATIONS;
@@ -194,7 +221,13 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
         : 'Thinking…';
       emitTurn({ ts: Date.now(), kind: 'plan', text: thinkingText });
 
-      const ai = await aiOnce(settings, system, userMsg, { maxTokens: 2400, temperature: 0.4 });
+      const ai = await aiOnce(settings, system, userMsg, { maxTokens: 2400, temperature: 0.4, signal: runAbort?.signal });
+      // User clicked Stop mid-request — exit cleanly.
+      if (ai.ok === false && ai.error === '__aborted__') {
+        emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped.' });
+        break;
+      }
+      if (checkCancelled()) { emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped.' }); break; }
       if (!ai.ok) {
         // Rate-limit recovery. Providers like Groq (12k TPM free tier)
         // hit this constantly during long agent runs. Sleep the cooldown
@@ -220,8 +253,8 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
             kind: 'plan',
             text: `Rate limit hit — waiting ${ai.retryAfter}s and continuing (${consecutiveRateLimits}/8)…`,
           });
-          await new Promise((r) => setTimeout(r, (ai.retryAfter! + 2) * 1000));
-          if (checkCancelled()) break;
+          await interruptibleSleep((ai.retryAfter! + 2) * 1000);
+          if (checkCancelled()) { emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped.' }); break; }
           iter--; // don't count this aborted turn against the loop cap
           continue;
         }
@@ -405,7 +438,10 @@ async function runAgentNative(goal: string, max: number, storyId: string | null,
     messages[0] = { role: 'system', content: NATIVE_SYSTEM(snapshotState()) };
     emitTurn({ ts: Date.now(), kind: 'plan', text: stepsDone ? `Working… (${stepsDone} actions done)` : 'Thinking…' });
 
-    const res = await aiToolCall(settings, messages, AGENT_TOOLS, { maxTokens: 2400, temperature: 0.4 });
+    const res = await aiToolCall(settings, messages, AGENT_TOOLS, { maxTokens: 2400, temperature: 0.4, signal: runAbort?.signal });
+    // User clicked Stop mid-request — exit cleanly.
+    if (res.ok === false && res.error === '__aborted__') { emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped.' }); break; }
+    if (checkCancelled()) { emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped.' }); break; }
     if (!res.ok) {
       if (res.retryAfter && res.retryAfter <= 120) {
         consecutiveRateLimits++;
@@ -415,8 +451,8 @@ async function runAgentNative(goal: string, max: number, storyId: string | null,
         }
         const waitS = res.retryAfter;
         emitTurn({ ts: Date.now(), kind: 'plan', text: `Rate limit — waiting ${waitS}s and continuing (${consecutiveRateLimits}/8)…` });
-        await new Promise((r) => setTimeout(r, (waitS + 2) * 1000));
-        if (checkCancelled()) break;
+        await interruptibleSleep((waitS + 2) * 1000);
+        if (checkCancelled()) { emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped.' }); break; }
         iter--;
         continue;
       }

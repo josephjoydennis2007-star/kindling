@@ -157,7 +157,7 @@ export async function aiOnce(
   settings: Pick<AppSettings, 'aiProvider' | 'aiApiKey' | 'aiModel' | 'aiEndpoint'>,
   system: string,
   user: string,
-  opts: { maxTokens?: number; temperature?: number } = {}
+  opts: { maxTokens?: number; temperature?: number; signal?: AbortSignal } = {}
 ): Promise<AIResult> {
   const provider = settings.aiProvider;
   const apiKey = (settings.aiApiKey || '').trim();
@@ -286,6 +286,7 @@ export async function aiOnce(
 
     const r = await fetch(url, {
       method: 'POST',
+      signal: opts.signal,
       headers: {
         'content-type': 'application/json',
         ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
@@ -349,6 +350,10 @@ export async function aiOnce(
     const text = (j.choices?.[0]?.message?.content || j.content || '').toString().trim();
     return { ok: true, text };
   } catch (e: any) {
+    // Aborted by the user clicking Stop — clean cancellation, not an error.
+    if (e?.name === 'AbortError') {
+      return { ok: false, error: '__aborted__' };
+    }
     // Ollama-specific failure guidance. A "Failed to fetch" from Ollama
     // almost always means one of: Ollama isn't running, OR Ollama is
     // running but rejected the cross-origin browser request because
@@ -484,7 +489,7 @@ export async function aiToolCall(
   settings: Pick<AppSettings, 'aiProvider' | 'aiApiKey' | 'aiModel' | 'aiEndpoint'>,
   messages: any[],
   tools: any[],
-  opts: { maxTokens?: number; temperature?: number } = {},
+  opts: { maxTokens?: number; temperature?: number; signal?: AbortSignal } = {},
 ): Promise<AIToolResult> {
   const provider = settings.aiProvider;
   const apiKey = (settings.aiApiKey || '').trim();
@@ -513,6 +518,7 @@ export async function aiToolCall(
   try {
     const r = await fetch(url, {
       method: 'POST',
+      signal: opts.signal,
       headers: {
         'content-type': 'application/json',
         ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
@@ -549,6 +555,7 @@ export async function aiToolCall(
     });
     return { ok: true, toolCalls, text: (msg.content || '').toString(), finishReason };
   } catch (e: any) {
+    if (e?.name === 'AbortError') return { ok: false, error: '__aborted__' };
     return { ok: false, error: e?.message || 'Network error' };
   }
 }

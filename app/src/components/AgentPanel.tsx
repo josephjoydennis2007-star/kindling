@@ -110,7 +110,12 @@ export default function AgentPanel({ open, onClose }: Props) {
   };
 
   const stop = () => {
+    // Abort the in-flight request immediately (cancelAgent aborts the
+    // run's AbortController) + give instant visual feedback. The runner
+    // exits within ~250ms, but we flip the UI now so Stop feels snappy.
     cancelAgent();
+    setRunning(false);
+    setLog((prev) => [...prev, { kind: 'turn', ts: Date.now(), turnKind: 'reply', text: '■ Stopping…' }]);
   };
 
   const handleClearMemory = () => {

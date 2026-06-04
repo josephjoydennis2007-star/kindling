@@ -24,7 +24,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
   openrouter: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct:free', 'google/gemini-flash-1.5'],
-  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+  groq: ['meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b'],
   ollama: ['llama3.2', 'mistral', 'qwen2.5-coder'],
   custom: [],
 };
@@ -35,7 +35,7 @@ const PROVIDER_HELP: Record<string, { name: string; url: string; note: string }>
   openai: { name: 'OpenAI', url: 'https://platform.openai.com/api-keys', note: 'Paid (small free credits for new accounts)' },
   anthropic: { name: 'Anthropic', url: 'https://console.anthropic.com/', note: 'Paid' },
   openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', note: '✨ FREE models (":free" suffix). Co-worker uses NATIVE tool-calling here — most reliable agent. Try meta-llama/llama-3.3-70b-instruct:free.' },
-  groq: { name: 'Groq', url: 'https://console.groq.com/keys', note: '✨ FREE + fast Llama 3.3. Co-worker uses NATIVE tool-calling here — reliable + quick.' },
+  groq: { name: 'Groq', url: 'https://console.groq.com/keys', note: '✨ FREE + fast. For the Co-worker (movie builds), pick meta-llama/llama-4-scout-17b-16e-instruct — it has 30K tokens/min vs llama-3.3\'s 12K, so far fewer rate-limit pauses.' },
   ollama: { name: 'Ollama', url: 'http://localhost:11434', note: '✨ FREE — runs locally, no key needed' },
   custom: { name: 'Custom endpoint', url: '', note: 'Any OpenAI-compatible endpoint' },
 };
