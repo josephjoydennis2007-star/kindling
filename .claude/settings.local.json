@@ -52,7 +52,8 @@
       "Bash(printf '.wrangler/\\\\nnode_modules/\\\\n')",
       "Bash(git rm *)",
       "Bash(git commit *)",
-      "mcp__833b473f-4b02-463a-8f07-160ace7655a5__build_story"
+      "mcp__833b473f-4b02-463a-8f07-160ace7655a5__build_story",
+      "Bash(node --check _check.mjs)"
     ]
   }
 }

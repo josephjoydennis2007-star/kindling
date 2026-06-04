@@ -153,146 +153,151 @@ async function listStoryDocs(env, auth) {
   return out;
 }
 
-// ─── Build the Kindling story object (the shape importStory() expects) ────
-// Input is the high-level spec Claude provides. Output is the exact
-// { screenplay, scenes, shots, bRolls, characters, plotBoard, beats, notes }
-// object Kindling loads.
-function buildStoryData(spec) {
-  const screenplayElements = [];
-  // screenplay: array of scene blocks → flat ScreenplayElement[]
-  for (const sc of (spec.screenplay || [])) {
-    if (sc.heading) screenplayElements.push({ id: genId('el'), type: 'scene-heading', content: String(sc.heading).toUpperCase(), sceneId: null });
-    if (sc.action) screenplayElements.push({ id: genId('el'), type: 'action', content: String(sc.action), sceneId: null });
+// ─── Story builders (output the exact shapes Kindling's importStory expects) ─
+// Colors match the app's palettes so connector stories render identically.
+const SCENE_COLORS = ['#3b82f6', '#2a9d8f', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb5607', '#e76f51'];
+const BEAT_COLORS = ['#e76f51', '#f4a261', '#2a9d8f', '#264653', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb5607', '#8338ec'];
+const CHAR_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6'];
+
+// screenplay scene-blocks → flat ScreenplayElement[]
+function makeElements(blocks) {
+  const els = [];
+  for (const sc of (blocks || [])) {
+    if (sc.heading) els.push({ id: genId('el'), type: 'scene-heading', content: String(sc.heading).toUpperCase(), sceneId: null });
+    if (sc.action) els.push({ id: genId('el'), type: 'action', content: String(sc.action), sceneId: null });
     for (const d of (sc.dialogue || [])) {
-      if (d.character) screenplayElements.push({ id: genId('el'), type: 'character', content: String(d.character).toUpperCase(), sceneId: null });
-      if (d.parenthetical) screenplayElements.push({ id: genId('el'), type: 'parenthetical', content: `(${String(d.parenthetical).replace(/^\(|\)$/g, '')})`, sceneId: null });
-      if (d.line) screenplayElements.push({ id: genId('el'), type: 'dialogue', content: String(d.line), sceneId: null });
+      if (d.character) els.push({ id: genId('el'), type: 'character', content: String(d.character).toUpperCase(), sceneId: null });
+      if (d.parenthetical) els.push({ id: genId('el'), type: 'parenthetical', content: `(${String(d.parenthetical).replace(/^\(|\)$/g, '')})`, sceneId: null });
+      if (d.line) els.push({ id: genId('el'), type: 'dialogue', content: String(d.line), sceneId: null });
     }
   }
+  return els;
+}
 
-  // characters
-  const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6'];
-  const characters = (spec.characters || []).map((c, i) => ({
-    id: genId('char'),
-    name: String(c.name || 'CHARACTER').toUpperCase(),
-    displayName: c.name || 'Character',
-    description: c.description || '',
-    color: COLORS[i % COLORS.length],
-    image: null,
-    backstory: c.backstory || '',
-    goals: c.goals || '',
-    personality: c.personality || '',
-    age: c.age != null ? String(c.age) : '',
-    occupation: c.occupation || '',
-    motivation: c.motivation || '',
-    conflict: c.conflict || '',
-    relationships: c.relationships || '',
-    notes: c.notes || '',
-    voiceAudio: null,
-    tags: [],
-    createdAt: Date.now(),
-    archetype: c.archetype || '',
-    voiceOf: c.voiceOf || '',
-    want: c.want || '',
-    need: c.need || '',
-    fear: c.fear || '',
-    secret: c.secret || '',
-    pronouns: c.pronouns || '',
-    imagePrompt: c.imagePrompt || '',
-  }));
+function makeCharacter(c, i) {
+  return {
+    id: genId('char'), name: String(c.name || 'CHARACTER').toUpperCase(), displayName: c.name || 'Character',
+    description: c.description || '', color: CHAR_COLORS[i % CHAR_COLORS.length], image: null,
+    backstory: c.backstory || '', goals: c.goals || '', personality: c.personality || '',
+    age: c.age != null ? String(c.age) : '', occupation: c.occupation || '', motivation: c.motivation || '',
+    conflict: c.conflict || '', relationships: c.relationships || '', notes: c.notes || '',
+    voiceAudio: null, tags: [], createdAt: Date.now(), archetype: c.archetype || '', voiceOf: c.voiceOf || '',
+    want: c.want || '', need: c.need || '', fear: c.fear || '', secret: c.secret || '',
+    pronouns: c.pronouns || '', imagePrompt: c.imagePrompt || '',
+  };
+}
 
-  // scenes + shots — match the app's addScene/addShot shapes EXACTLY so an
-  // imported story renders identically (heading, order, bRollIds, colors).
-  const SCENE_COLORS = ['#3b82f6', '#2a9d8f', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb5607', '#e76f51'];
-  const scenes = [];
-  const shots = {};
-  let shotOrder = 0;
-  (spec.scenes || []).forEach((s, sceneIndex) => {
+// scenes (+ shots, written into shotsOut) starting at a given index/order so
+// appended scenes continue numbering + colors from what's already there.
+function makeScenes(list, startSceneIndex, startShotOrder, shotsOut) {
+  let shotOrder = startShotOrder;
+  return (list || []).map((s, i) => {
+    const idx = startSceneIndex + i;
     const sceneId = genId('scene');
     const shotIds = [];
     for (const sh of (s.shots || [])) {
       const shotId = genId('shot');
-      shots[shotId] = {
-        id: shotId,
-        sceneId,
-        description: sh.description || '',
-        shotType: sh.shotType || '',
-        camera: sh.camera || '',
-        bRollIds: [],
-        order: shotOrder++,
-        lens: sh.lens || '',
-        durationSec: typeof sh.durationSec === 'number' ? sh.durationSec : 0,
-        audioNote: sh.audioNote || '',
+      shotsOut[shotId] = {
+        id: shotId, sceneId, description: sh.description || '', shotType: sh.shotType || '',
+        camera: sh.camera || '', bRollIds: [], order: shotOrder++, lens: sh.lens || '',
+        durationSec: typeof sh.durationSec === 'number' ? sh.durationSec : 0, audioNote: sh.audioNote || '',
       };
       shotIds.push(shotId);
     }
-    const name = s.name || `Scene ${sceneIndex + 1}`;
-    scenes.push({
-      id: sceneId,
-      name,
-      heading: name,
-      content: '',
-      description: s.description || '',
-      color: SCENE_COLORS[sceneIndex % SCENE_COLORS.length],
-      status: 'todo',
-      shotIds,
-      order: sceneIndex,
-    });
+    const name = s.name || `Scene ${idx + 1}`;
+    return { id: sceneId, name, heading: name, content: '', description: s.description || '', color: SCENE_COLORS[idx % SCENE_COLORS.length], status: 'todo', shotIds, order: idx };
   });
+}
 
-  // plot board: acts + beats (beat colors from the app's beat palette)
-  const BEAT_COLORS = ['#e76f51', '#f4a261', '#2a9d8f', '#264653', '#e9c46a', '#9b5de5', '#f15bb5', '#00bbf9', '#fb5607', '#8338ec'];
-  const acts = [];
-  const beats = {};
-  let beatCount = 0;
-  (spec.acts || []).forEach((a, ai) => {
+// acts (+ beats into beatsOut) continuing from existing counts.
+function makeActs(list, startBeatCount, startActIndex, beatsOut) {
+  let beatCount = startBeatCount;
+  return (list || []).map((a, ai) => {
     const actId = genId('act');
     const beatIds = [];
     (a.beats || []).forEach((b, bi) => {
       const beatId = genId('beat');
-      beats[beatId] = {
-        id: beatId,
-        actId,
-        title: b.title || '',
-        description: b.description || '',
-        tags: [],
-        color: BEAT_COLORS[beatCount % BEAT_COLORS.length],
-        order: bi,
-      };
+      beatsOut[beatId] = { id: beatId, actId, title: b.title || '', description: b.description || '', tags: [], color: BEAT_COLORS[beatCount % BEAT_COLORS.length], order: bi };
       beatIds.push(beatId);
       beatCount++;
     });
-    acts.push({ id: actId, title: String(a.title || `ACT ${ai + 1}`).toUpperCase(), beatIds, order: ai });
+    return { id: actId, title: String(a.title || `ACT ${startActIndex + ai + 1}`).toUpperCase(), beatIds, order: startActIndex + ai };
   });
+}
 
+// Build a brand-new story from a full spec.
+function buildStoryData(spec) {
+  const shots = {};
+  const beats = {};
+  const characters = (spec.characters || []).map(makeCharacter);
+  const scenes = makeScenes(spec.scenes, 0, 0, shots);
+  const acts = makeActs(spec.acts, 0, 0, beats);
   const screenplay = {
-    title: spec.title || 'Untitled',
-    logline: spec.logline || '',
-    synopsis: spec.synopsis || '',
-    theme: spec.theme || '',
-    genre: spec.genre || '',
-    type: spec.type || 'movie',
-    instructions: spec.instructions || '',
-    outlinePoints: Array.isArray(spec.outline) ? spec.outline : [],
-    elements: screenplayElements,
-    sections: [],
-    assets: [],
-    world: [],
-    locations: [],
+    title: spec.title || 'Untitled', logline: spec.logline || '', synopsis: spec.synopsis || '',
+    theme: spec.theme || '', genre: spec.genre || '', type: spec.type || 'movie', instructions: spec.instructions || '',
+    outlinePoints: Array.isArray(spec.outline) ? spec.outline : [], elements: makeElements(spec.screenplay),
+    sections: [], assets: [], world: [], locations: [],
   };
+  return { screenplay, scenes, shots, bRolls: {}, characters, plotBoard: { acts }, beats, notes: [], version: '2.0', exportedAt: Date.now() };
+}
 
-  return {
-    screenplay,
-    scenes,
-    shots,
-    bRolls: {},
-    characters,
-    plotBoard: { acts },
-    beats,
-    notes: [],
-    version: '2.0',
-    exportedAt: Date.now(),
-  };
+// Append more material to an EXISTING story's data object (for add_to_story).
+// Continues IDs/order/colors and dedupes characters by name.
+function appendToStoryData(existing, spec) {
+  const data = existing && typeof existing === 'object' ? existing : {};
+  data.screenplay = data.screenplay || {};
+  data.screenplay.elements = Array.isArray(data.screenplay.elements) ? data.screenplay.elements : [];
+  data.scenes = Array.isArray(data.scenes) ? data.scenes : [];
+  data.shots = data.shots && typeof data.shots === 'object' ? data.shots : {};
+  data.characters = Array.isArray(data.characters) ? data.characters : [];
+  data.plotBoard = data.plotBoard && Array.isArray(data.plotBoard.acts) ? data.plotBoard : { acts: [] };
+  data.beats = data.beats && typeof data.beats === 'object' ? data.beats : {};
+
+  if (Array.isArray(spec.screenplay) && spec.screenplay.length) {
+    data.screenplay.elements = data.screenplay.elements.concat(makeElements(spec.screenplay));
+  }
+  if (Array.isArray(spec.scenes) && spec.scenes.length) {
+    const newScenes = makeScenes(spec.scenes, data.scenes.length, Object.keys(data.shots).length, data.shots);
+    data.scenes = data.scenes.concat(newScenes);
+  }
+  if (Array.isArray(spec.characters) && spec.characters.length) {
+    for (const c of spec.characters) {
+      const nameU = String(c.name || '').trim().toUpperCase();
+      const ex = data.characters.find((x) => String(x.name || '').trim().toUpperCase() === nameU);
+      if (ex) {
+        for (const k of ['description', 'backstory', 'goals', 'personality', 'age', 'occupation', 'motivation', 'conflict', 'relationships', 'notes', 'archetype', 'voiceOf', 'want', 'need', 'fear', 'secret', 'pronouns', 'imagePrompt']) {
+          if (c[k] != null && String(c[k]).trim() && !String(ex[k] || '').trim()) ex[k] = String(c[k]);
+        }
+      } else {
+        data.characters.push(makeCharacter(c, data.characters.length));
+      }
+    }
+  }
+  if (Array.isArray(spec.acts) && spec.acts.length) {
+    const newActs = makeActs(spec.acts, Object.keys(data.beats).length, data.plotBoard.acts.length, data.beats);
+    data.plotBoard.acts = data.plotBoard.acts.concat(newActs);
+  }
+  if (typeof spec.title === 'string' && spec.title) data.screenplay.title = spec.title;
+  if (typeof spec.logline === 'string' && spec.logline) data.screenplay.logline = spec.logline;
+  if (typeof spec.synopsis === 'string' && spec.synopsis) data.screenplay.synopsis = spec.synopsis;
+  if (typeof spec.theme === 'string' && spec.theme) data.screenplay.theme = spec.theme;
+  if (typeof spec.genre === 'string' && spec.genre) data.screenplay.genre = spec.genre;
+  if (Array.isArray(spec.outline) && spec.outline.length) {
+    data.screenplay.outlinePoints = (Array.isArray(data.screenplay.outlinePoints) ? data.screenplay.outlinePoints : []).concat(spec.outline);
+  }
+  data.exportedAt = Date.now();
+  return data;
+}
+
+// Read an existing story's title + parsed data from Firestore.
+async function readStoryData(env, auth, storyId) {
+  const r = await fetch(`${fsBase(env)}/stories/${storyId}`, { headers: { Authorization: `Bearer ${auth.idToken}` } });
+  if (!r.ok) throw new Error(`Could not read story "${storyId}" (${r.status}). Call list_stories to get a valid id.`);
+  const doc = await r.json();
+  const title = doc.fields?.title?.stringValue || 'Untitled';
+  let data = {};
+  try { data = JSON.parse(doc.fields?.data?.stringValue || '{}'); } catch { /* keep {} */ }
+  return { title, data };
 }
 
 // ─── MCP tool definitions ─────────────────────────────────────────────────
@@ -378,6 +383,81 @@ const TOOLS = [
       required: ['title'],
     },
   },
+  {
+    name: 'get_story',
+    description: "Read an existing story's current state — title, characters, scene names, and the screenplay scene-headings already written — so you know exactly where to continue from without repeating anything. Call this before add_to_story when resuming a long build.",
+    inputSchema: { type: 'object', properties: { storyId: { type: 'string', description: 'The story id (from build_story / list_stories).' } }, required: ['storyId'] },
+  },
+  {
+    name: 'add_to_story',
+    description:
+      "Append MORE material to an EXISTING story (identified by storyId) — the way to build a full feature across several calls. Pass only the NEW content: the next batch of screenplay scene-blocks, and/or more director scenes with shots, characters, or acts/beats. It continues numbering, ordering and colors automatically and never overwrites what's there. Use this repeatedly (e.g. scenes 1–15, then 16–30, then 31–45) to write a complete movie into ONE story.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        storyId: { type: 'string', description: 'The id of the story to add to (from build_story / list_stories / get_story).' },
+        title: { type: 'string', description: 'Optional — update the title.' },
+        logline: { type: 'string' }, synopsis: { type: 'string' }, theme: { type: 'string' }, genre: { type: 'string' },
+        outline: { type: 'array', items: { type: 'string' }, description: 'Additional outline points (appended).' },
+        characters: {
+          type: 'array',
+          description: 'New characters to add (existing names are merged, not duplicated).',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' }, age: { type: 'string' }, pronouns: { type: 'string' },
+              occupation: { type: 'string' }, archetype: { type: 'string' }, personality: { type: 'string' },
+              want: { type: 'string' }, need: { type: 'string' }, fear: { type: 'string' },
+              backstory: { type: 'string' }, relationships: { type: 'string' }, imagePrompt: { type: 'string' },
+            },
+            required: ['name'],
+          },
+        },
+        acts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              beats: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' } } } },
+            },
+          },
+        },
+        scenes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' }, description: { type: 'string' },
+              shots: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    description: { type: 'string' }, shotType: { type: 'string' }, camera: { type: 'string' },
+                    lens: { type: 'string' }, durationSec: { type: 'number' }, audioNote: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        screenplay: {
+          type: 'array',
+          description: 'The NEXT batch of ordered scene blocks to append to the script.',
+          items: {
+            type: 'object',
+            properties: {
+              heading: { type: 'string' },
+              action: { type: 'string' },
+              dialogue: { type: 'array', items: { type: 'object', properties: { character: { type: 'string' }, parenthetical: { type: 'string' }, line: { type: 'string' } } } },
+            },
+          },
+        },
+      },
+      required: ['storyId'],
+    },
+  },
 ];
 
 async function callTool(env, name, args) {
@@ -400,7 +480,45 @@ async function callTool(env, name, args) {
     return {
       content: [{
         type: 'text',
-        text: `✅ Built "${args.title}" in Kindling (${counts}). Open it: ${appUrl}\nIt will appear in your story list the next time you open the app signed in.`,
+        text: `✅ Built "${args.title}" in Kindling (${counts}).\nStory id: ${storyId}  ← pass this to add_to_story to keep writing into THIS movie.\nOpen it: ${appUrl}`,
+      }],
+    };
+  }
+
+  if (name === 'get_story') {
+    const { title, data } = await readStoryData(env, auth, args.storyId);
+    const sp = data.screenplay || {};
+    const sceneNames = (data.scenes || []).map((s) => s.name);
+    const charNames = (data.characters || []).map((c) => c.name);
+    const headings = (sp.elements || []).filter((e) => e.type === 'scene-heading').map((e) => e.content);
+    const summary = {
+      title,
+      logline: sp.logline || '',
+      characters: charNames,
+      actCount: (data.plotBoard?.acts || []).length,
+      sceneCount: sceneNames.length,
+      sceneNames,
+      screenplayLineCount: (sp.elements || []).length,
+      screenplaySceneHeadings: headings,
+      lastHeading: headings[headings.length - 1] || '(none yet)',
+    };
+    return { content: [{ type: 'text', text: `"${title}" current state:\n${JSON.stringify(summary, null, 2)}\n\nTo continue, call add_to_story with storyId "${args.storyId}" and the NEXT scenes/screenplay (don't repeat what's already there).` }] };
+  }
+
+  if (name === 'add_to_story') {
+    if (!args.storyId) throw new Error('add_to_story needs a storyId. Use list_stories or get_story to find it, or the id printed by build_story.');
+    const { title, data } = await readStoryData(env, auth, args.storyId);
+    const beforeLines = (data.screenplay?.elements || []).length;
+    const beforeScenes = (data.scenes || []).length;
+    const merged = appendToStoryData(data, args || {});
+    const newTitle = (typeof args.title === 'string' && args.title) ? args.title : title;
+    await writeStoryDoc(env, auth, args.storyId, newTitle, JSON.stringify(merged));
+    const addedLines = (merged.screenplay.elements.length - beforeLines);
+    const addedScenes = (merged.scenes.length - beforeScenes);
+    return {
+      content: [{
+        type: 'text',
+        text: `✅ Added to "${newTitle}": +${addedScenes} scenes, +${addedLines} screenplay lines. Now ${merged.scenes.length} scenes / ${merged.screenplay.elements.length} lines total.\nStory id: ${args.storyId} — call add_to_story again for the next batch.`,
       }],
     };
   }
