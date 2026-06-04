@@ -182,8 +182,16 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     fear?: string; secret?: string; pronouns?: string; age?: string; occupation?: string;
     voiceOf?: string; personality?: string; backstory?: string; goals?: string;
     motivation?: string; conflict?: string; relationships?: string; notes?: string;
+    imagePrompt?: string;
   }) {
     if (!p.name) return { ok: false, message: 'name required' };
+    // ONE profile per character. If a character with this name already exists,
+    // the store merges into it instead of duplicating — so the AI can never
+    // spawn twin profiles. Detect that case to report it honestly.
+    const wanted = String(p.name).trim().toUpperCase();
+    const existed = useAppStore.getState().characters.find(
+      (c) => c.name.trim().toUpperCase() === wanted,
+    );
     const newId = useAppStore.getState().addCharacter({
       name: String(p.name).toUpperCase(),
       displayName: String(p.name),
@@ -204,8 +212,11 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
       conflict: p.conflict || '',
       relationships: p.relationships || '',
       notes: p.notes || '',
+      imagePrompt: p.imagePrompt || '',
     } as any);
-    return { ok: true, message: `Created character ${p.name}`, id: newId };
+    return existed
+      ? { ok: true, message: `${p.name} already existed — merged your details into the one profile (no duplicate).`, id: newId, merged: true }
+      : { ok: true, message: `Created character ${p.name}`, id: newId };
   },
 
   // ---- Director: scenes + shots ----
@@ -352,7 +363,7 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     character: string; name?: string; description?: string; archetype?: string; want?: string;
     need?: string; fear?: string; secret?: string; pronouns?: string; occupation?: string; age?: string;
     voiceOf?: string; backstory?: string; goals?: string; personality?: string; motivation?: string;
-    conflict?: string; relationships?: string; notes?: string;
+    conflict?: string; relationships?: string; notes?: string; imagePrompt?: string;
   }) {
     const chars = useAppStore.getState().characters;
     const c = chars.find((x) => x.id === p.character || x.name.toLowerCase() === p.character.toLowerCase());
@@ -362,7 +373,7 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     // Every other field: copy through when provided. Full character access.
     for (const k of ['description', 'archetype', 'want', 'need', 'fear', 'secret', 'pronouns',
       'occupation', 'age', 'voiceOf', 'backstory', 'goals', 'personality', 'motivation',
-      'conflict', 'relationships', 'notes'] as const) {
+      'conflict', 'relationships', 'notes', 'imagePrompt'] as const) {
       if (typeof (p as any)[k] === 'string') updates[k] = (p as any)[k];
     }
     useAppStore.getState().updateCharacter(c.id, updates);
@@ -520,6 +531,11 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
           beatCount: Object.keys(s.beats).length,
           characterCount: s.characters.length,
           characterNames: s.characters.map((c) => c.name),
+          // Characters still missing key detail — the characters step isn't
+          // done until each has at least age + imagePrompt (+ inner life).
+          charactersNeedingDetail: s.characters
+            .filter((c: any) => !c.age || !(c.imagePrompt && String(c.imagePrompt).trim()) || !(c.want || c.need || c.backstory))
+            .map((c) => c.name),
           screenplayLineCount: (sp.elements || []).length,
           sceneCount: s.scenes.length,
           sceneNames: s.scenes.map((sc) => sc.name),
@@ -779,7 +795,8 @@ export function toolsManual(): string {
     '- `writeScreenplay(text)` — paste a whole Fountain-ish block at once. The parser figures out which lines are headings/dialogue/etc. Use this for "write me a scene".',
     '',
     '### Characters (full fields — fill them out)',
-    '- `createCharacter(name, description, pronouns, age, occupation, archetype, voiceOf, personality, want, need, fear, secret, backstory, motivation, conflict, relationships)`',
+    '- `createCharacter(name, description, pronouns, age, occupation, archetype, voiceOf, personality, want, need, fear, secret, backstory, motivation, conflict, relationships, imagePrompt)` — ONE profile per name: creating the same name again MERGES, never duplicates. ALWAYS give `age` and an `imagePrompt` (face, hair, build, apparent age, wardrobe, distinctive features + a side-view/profile note so face, body & side view can be rendered).',
+    '- `updateCharacter(character, …same fields incl. imagePrompt…)` — match by name or id.',
     '',
     '### Director',
     '- `createScene(name, description)` — also sets it active',

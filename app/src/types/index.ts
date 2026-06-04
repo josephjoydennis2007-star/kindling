@@ -26,6 +26,7 @@ export interface Character {
   fear?: string;             // deepest fear / wound
   secret?: string;           // hidden truth
   pronouns?: string;
+  imagePrompt?: string;      // appearance prompt for AI image gen (face, body, side view)
 }
 
 export interface ScreenplayElement {

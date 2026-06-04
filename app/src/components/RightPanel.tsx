@@ -33,6 +33,9 @@ import {
   Sparkles,
   Wand2,
   Loader2,
+  Camera,
+  Pencil,
+  Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
@@ -910,19 +913,38 @@ function CharactersPanel({ characters, onUpdate, onDelete, onClose, focusCharact
   onClearFocusCharacter: () => void;
 }) {
   const [selectedChar, setSelectedChar] = useState<string | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newChar, setNewChar] = useState({ name: '', description: '' });
+  const [creating, setCreating] = useState(false);
 
   const addCharacter = useAppStore(state => state.addCharacter);
 
   useEffect(() => {
     if (focusCharacterId) {
       setSelectedChar(focusCharacterId);
+      setCreating(false);
       onClearFocusCharacter();
     }
   }, [focusCharacterId, onClearFocusCharacter]);
 
   const char = selectedChar ? characters.find(c => c.id === selectedChar) : null;
+
+  // Adding a new character → open the FULL detail editor (every field), so the
+  // user fills everything in one place. On save we create the profile (deduped
+  // by name in the store) and jump straight to its paragraph profile.
+  if (creating) {
+    return (
+      <CharacterEditor
+        isNew
+        initial={{}}
+        onCancel={() => setCreating(false)}
+        onClose={onClose}
+        onSave={(draft) => {
+          const id = addCharacter(draft);
+          setCreating(false);
+          setSelectedChar(id);
+        }}
+      />
+    );
+  }
 
   if (char) {
     return (
@@ -953,7 +975,7 @@ function CharactersPanel({ characters, onUpdate, onDelete, onClose, focusCharact
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {characters.length === 0 && !showAddForm && (
+        {characters.length === 0 && (
           <div className="text-center py-8 text-[var(--text-muted)] text-xs">
             <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p>No characters yet</p>
@@ -985,70 +1007,251 @@ function CharactersPanel({ characters, onUpdate, onDelete, onClose, focusCharact
           </motion.button>
         ))}
 
-        {showAddForm && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="p-3 bg-[var(--panel)] rounded-lg border border-[var(--border)]"
-          >
-            <input
-              autoFocus
-              value={newChar.name}
-              onChange={(e) => setNewChar({ ...newChar, name: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newChar.name.trim()) {
-                  addCharacter({ name: newChar.name, description: newChar.description });
-                  setShowAddForm(false);
-                  setNewChar({ name: '', description: '' });
-                }
-              }}
-              placeholder="Character name"
-              className="w-full px-3 py-2 mb-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
-            />
-            <textarea
-              value={newChar.description}
-              onChange={(e) => setNewChar({ ...newChar, description: e.target.value })}
-              placeholder="Brief description"
-              className="w-full min-h-[50px] px-3 py-2 mb-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] resize-y"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setShowAddForm(false); setNewChar({ name: '', description: '' }); }}
-                className="flex-1 py-1.5 bg-[var(--card)] text-[var(--text-secondary)] rounded-lg text-xs hover:bg-[var(--hover)]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (newChar.name.trim()) {
-                    addCharacter({ name: newChar.name, description: newChar.description });
-                    setShowAddForm(false);
-                    setNewChar({ name: '', description: '' });
-                  }
-                }}
-                className="flex-1 py-1.5 bg-[var(--accent)] text-[var(--bg)] rounded-lg text-xs font-semibold hover:brightness-110"
-              >
-                Add
-              </button>
-            </div>
-          </motion.div>
-        )}
       </div>
 
-      {!showAddForm && (
-        <div className="p-4 border-t border-[var(--border)]">
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="w-full py-2.5 bg-[var(--accent)] text-[var(--bg)] rounded-lg text-xs font-semibold hover:brightness-110 transition-all flex items-center justify-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add Character
-          </button>
-        </div>
-      )}
+      <div className="p-4 border-t border-[var(--border)]">
+        <button
+          onClick={() => setCreating(true)}
+          className="w-full py-2.5 bg-[var(--accent)] text-[var(--bg)] rounded-lg text-xs font-semibold hover:brightness-110 transition-all flex items-center justify-center gap-1.5"
+        >
+          <Plus className="w-3.5 h-3.5" /> Add Character
+        </button>
+      </div>
     </motion.div>
   );
 }
 
+// Shared field set for the character editor. `name` is handled separately at
+// the top of the editor; everything else (incl. age + the image prompt) is
+// driven from this list so the New and Edit forms stay identical.
+const CHARACTER_FIELDS: { key: keyof Character; label: string; icon: any; placeholder: string; type: 'text' | 'textarea' }[] = [
+  { key: 'pronouns', label: 'Pronouns', icon: UserCircle, placeholder: 'she/her, they/them, …', type: 'text' },
+  { key: 'age', label: 'Age', icon: Calendar, placeholder: 'e.g. 28', type: 'text' },
+  { key: 'occupation', label: 'Occupation', icon: Briefcase, placeholder: 'Job or role', type: 'text' },
+  { key: 'archetype', label: 'Archetype', icon: Sparkles, placeholder: 'Mentor / Trickster / Anti-hero…', type: 'text' },
+  { key: 'description', label: 'Short description', icon: FileText, placeholder: 'One-line summary (shown in the list)', type: 'textarea' },
+  { key: 'imagePrompt', label: 'Image prompt — face · body · side view', icon: Camera, placeholder: 'Appearance for AI image generation: face, hair, build, how old they look, wardrobe, distinctive features, and side-view / profile notes…', type: 'textarea' },
+  { key: 'voiceOf', label: 'Voice', icon: Mic, placeholder: 'Speech style, dialect, idiom', type: 'textarea' },
+  { key: 'personality', label: 'Personality', icon: Brain, placeholder: 'Traits, demeanor, attitude...', type: 'textarea' },
+  { key: 'want', label: 'Want (conscious)', icon: Target, placeholder: 'What they think they need', type: 'textarea' },
+  { key: 'need', label: 'Need (unconscious)', icon: Target, placeholder: 'What they actually need', type: 'textarea' },
+  { key: 'fear', label: 'Fear / Wound', icon: AlertTriangle, placeholder: 'Deepest fear or wound', type: 'textarea' },
+  { key: 'secret', label: 'Secret', icon: AlertTriangle, placeholder: 'The hidden truth', type: 'textarea' },
+  { key: 'goals', label: 'Goals (plot)', icon: Target, placeholder: 'Concrete scene-level goals', type: 'textarea' },
+  { key: 'motivation', label: 'Motivation', icon: Flame, placeholder: 'What drives them?', type: 'textarea' },
+  { key: 'conflict', label: 'Conflict', icon: AlertTriangle, placeholder: 'Internal and external conflicts', type: 'textarea' },
+  { key: 'backstory', label: 'Backstory', icon: FileText, placeholder: 'History and background...', type: 'textarea' },
+  { key: 'relationships', label: 'Relationships', icon: HeartHandshake, placeholder: 'Connections to other characters', type: 'textarea' },
+  { key: 'notes', label: 'Notes', icon: StickyNote, placeholder: 'Additional notes...', type: 'textarea' },
+];
+
+function stripPeriod(s: string) { return String(s || '').trim().replace(/[.\s]+$/, ''); }
+
+// Weave a character's fields into a single readable paragraph profile.
+function buildCharacterParagraph(c: Character): string {
+  const name = c.displayName || c.name || 'This character';
+  const out: string[] = [];
+  const ident: string[] = [];
+  if (c.age) ident.push(/^\d+$/.test(String(c.age).trim()) ? `${String(c.age).trim()}-year-old` : String(c.age).trim());
+  if (c.occupation) ident.push(c.occupation.trim());
+  let opener = name;
+  if (ident.length) opener += ` — ${ident.join(', ')}`;
+  if (c.archetype) opener += ` — embodies the ${stripPeriod(c.archetype)} archetype`;
+  out.push(stripPeriod(opener) + '.');
+  const add = (prefix: string, v?: string) => { if (v && v.trim()) out.push(`${prefix} ${stripPeriod(v)}.`); };
+  if (c.description) out.push(stripPeriod(c.description) + '.');
+  add('Personality:', c.personality);
+  add('On the surface, they want', c.want);
+  add('What they truly need is', c.need);
+  add('Deepest fear:', c.fear);
+  add('Secret:', c.secret);
+  add('Driven by', c.motivation);
+  add('Central conflict:', c.conflict);
+  add('Goals:', c.goals);
+  add('Backstory:', c.backstory);
+  add('Relationships:', c.relationships);
+  add('Voice:', c.voiceOf);
+  if (c.notes && c.notes.trim()) out.push(stripPeriod(c.notes) + '.');
+  if (out.length <= 1 && !c.description) out.push('No details yet — tap "Edit character" to fill out this profile.');
+  return out.join(' ');
+}
+
+/**
+ * CharacterEditor — the full-detail form, shared by "Add new" and "Edit".
+ * Works on a LOCAL draft and only commits on Save, so a half-typed new
+ * character never leaves an orphan profile behind.
+ */
+function CharacterEditor({ initial, isNew, onSave, onCancel, onClose, onDelete }: {
+  initial: Partial<Character>;
+  isNew?: boolean;
+  onSave: (draft: Partial<Character>) => void;
+  onCancel: () => void;
+  onClose: () => void;
+  onDelete?: () => void;
+}) {
+  const [draft, setDraft] = useState<Partial<Character>>(() => ({ ...initial }));
+  const set = (k: keyof Character, v: any) => setDraft((prev) => ({ ...prev, [k]: v }));
+  const nameVal = (draft.name ?? '') as string;
+  const canSave = nameVal.trim().length > 0;
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => set('image', ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => set('voiceAudio', ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const avatarLetter = (nameVal || 'C').charAt(0).toUpperCase();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className="h-full flex flex-col"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
+        <button
+          onClick={onCancel}
+          className="flex items-center gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text)] transition-colors text-xs"
+          aria-label="Cancel editing"
+        >
+          <ChevronDown className="w-4 h-4 rotate-90" />
+          {isNew ? 'Cancel' : 'Back'}
+        </button>
+        <div className="flex items-center gap-2">
+          <AIGenerateCharacterButton character={draft as Character} onUpdate={(updates) => setDraft((prev) => ({ ...prev, ...updates }))} />
+          {onDelete && (
+            <button
+              onClick={() => { if (confirm('Delete this character?')) onDelete(); }}
+              className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger)] transition-colors"
+              aria-label="Delete character"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+          <button onClick={onClose} className="p-1 text-[var(--text-muted)] hover:text-[var(--danger)] transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        <p className="text-[11px] text-[var(--text-muted)] mb-3 text-center">
+          {isNew ? 'Fill in everything you know — blank fields are fine, you can edit later.' : 'Edit the profile, then Save.'}
+        </p>
+
+        {/* Profile Image */}
+        <div className="flex justify-center mb-4">
+          <div className="relative">
+            <div
+              className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-white overflow-hidden border-2 border-[var(--accent)] shadow-lg"
+              style={{ background: draft.image ? 'transparent' : (draft.color || 'var(--accent)') }}
+            >
+              {draft.image ? <img src={draft.image} alt={nameVal} className="w-full h-full object-cover" /> : avatarLetter}
+            </div>
+            <label className="absolute bottom-0 right-0 w-7 h-7 bg-[var(--accent)] rounded-full flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 transition-all">
+              <Upload className="w-3.5 h-3.5 text-[var(--bg)]" />
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+            </label>
+          </div>
+        </div>
+
+        {/* Name */}
+        <div className="mb-3">
+          <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-1 flex items-center gap-1">
+            <UserCircle className="w-3 h-3" /> Name
+          </label>
+          <input
+            autoFocus={isNew}
+            type="text"
+            value={nameVal}
+            onChange={(e) => set('name', e.target.value)}
+            placeholder="Character name"
+            className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+          />
+        </div>
+
+        {/* All other fields */}
+        <div className="space-y-3">
+          {CHARACTER_FIELDS.map((field) => (
+            <div key={field.key}>
+              <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-1 flex items-center gap-1">
+                <field.icon className="w-3 h-3" />
+                {field.label}
+              </label>
+              {field.type === 'textarea' ? (
+                <textarea
+                  value={(draft[field.key] as string) ?? ''}
+                  onChange={(e) => set(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                  className="w-full min-h-[60px] px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] resize-y"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={(draft[field.key] as string) ?? ''}
+                  onChange={(e) => set(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                  className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Voice Audio */}
+        <div className="mt-4 p-3 bg-[var(--card)] rounded-lg border border-[var(--border)]">
+          <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-2 flex items-center gap-1">
+            <Mic className="w-3 h-3" />
+            Voice Sample
+          </label>
+          {draft.voiceAudio && (
+            <div className="mb-2">
+              <audio controls src={draft.voiceAudio} className="w-full h-8" />
+            </div>
+          )}
+          <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--accent)] hover:brightness-110">
+            <Upload className="w-3.5 h-3.5" />
+            {draft.voiceAudio ? 'Replace audio' : 'Upload voice sample'}
+            <input type="file" accept="audio/*" onChange={handleAudioUpload} className="hidden" />
+          </label>
+        </div>
+      </div>
+
+      {/* Footer: Save / Cancel */}
+      <div className="p-4 border-t border-[var(--border)] flex gap-2">
+        <button
+          onClick={onCancel}
+          className="flex-1 py-2 bg-[var(--card)] text-[var(--text-secondary)] rounded-lg text-xs hover:bg-[var(--hover)]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => { if (canSave) onSave(draft); }}
+          disabled={!canSave}
+          className="flex-1 py-2 bg-[var(--accent)] text-[var(--bg)] rounded-lg text-xs font-semibold hover:brightness-110 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Save className="w-3.5 h-3.5" /> {isNew ? 'Create Character' : 'Save'}
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * CharacterDetail — read-only PROFILE view (everything woven into a paragraph)
+ * with an "Edit character" button that flips to the full CharacterEditor.
+ */
 function CharacterDetail({ character, onUpdate, onDelete, onBack, onClose }: {
   character: Character;
   onUpdate: (id: string, updates: Partial<Character>) => void;
@@ -1056,54 +1259,27 @@ function CharacterDetail({ character, onUpdate, onDelete, onBack, onClose }: {
   onBack: () => void;
   onClose: () => void;
 }) {
-  const [edits, setEdits] = useState<Partial<Character>>({});
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
 
-  const update = (field: keyof Character, value: any) => {
-    setEdits(prev => ({ ...prev, [field]: value }));
-    onUpdate(character.id, { [field]: value });
-  };
+  if (mode === 'edit') {
+    return (
+      <CharacterEditor
+        initial={character}
+        onCancel={() => setMode('view')}
+        onClose={onClose}
+        onDelete={() => { onDelete(character.id); onBack(); }}
+        onSave={(draft) => { onUpdate(character.id, draft); setMode('view'); }}
+      />
+    );
+  }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        update('image', ev.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        update('voiceAudio', ev.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const fields = [
-    { key: 'name' as const, label: 'Name', icon: UserCircle, placeholder: 'Character name', type: 'text' },
-    { key: 'pronouns' as const, label: 'Pronouns', icon: UserCircle, placeholder: 'she/her, they/them, …', type: 'text' },
-    { key: 'age' as const, label: 'Age', icon: Calendar, placeholder: 'e.g. 28', type: 'text' },
-    { key: 'occupation' as const, label: 'Occupation', icon: Briefcase, placeholder: 'Job or role', type: 'text' },
-    { key: 'archetype' as const, label: 'Archetype', icon: Sparkles, placeholder: 'Mentor / Trickster / Anti-hero…', type: 'text' },
-    { key: 'voiceOf' as const, label: 'Voice', icon: Mic, placeholder: 'Speech style, dialect, idiom', type: 'textarea' },
-    { key: 'personality' as const, label: 'Personality', icon: Brain, placeholder: 'Traits, demeanor, attitude...', type: 'textarea' },
-    { key: 'want' as const, label: 'Want (conscious)', icon: Target, placeholder: 'What they think they need', type: 'textarea' },
-    { key: 'need' as const, label: 'Need (unconscious)', icon: Target, placeholder: 'What they actually need', type: 'textarea' },
-    { key: 'fear' as const, label: 'Fear / Wound', icon: AlertTriangle, placeholder: 'Deepest fear or wound', type: 'textarea' },
-    { key: 'secret' as const, label: 'Secret', icon: AlertTriangle, placeholder: 'The hidden truth', type: 'textarea' },
-    { key: 'goals' as const, label: 'Goals (plot)', icon: Target, placeholder: 'Concrete scene-level goals', type: 'textarea' },
-    { key: 'motivation' as const, label: 'Motivation', icon: Flame, placeholder: 'What drives them?', type: 'textarea' },
-    { key: 'conflict' as const, label: 'Conflict', icon: AlertTriangle, placeholder: 'Internal and external conflicts', type: 'textarea' },
-    { key: 'backstory' as const, label: 'Backstory', icon: FileText, placeholder: 'History and background...', type: 'textarea' },
-    { key: 'relationships' as const, label: 'Relationships', icon: HeartHandshake, placeholder: 'Connections to other characters', type: 'textarea' },
-    { key: 'notes' as const, label: 'Notes', icon: StickyNote, placeholder: 'Additional notes...', type: 'textarea' },
-  ];
+  const paragraph = buildCharacterParagraph(character);
+  const chips = [
+    character.pronouns,
+    character.age ? `Age ${character.age}` : '',
+    character.occupation,
+    character.archetype,
+  ].filter(Boolean) as string[];
 
   return (
     <motion.div
@@ -1123,14 +1299,15 @@ function CharacterDetail({ character, onUpdate, onDelete, onBack, onClose }: {
           Back
         </button>
         <div className="flex items-center gap-2">
-          <AIGenerateCharacterButton character={character} onUpdate={(updates) => Object.entries(updates).forEach(([k, v]) => update(k as keyof Character, v))} />
           <button
-            onClick={() => {
-              if (confirm('Delete this character?')) {
-                onDelete(character.id);
-                onBack();
-              }
-            }}
+            onClick={() => setMode('edit')}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-[var(--accent)] text-[var(--bg)] rounded-lg text-xs font-semibold hover:brightness-110 transition-all"
+            aria-label="Edit character"
+          >
+            <Pencil className="w-3.5 h-3.5" /> Edit
+          </button>
+          <button
+            onClick={() => { if (confirm('Delete this character?')) { onDelete(character.id); onBack(); } }}
             className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger)] transition-colors"
             aria-label="Delete character"
           >
@@ -1143,98 +1320,72 @@ function CharacterDetail({ character, onUpdate, onDelete, onBack, onClose }: {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {/* Profile Image */}
-        <div className="flex justify-center mb-4">
-          <div className="relative">
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-white overflow-hidden border-2 border-[var(--accent)] shadow-lg"
-              style={{ background: character.image ? 'transparent' : character.color }}
-            >
-              {character.image ? (
-                <img src={character.image} alt={character.name} className="w-full h-full object-cover" />
-              ) : (
-                character.name.charAt(0)
-              )}
-            </div>
-            <label className="absolute bottom-0 right-0 w-7 h-7 bg-[var(--accent)] rounded-full flex items-center justify-center cursor-pointer shadow-md hover:brightness-110 transition-all">
-              <Upload className="w-3.5 h-3.5 text-[var(--bg)]" />
-              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-            </label>
-          </div>
-        </div>
-
-        {/* Tags */}
-        <div className="flex flex-wrap gap-1 mb-4 justify-center">
-          {character.tags.map((tag, i) => (
-            <span
-              key={i}
-              className="px-2 py-0.5 rounded-full text-[10px] bg-[var(--hover)] text-[var(--text-muted)] border border-[var(--border)] flex items-center gap-1"
-            >
-              {tag}
-              <button
-                onClick={() => update('tags', character.tags.filter((_, idx) => idx !== i))}
-                className="hover:text-[var(--danger)]"
-              >
-                <X className="w-2.5 h-2.5" />
-              </button>
-            </span>
-          ))}
-          <button
-            onClick={() => {
-              const tag = prompt('Add tag:');
-              if (tag) update('tags', [...character.tags, tag]);
-            }}
-            className="px-2 py-0.5 rounded-full text-[10px] bg-[var(--hover)] text-[var(--text-muted)] border border-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--bg)] transition-all"
+        {/* Avatar + name + meta */}
+        <div className="flex flex-col items-center mb-4">
+          <div
+            className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold text-white overflow-hidden border-2 border-[var(--accent)] shadow-lg mb-3"
+            style={{ background: character.image ? 'transparent' : character.color }}
           >
-            <Tag className="w-2.5 h-2.5 inline" /> + tag
-          </button>
-        </div>
-
-        {/* Fields */}
-        <div className="space-y-3">
-          {fields.map(field => (
-            <div key={field.key}>
-              <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-1 flex items-center gap-1">
-                <field.icon className="w-3 h-3" />
-                {field.label}
-              </label>
-              {field.type === 'textarea' ? (
-                <textarea
-                  value={edits[field.key] ?? character[field.key] ?? ''}
-                  onChange={(e) => update(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  className="w-full min-h-[60px] px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)] resize-y"
-                />
-              ) : (
-                <input
-                  type="text"
-                  value={edits[field.key] ?? character[field.key] ?? ''}
-                  onChange={(e) => update(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                  className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
-                />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Voice Audio */}
-        <div className="mt-4 p-3 bg-[var(--card)] rounded-lg border border-[var(--border)]">
-          <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-2 flex items-center gap-1">
-            <Mic className="w-3 h-3" />
-            Voice Sample
-          </label>
-          {character.voiceAudio && (
-            <div className="mb-2">
-              <audio controls src={character.voiceAudio} className="w-full h-8" />
+            {character.image ? (
+              <img src={character.image} alt={character.name} className="w-full h-full object-cover" />
+            ) : (
+              character.name.charAt(0)
+            )}
+          </div>
+          <h2 className="text-lg font-bold text-[var(--text)] text-center break-words">{character.displayName || character.name}</h2>
+          {chips.length > 0 && (
+            <div className="flex flex-wrap gap-1 justify-center mt-2">
+              {chips.map((chip, i) => (
+                <span key={i} className="px-2 py-0.5 rounded-full text-[10px] bg-[var(--hover)] text-[var(--text-secondary)] border border-[var(--border)]">{chip}</span>
+              ))}
             </div>
           )}
-          <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--accent)] hover:brightness-110">
-            <Upload className="w-3.5 h-3.5" />
-            {character.voiceAudio ? 'Replace audio' : 'Upload voice sample'}
-            <input type="file" accept="audio/*" onChange={handleAudioUpload} className="hidden" />
-          </label>
+          {character.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 justify-center mt-2">
+              {character.tags.map((tag, i) => (
+                <span key={i} className="px-2 py-0.5 rounded-full text-[10px] bg-[var(--hover)] text-[var(--accent)] border border-[var(--border)] flex items-center gap-1">
+                  <Tag className="w-2.5 h-2.5" /> {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Paragraph profile */}
+        <div className="mb-4">
+          <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2 flex items-center gap-1">
+            <FileText className="w-3 h-3" /> Profile
+          </h3>
+          <p className="text-sm leading-relaxed text-[var(--text)] whitespace-pre-wrap break-words">{paragraph}</p>
+        </div>
+
+        {/* Image prompt */}
+        {character.imagePrompt && character.imagePrompt.trim() && (
+          <div className="mb-4 p-3 bg-[var(--card)] rounded-lg border border-[var(--border)]">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2 flex items-center gap-1">
+              <Camera className="w-3 h-3" /> Image prompt — face · body · side view
+            </h3>
+            <p className="text-xs leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap break-words font-mono">{character.imagePrompt}</p>
+          </div>
+        )}
+
+        {/* Voice sample */}
+        {character.voiceAudio && (
+          <div className="mb-4 p-3 bg-[var(--card)] rounded-lg border border-[var(--border)]">
+            <h3 className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2 flex items-center gap-1">
+              <Mic className="w-3 h-3" /> Voice sample
+            </h3>
+            <audio controls src={character.voiceAudio} className="w-full h-8" />
+          </div>
+        )}
+
+        {/* Prominent edit button */}
+        <button
+          onClick={() => setMode('edit')}
+          className="w-full py-2.5 bg-[var(--card)] border border-[var(--border)] text-[var(--text)] rounded-lg text-xs font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all flex items-center justify-center gap-1.5"
+        >
+          <Pencil className="w-3.5 h-3.5" /> Edit character
+        </button>
       </div>
     </motion.div>
   );
@@ -1261,13 +1412,17 @@ function AIGenerateCharacterButton({ character, onUpdate }: {
     try {
       const seed = JSON.stringify({
         name: character.name,
+        age: character.age,
+        occupation: character.occupation,
         archetype: character.archetype,
         traits: character.personality,
+        description: character.description,
         notes: character.notes,
       });
       const system = 'You generate concise but vivid screenwriter character bios as STRICT JSON. ' +
-        'Output ONLY a JSON object — no preamble — with keys: archetype, voiceOf, want, need, fear, secret, personality, backstory, motivation, conflict, relationships. Each value 1–2 sentences max.';
-      const user = `Fill out a character bio based on this seed JSON. Keep tone cinematic and specific.\n\nSEED:\n${seed}`;
+        'Output ONLY a JSON object — no preamble — with keys: age, occupation, pronouns, archetype, voiceOf, want, need, fear, secret, personality, backstory, motivation, conflict, relationships, imagePrompt. ' +
+        'Each value 1–2 sentences max, EXCEPT imagePrompt which is a vivid physical-appearance prompt for AI image generation describing face, hair, build, apparent age, wardrobe, distinctive features AND a side-view / profile note (so face, body and side view can all be rendered). age is just a number or short phrase.';
+      const user = `Fill out a character bio based on this seed JSON. Keep tone cinematic and specific. Always give an age and an imagePrompt.\n\nSEED:\n${seed}`;
 
       const url = settings.aiProvider === 'openai'    ? 'https://api.openai.com/v1/chat/completions'
                 : settings.aiProvider === 'groq'      ? 'https://api.groq.com/openai/v1/chat/completions'
@@ -1321,7 +1476,7 @@ function AIGenerateCharacterButton({ character, onUpdate }: {
       const match = reply.match(/\{[\s\S]*\}/);
       if (!match) { toast.error('AI returned no JSON'); return; }
       const json = JSON.parse(match[0]);
-      const allowed: (keyof Character)[] = ['archetype', 'voiceOf', 'want', 'need', 'fear', 'secret', 'personality', 'backstory', 'motivation', 'conflict', 'relationships'];
+      const allowed: (keyof Character)[] = ['age', 'occupation', 'pronouns', 'archetype', 'voiceOf', 'want', 'need', 'fear', 'secret', 'personality', 'backstory', 'motivation', 'conflict', 'relationships', 'imagePrompt'];
       const patch: Partial<Character> = {};
       for (const k of allowed) {
         if (typeof (json as any)[k] === 'string' && (json as any)[k].trim()) {

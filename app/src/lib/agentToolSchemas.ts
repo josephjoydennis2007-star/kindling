@@ -73,11 +73,11 @@ export const AGENT_TOOLS: OpenAITool[] = [
   t('addCharacterCue', 'Insert an UPPERCASE character cue before dialogue.', { name: str('Character name') }, ['name']),
 
   // ---- Characters (FULL fields) ----
-  t('createCharacter', 'Create a character — fill out as many fields as the story supports.',
-    { name: str('Name'), description: str('Short description'), pronouns: str('e.g. she/her'), age: str('Age'), occupation: str('Job/role'), archetype: str('e.g. The Mentor'), voiceOf: str('Speech style/dialect'), personality: str('Traits, demeanor'), want: str('What they consciously want'), need: str('What they actually need'), fear: str('Deepest fear'), secret: str('Hidden truth'), backstory: str('Backstory'), motivation: str('Motivation'), conflict: str('Core conflict'), relationships: str('Key relationships') },
+  t('createCharacter', 'Create a character — fill out as MANY fields as the story supports (always give age + imagePrompt). ONE profile per name: if the character already exists this MERGES into it, it never duplicates — so do not create the same name twice.',
+    { name: str('Name'), description: str('Short description'), pronouns: str('e.g. she/her'), age: str('Age (always provide)'), occupation: str('Job/role'), archetype: str('e.g. The Mentor'), voiceOf: str('Speech style/dialect'), personality: str('Traits, demeanor'), want: str('What they consciously want'), need: str('What they actually need'), fear: str('Deepest fear'), secret: str('Hidden truth'), backstory: str('Backstory'), motivation: str('Motivation'), conflict: str('Core conflict'), relationships: str('Key relationships'), imagePrompt: str('Physical-appearance prompt for AI image gen: face, hair, build, apparent age, wardrobe, distinctive features + side-view/profile note (face, body, side view)') },
     ['name']),
-  t('updateCharacter', 'Update an existing character (match by name or id). Any field.',
-    { character: str('Name or id'), description: str('Description'), pronouns: str('Pronouns'), age: str('Age'), occupation: str('Occupation'), archetype: str('Archetype'), voiceOf: str('Voice'), personality: str('Personality'), want: str('Want'), need: str('Need'), fear: str('Fear'), secret: str('Secret'), backstory: str('Backstory'), motivation: str('Motivation'), conflict: str('Conflict'), relationships: str('Relationships') },
+  t('updateCharacter', 'Update an existing character (match by name or id). Any field, including imagePrompt.',
+    { character: str('Name or id'), description: str('Description'), pronouns: str('Pronouns'), age: str('Age'), occupation: str('Occupation'), archetype: str('Archetype'), voiceOf: str('Voice'), personality: str('Personality'), want: str('Want'), need: str('Need'), fear: str('Fear'), secret: str('Secret'), backstory: str('Backstory'), motivation: str('Motivation'), conflict: str('Conflict'), relationships: str('Relationships'), imagePrompt: str('Appearance prompt: face, body, side view') },
     ['character']),
 
   // ---- Director ----

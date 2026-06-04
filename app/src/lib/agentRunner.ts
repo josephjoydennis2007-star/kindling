@@ -49,7 +49,7 @@ const WORKFLOW_RULES = `
 You build a story in this EXACT order, one step fully finished before the next:
   1. instructions — title, logline, synopsis, theme, outline points, instructions field
   2. acts — EVERY act AND EVERY beat for the whole story
-  3. characters — EVERY character, filled out (name, pronouns, age, occupation, archetype, voice, personality, want, need, fear, backstory…)
+  3. characters — EVERY character as ONE profile each (createCharacter merges by name, so NEVER create the same character twice), filled out: name, pronouns, AGE, occupation, archetype, voice, personality, want, need, fear, backstory AND an imagePrompt (appearance for image gen — face, body, side view). getBuildStatus.charactersNeedingDetail lists who still lacks age/imagePrompt/inner-life — finish them before marking this step done.
   4. screenplay — the ENTIRE screenplay in the writer (all scenes' prose), not just a sample
   5. scenes — EVERY scene in the Director view, EACH with the number of shots the story actually needs (vary it — an action set-piece needs more shots than a quiet dialogue scene; do NOT give every scene the same count), plus b-roll, lens, duration where useful
 

@@ -493,6 +493,39 @@ export const useAppStore = create<AppState & AppActions>()(
 
       // Characters
       addCharacter: (char) => {
+        // ---- Dedupe by name: one profile per character. ----
+        // If a character with the same (case-insensitive, trimmed) name
+        // already exists, MERGE the provided non-empty fields into it
+        // instead of creating a duplicate. This stops the AI (and manual
+        // re-adds / @mention auto-adds) from spawning twin profiles.
+        const wantedName = String(char.name || '').trim().toUpperCase();
+        if (wantedName) {
+          const existing = get().characters.find(
+            (c) => c.name.trim().toUpperCase() === wantedName,
+          );
+          if (existing) {
+            const merged: Partial<Character> = {};
+            // Only overwrite when the incoming value is a non-empty string,
+            // so a bare re-add never wipes existing detail.
+            (Object.keys(char) as (keyof Character)[]).forEach((k) => {
+              const v: any = (char as any)[k];
+              if (k === 'id' || k === 'createdAt' || k === 'name') return;
+              if (typeof v === 'string') {
+                if (v.trim()) (merged as any)[k] = v;
+              } else if (v !== undefined && v !== null) {
+                (merged as any)[k] = v;
+              }
+            });
+            if (Object.keys(merged).length) {
+              set((state) => ({
+                characters: state.characters.map((c) =>
+                  c.id === existing.id ? { ...c, ...merged } : c,
+                ),
+              }));
+            }
+            return existing.id;
+          }
+        }
         const id = genId();
         const character: Character = {
           id,
@@ -513,6 +546,7 @@ export const useAppStore = create<AppState & AppActions>()(
           voiceAudio: char.voiceAudio || null,
           tags: char.tags || [],
           createdAt: Date.now(),
+          imagePrompt: char.imagePrompt || '',
         };
         set((state) => ({
           characters: [...state.characters, character],
