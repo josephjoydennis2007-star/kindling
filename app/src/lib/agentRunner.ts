@@ -40,10 +40,35 @@ function getToolsManual(): string {
  * Heavy `state` snapshot is also trimmed before being JSON.stringify'd
  * (see snapshotState() — we cap arrays at 12 items).
  */
+// Shared ordered-workflow rules injected into BOTH the JSON-prompt and
+// native-tool-calling system prompts so the agent behaves identically
+// regardless of provider.
+const WORKFLOW_RULES = `
+## How you work — a STRICT, ORDERED, COMPLETE build
+
+You build a story in this EXACT order, one step fully finished before the next:
+  1. instructions — title, logline, synopsis, theme, outline points, instructions field
+  2. acts — EVERY act AND EVERY beat for the whole story
+  3. characters — EVERY character, filled out (name, pronouns, age, occupation, archetype, voice, personality, want, need, fear, backstory…)
+  4. screenplay — the ENTIRE screenplay in the writer (all scenes' prose), not just a sample
+  5. scenes — EVERY scene in the Director view, EACH with the number of shots the story actually needs (vary it — an action set-piece needs more shots than a quiet dialogue scene; do NOT give every scene the same count), plus b-roll, lens, duration where useful
+
+CRITICAL behaviours:
+- FIRST ACTION EVERY RUN: call \`getBuildStatus\` to see which step is next + exactly what already exists. Resume from there.
+- Do the ENTIRE current step before moving on. A feature is long — keep going across many turns. Never stop a step half-done to jump ahead.
+- When (and only when) a step is genuinely 100% complete, call \`markStepDone({step})\` — it announces "✓ … step done". Then start the next step.
+- NEVER REPEAT. Before adding, check what exists (getBuildStatus / list* / getScreenplaySummary). Don't recreate a character/scene/act that's already there. If you spot repeated screenplay (same lines appearing twice), either rewrite the duplicate to the correct content or call \`dedupeScreenplay\` to remove exact repeats.
+- "continue" from the user = resume the current incomplete step from where it stopped. Do NOT restart the step or repeat finished work.
+- If the user asks for a step that getBuildStatus shows is ALREADY complete, do NOT silently redo it — reply asking "That step is already done — do you want to change it?" and wait. Only redo if they insist or name a specific target.
+- If the user asks for a SPECIFIC task (e.g. "add a shot to scene 3"), do that, then return to the ordered workflow.
+`.trim();
+
 const SYSTEM_PROMPT = (state: any, history: string) => `
-You are KINDLING CO-WORKER — the agentic AI inside a screenwriting + film-production app. You don't chat; you call TOOLS to make REAL changes. You have FULL ACCESS to every part of the app — the user has delegated authority.
+You are KINDLING CO-WORKER — the agentic AI inside a screenwriting + film-production app. You don't chat; you call TOOLS to make REAL changes. You have FULL ACCESS to every part of the app (writer, director, plot, characters, world, locations) — the user has delegated authority.
 
 ${getToolsManual()}
+
+${WORKFLOW_RULES}
 
 ## Response format (ONE JSON object, nothing else)
 
@@ -55,14 +80,11 @@ ${getToolsManual()}
   "done": false
 }
 
-## Rules (re-read every turn)
-
-- 3–6 actions per turn MAX. Loop gives you 30 turns — use them.
-- Response under 1500 tokens — anything more gets truncated and your turn is wasted.
-- One scene of dialogue per writeScreenplay call max.
+## Per-turn limits
+- 3–6 actions per turn MAX. The loop gives you many turns — use them.
+- Response under 1500 tokens — more gets truncated and the turn is wasted.
+- One scene of dialogue per writeScreenplay call.
 - Always navigate before sub-tasks so the user SEES the work.
-- For BIG requests don't emit done early. Suggested arc: title/logline → characters → plot board → scenes → screenplay text → shots → wrap.
-- Call list*/getScreenplaySummary BEFORE editing existing items.
 
 ## Prior conversation
 ${history || '(fresh start)'}
@@ -403,9 +425,11 @@ function renderHistory(turns: MemoryTurn[]): string {
 // ─── Native tool-calling agent loop ──────────────────────────────────────
 
 const NATIVE_SYSTEM = (state: any) => `
-You are KINDLING CO-WORKER — an agentic AI operating a screenwriting + film-production app. Make REAL changes by calling the provided tools. You have full access.
+You are KINDLING CO-WORKER — an agentic AI operating a screenwriting + film-production app. Make REAL changes by calling the provided tools. You have full access to writer, director, plot, characters, world, locations.
 
-Use as many tool calls as needed across many turns. Call \`navigate\` before sub-tasks so the user sees your work. For "write a scene", call \`writeScreenplay\` with a LOT of prose — one scene per call. For big requests (whole movie), keep going: title/logline/synopsis → characters → plot acts+beats → scenes → screenplay text → shots. Call \`done\` ONLY when the entire goal is complete.
+${WORKFLOW_RULES}
+
+Call \`navigate\` before sub-tasks so the user sees your work. For "write a scene", call \`writeScreenplay\` with a LOT of prose — one scene per call.
 
 Current app state: ${JSON.stringify(state)}
 `.trim();

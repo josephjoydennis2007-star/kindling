@@ -51,11 +51,17 @@ export const AGENT_TOOLS: OpenAITool[] = [
     { tab: { type: 'string', enum: ['dashboard', 'writer', 'outline', 'world', 'director', 'plot', 'storyboard', 'calendar', 'locations', 'workspace'], description: 'Tab to open' } },
     ['tab']),
 
+  // ---- Build workflow (stay organized) ----
+  t('getBuildStatus', 'ALWAYS call this FIRST. Returns the ordered build step you should work on next + exactly what already exists (acts, characters, scenes, shots-per-scene) so you resume correctly and never repeat.', {}, []),
+  t('markStepDone', 'Call when an ENTIRE step is finished. Announces "✓ … step done".', { step: { type: 'string', enum: ['instructions', 'acts', 'characters', 'screenplay', 'scenes'] } }, ['step']),
+  t('dedupeScreenplay', 'Remove repeated/duplicated screenplay lines (fixes a model that repeated itself).', {}, []),
+
   // ---- Story metadata ----
   t('setTitle', 'Set the story title.', { text: str('The title') }, ['text']),
   t('setLogline', 'Set the one-sentence logline.', { text: str('Logline') }, ['text']),
   t('setSynopsis', 'Set the 1–2 paragraph synopsis.', { text: str('Synopsis') }, ['text']),
   t('setTheme', 'Set the story\'s thematic statement.', { text: str('Theme') }, ['text']),
+  t('setInstructions', 'Set the instructions/notes field (story bible bar).', { text: str('Instructions') }, ['text']),
   t('addOutlinePoint', 'Append one outline/treatment point.', { text: str('One story beat') }, ['text']),
 
   // ---- Writer (screenplay) ----
@@ -66,20 +72,22 @@ export const AGENT_TOOLS: OpenAITool[] = [
   t('addDialogue', 'Insert a dialogue line (call addCharacterCue first).', { text: str('Dialogue') }, ['text']),
   t('addCharacterCue', 'Insert an UPPERCASE character cue before dialogue.', { name: str('Character name') }, ['name']),
 
-  // ---- Characters ----
-  t('createCharacter', 'Create a character with an arc.',
-    { name: str('Name'), description: str('Short description'), archetype: str('e.g. The Mentor'), want: str('What they consciously want'), fear: str('Deepest fear') },
+  // ---- Characters (FULL fields) ----
+  t('createCharacter', 'Create a character — fill out as many fields as the story supports.',
+    { name: str('Name'), description: str('Short description'), pronouns: str('e.g. she/her'), age: str('Age'), occupation: str('Job/role'), archetype: str('e.g. The Mentor'), voiceOf: str('Speech style/dialect'), personality: str('Traits, demeanor'), want: str('What they consciously want'), need: str('What they actually need'), fear: str('Deepest fear'), secret: str('Hidden truth'), backstory: str('Backstory'), motivation: str('Motivation'), conflict: str('Core conflict'), relationships: str('Key relationships') },
     ['name']),
-  t('updateCharacter', 'Update an existing character (match by name or id).',
-    { character: str('Name or id'), description: str('New description'), want: str('Want'), fear: str('Fear'), backstory: str('Backstory'), motivation: str('Motivation') },
+  t('updateCharacter', 'Update an existing character (match by name or id). Any field.',
+    { character: str('Name or id'), description: str('Description'), pronouns: str('Pronouns'), age: str('Age'), occupation: str('Occupation'), archetype: str('Archetype'), voiceOf: str('Voice'), personality: str('Personality'), want: str('Want'), need: str('Need'), fear: str('Fear'), secret: str('Secret'), backstory: str('Backstory'), motivation: str('Motivation'), conflict: str('Conflict'), relationships: str('Relationships') },
     ['character']),
 
   // ---- Director ----
   t('createScene', 'Create a Director scene (sets it active).', { name: str('Scene name'), description: str('One-line description') }, ['name']),
   t('updateSceneDescription', 'Update a scene\'s description (match by name/id).', { scene: str('Name or id'), description: str('New description') }, ['scene', 'description']),
-  t('addShot', 'Add a shot to a scene.',
-    { scene: str('Scene name or id'), description: str('What the shot shows'), shotType: { type: 'string', enum: ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'], description: 'Shot type' }, camera: str('Camera/movement note') },
+  t('addShot', 'Add a shot to a scene. Give each scene the NUMBER OF SHOTS the story needs — vary it, don\'t use a fixed count.',
+    { scene: str('Scene name or id'), description: str('What the shot shows'), shotType: { type: 'string', enum: ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'], description: 'Shot type' }, camera: str('Camera/movement note'), lens: str('Lens, e.g. 35mm, 85mm anamorphic'), durationSec: { type: 'number', description: 'Shot length in seconds' }, audioNote: str('SFX/music/ambience cue') },
     ['scene']),
+  t('addBRoll', 'Add b-roll (supplementary footage) to a shot.',
+    { shot: str('Shot id or scene name'), description: str('What the b-roll shows') }, ['shot']),
 
   // ---- Plot ----
   t('createAct', 'Create a plot act.', { title: str('Act title, e.g. ACT ONE') }, []),

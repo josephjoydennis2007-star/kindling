@@ -33,11 +33,11 @@ type LogEntry =
   | { kind: 'memory'; ts: number; role: MemoryTurn['role']; content: string };
 
 const SUGGESTIONS = [
-  'Write a complete 3-page opening scene for a heist thriller in Lisbon',
-  'Build a 3-act outline + 6 main characters for a coming-of-age short film about a 13-year-old chess prodigy',
-  'Add 8 storyboard shots across the warehouse confrontation scene with shot types and lens notes',
-  'Create a worldbuilding wiki for a near-future dystopia with 4 factions, 3 locations, 5 lore entries',
-  'Plan a documentary: 5 act beats, 6 locations with permits/cost, 4 interview scenes, and a 1-page logline+synopsis',
+  'Build the complete movie: setup → acts & beats → characters → full screenplay → all scenes & shots',
+  'continue',
+  'Write the entire screenplay for every scene in the story',
+  'Create all the characters with full profiles (voice, want, need, fear, backstory)',
+  'Add every scene with the right number of shots, plus b-roll, lens, and duration',
 ];
 
 export default function AgentPanel({ open, onClose }: Props) {
@@ -120,10 +120,12 @@ export default function AgentPanel({ open, onClose }: Props) {
 
   const handleClearMemory = () => {
     if (running) return;
-    if (!confirm('Clear all agent memory for this story? Past plans + tool history will be deleted.')) return;
+    if (!confirm('Clear all agent memory + build progress for this story? The agent will start the workflow fresh.')) return;
     clearMemory(activeStoryId);
+    // Also reset the ordered-build progress so the agent restarts at step 1.
+    import('@/lib/agentBuildState').then((m) => m.clearBuildState(activeStoryId));
     setLog([]);
-    toast.success('Agent memory cleared');
+    toast.success('Agent memory + build progress cleared');
   };
 
   // Width: ~440px when expanded, ~56px when minimized so the user can

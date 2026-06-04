@@ -176,18 +176,36 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     return { ok: true, message: `Wrote ${newEls.length} screenplay line${newEls.length === 1 ? '' : 's'}` };
   },
 
-  // ---- Characters ----
-  async createCharacter({ name, description, archetype, want, fear }: { name: string; description?: string; archetype?: string; want?: string; fear?: string }) {
-    if (!name) return { ok: false, message: 'name required' };
+  // ---- Characters (FULL field access) ----
+  async createCharacter(p: {
+    name: string; description?: string; archetype?: string; want?: string; need?: string;
+    fear?: string; secret?: string; pronouns?: string; age?: string; occupation?: string;
+    voiceOf?: string; personality?: string; backstory?: string; goals?: string;
+    motivation?: string; conflict?: string; relationships?: string; notes?: string;
+  }) {
+    if (!p.name) return { ok: false, message: 'name required' };
     const newId = useAppStore.getState().addCharacter({
-      name: String(name).toUpperCase(),
-      displayName: String(name),
-      description: description || '',
-      archetype: archetype || '',
-      want: want || '',
-      fear: fear || '',
+      name: String(p.name).toUpperCase(),
+      displayName: String(p.name),
+      description: p.description || '',
+      archetype: p.archetype || '',
+      want: p.want || '',
+      need: p.need || '',
+      fear: p.fear || '',
+      secret: p.secret || '',
+      pronouns: p.pronouns || '',
+      age: p.age || '',
+      occupation: p.occupation || '',
+      voiceOf: p.voiceOf || '',
+      personality: p.personality || '',
+      backstory: p.backstory || '',
+      goals: p.goals || '',
+      motivation: p.motivation || '',
+      conflict: p.conflict || '',
+      relationships: p.relationships || '',
+      notes: p.notes || '',
     } as any);
-    return { ok: true, message: `Created character ${name}`, id: newId };
+    return { ok: true, message: `Created character ${p.name}`, id: newId };
   },
 
   // ---- Director: scenes + shots ----
@@ -206,16 +224,40 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     useAppStore.getState().updateScene(s.id, { description: String(description || '') });
     return { ok: true, message: `Updated description for ${s.name}` };
   },
-  async addShot({ scene, description, shotType, camera }: { scene: string; description?: string; shotType?: string; camera?: string }) {
+  async addShot({ scene, description, shotType, camera, lens, durationSec, audioNote }: { scene: string; description?: string; shotType?: string; camera?: string; lens?: string; durationSec?: number; audioNote?: string }) {
     const s = findScene(scene);
     if (!s) return { ok: false, message: `Scene "${scene}" not found. Create it first with createScene.` };
     const shotId = useAppStore.getState().addShot(s.id);
-    useAppStore.getState().updateShot(shotId, {
+    const updates: any = {
       description: description || '',
       shotType: (shotType as any) || '',
       camera: camera || '',
-    });
+    };
+    if (typeof lens === 'string') updates.lens = lens;
+    if (typeof durationSec === 'number') updates.durationSec = durationSec;
+    if (typeof audioNote === 'string') updates.audioNote = audioNote;
+    useAppStore.getState().updateShot(shotId, updates);
     return { ok: true, message: `Added shot to ${s.name}`, id: shotId };
+  },
+
+  // ---- B-roll (supplementary footage per shot) ----
+  async addBRoll({ shot, description }: { shot: string; description?: string }) {
+    const state = useAppStore.getState();
+    const allShots = Object.values(state.shots);
+    let target = allShots.find((sh: any) => sh.id === shot);
+    if (!target) {
+      // Match by scene name → first shot of that scene.
+      const sc = state.scenes.find((x) => x.name.toLowerCase().includes(shot.toLowerCase()));
+      if (sc) target = allShots.find((sh: any) => sh.sceneId === sc.id);
+    }
+    if (!target) return { ok: false, message: `Shot "${shot}" not found. Add a shot first.` };
+    const brollId = state.addBRoll((target as any).id);
+    if (description) state.updateBRoll(brollId, { description });
+    return { ok: true, message: `Added b-roll to shot`, id: brollId };
+  },
+  async updateBRoll({ brollId, description }: { brollId: string; description: string }) {
+    useAppStore.getState().updateBRoll(brollId, { description: String(description || '') });
+    return { ok: true, message: `Updated b-roll` };
   },
 
   // ---- Plot: acts + beats ----
@@ -306,22 +348,23 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     useAppStore.getState().deleteShot(shotId);
     return { ok: true, message: `Deleted shot` };
   },
-  async updateCharacter({ character, name, description, archetype, want, fear, occupation, age, backstory, personality, motivation, conflict }: { character: string; name?: string; description?: string; archetype?: string; want?: string; fear?: string; occupation?: string; age?: string; backstory?: string; personality?: string; motivation?: string; conflict?: string }) {
+  async updateCharacter(p: {
+    character: string; name?: string; description?: string; archetype?: string; want?: string;
+    need?: string; fear?: string; secret?: string; pronouns?: string; occupation?: string; age?: string;
+    voiceOf?: string; backstory?: string; goals?: string; personality?: string; motivation?: string;
+    conflict?: string; relationships?: string; notes?: string;
+  }) {
     const chars = useAppStore.getState().characters;
-    const c = chars.find((x) => x.id === character || x.name.toLowerCase() === character.toLowerCase());
-    if (!c) return { ok: false, message: `Character "${character}" not found` };
+    const c = chars.find((x) => x.id === p.character || x.name.toLowerCase() === p.character.toLowerCase());
+    if (!c) return { ok: false, message: `Character "${p.character}" not found` };
     const updates: any = {};
-    if (typeof name === 'string') { updates.name = name.toUpperCase(); updates.displayName = name; }
-    if (typeof description === 'string') updates.description = description;
-    if (typeof archetype === 'string') updates.archetype = archetype;
-    if (typeof want === 'string') updates.want = want;
-    if (typeof fear === 'string') updates.fear = fear;
-    if (typeof occupation === 'string') updates.occupation = occupation;
-    if (typeof age === 'string') updates.age = age;
-    if (typeof backstory === 'string') updates.backstory = backstory;
-    if (typeof personality === 'string') updates.personality = personality;
-    if (typeof motivation === 'string') updates.motivation = motivation;
-    if (typeof conflict === 'string') updates.conflict = conflict;
+    if (typeof p.name === 'string') { updates.name = p.name.toUpperCase(); updates.displayName = p.name; }
+    // Every other field: copy through when provided. Full character access.
+    for (const k of ['description', 'archetype', 'want', 'need', 'fear', 'secret', 'pronouns',
+      'occupation', 'age', 'voiceOf', 'backstory', 'goals', 'personality', 'motivation',
+      'conflict', 'relationships', 'notes'] as const) {
+      if (typeof (p as any)[k] === 'string') updates[k] = (p as any)[k];
+    }
     useAppStore.getState().updateCharacter(c.id, updates);
     return { ok: true, message: `Updated character ${c.name}` };
   },
@@ -435,11 +478,107 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
       ok: true,
       data: {
         title: s.title, logline: s.logline, synopsis: s.synopsis, theme: s.theme,
+        instructions: s.instructions,
         outlinePoints: s.outlinePoints || [],
         lineCount: (s.elements || []).length,
         firstLines: (s.elements || []).slice(0, 20).map((el: any) => `${el.type}: ${el.content}`),
       },
     };
+  },
+
+  // ---- Instructions field (the story-bible instructions/synopsis bar) ----
+  async setInstructions({ text }: { text: string }) {
+    useAppStore.getState().updateScreenplayField('instructions', String(text || ''));
+    return { ok: true, message: 'Instructions set' };
+  },
+
+  // ---- Build-workflow state machine ----
+  // The agent calls these to stay organized: getBuildStatus to see which
+  // ordered step it's on + what already exists (so it never repeats or
+  // skips), and markStepDone when an ENTIRE step is finished.
+  async getBuildStatus() {
+    const { loadBuildState, nextIncompleteStep, BUILD_STEPS, STEP_LABEL } = await import('@/lib/agentBuildState');
+    const s = useAppStore.getState();
+    const sp = s.screenplay as any;
+    const storyId = s.activeStoryId;
+    const build = loadBuildState(storyId);
+    const next = nextIncompleteStep(storyId);
+    return {
+      ok: true,
+      data: {
+        order: BUILD_STEPS,
+        stepLabels: STEP_LABEL,
+        completedSteps: build.completed,
+        nextStep: next,
+        // A precise count of what exists so the agent can resume exactly
+        // where it left off + detect what's missing.
+        exists: {
+          hasTitle: !!sp.title, hasLogline: !!sp.logline, hasSynopsis: !!sp.synopsis,
+          hasTheme: !!sp.theme, hasInstructions: !!sp.instructions,
+          outlinePoints: Array.isArray(sp.outlinePoints) ? sp.outlinePoints.length : 0,
+          actCount: s.plotBoard.acts.length,
+          beatCount: Object.keys(s.beats).length,
+          characterCount: s.characters.length,
+          characterNames: s.characters.map((c) => c.name),
+          screenplayLineCount: (sp.elements || []).length,
+          sceneCount: s.scenes.length,
+          sceneNames: s.scenes.map((sc) => sc.name),
+          shotsPerScene: s.scenes.map((sc) => ({ scene: sc.name, shots: sc.shotIds.length })),
+        },
+      },
+    };
+  },
+  async markStepDone({ step }: { step: string }) {
+    const { markStepComplete, STEP_LABEL, BUILD_STEPS, nextIncompleteStep } = await import('@/lib/agentBuildState');
+    if (!(BUILD_STEPS as readonly string[]).includes(step)) {
+      return { ok: false, message: `Unknown step "${step}". Valid: ${BUILD_STEPS.join(', ')}.` };
+    }
+    const storyId = useAppStore.getState().activeStoryId;
+    markStepComplete(storyId, step as any);
+    const next = nextIncompleteStep(storyId);
+    return {
+      ok: true,
+      message: `✓ ${STEP_LABEL[step as keyof typeof STEP_LABEL]} step done.`,
+      done: false,
+      data: { nextStep: next, nextLabel: next ? STEP_LABEL[next] : 'Everything is built' },
+    };
+  },
+
+  // ---- Anti-repetition: collapse consecutive duplicate screenplay lines ----
+  // If a model (or a bad re-run) repeated content — "the man smiles / the
+  // woman smiles / the man smiles" with the SAME text — this removes the
+  // duplicate runs, keeping the first occurrence. Deterministic, doesn't
+  // rely on the LLM to spot its own repetition.
+  async dedupeScreenplay() {
+    const state = useAppStore.getState();
+    const els: any[] = state.screenplay.elements || [];
+    if (els.length < 2) return { ok: true, message: 'Nothing to dedupe' };
+    const norm = (e: any) => `${e.type}|${(e.content || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().toLowerCase()}`;
+    const out: any[] = [];
+    const seenBlock = new Set<string>();
+    let removed = 0;
+    // Pass 1: drop consecutive exact duplicates.
+    let prevKey = '';
+    for (const e of els) {
+      const k = norm(e);
+      if (k === prevKey && k.split('|')[1]) { removed++; continue; }
+      out.push(e);
+      prevKey = k;
+    }
+    // Pass 2: drop a line that exactly repeats a NON-adjacent earlier line
+    // of meaningful length (catches "comes back and uses the same stuff").
+    const out2: any[] = [];
+    for (const e of out) {
+      const k = norm(e);
+      const content = k.split('|')[1] || '';
+      if (content.length > 25 && seenBlock.has(k)) { removed++; continue; }
+      if (content.length > 25) seenBlock.add(k);
+      out2.push(e);
+    }
+    if (removed === 0) return { ok: true, message: 'No repeated lines found' };
+    state.updateScreenplayField('elements', out2);
+    dispatchWriterRebuild();
+    return { ok: true, message: `Removed ${removed} repeated screenplay line${removed === 1 ? '' : 's'}` };
   },
 
   // ---- Trigger UI actions on the user's behalf ----
@@ -622,7 +761,13 @@ export function toolsManual(): string {
     '- `setLogline(text)` — one sentence',
     '- `setSynopsis(text)` — 1–2 paragraphs',
     '- `setTheme(text)`',
+    '- `setInstructions(text)` — the instructions/notes field in the story bible',
     '- `addOutlinePoint(text)` — one beat per call',
+    '',
+    '### Build workflow — call these to stay organized',
+    '- `getBuildStatus()` — ALWAYS call FIRST. Returns the ordered step to work on next + a precise inventory of what exists (acts, beats, characters, scenes, shots-per-scene). Resume from here; never repeat.',
+    '- `markStepDone(step)` — call when an ENTIRE step is finished. step ∈ instructions, acts, characters, screenplay, scenes. Announces "✓ … step done".',
+    '- `dedupeScreenplay()` — removes repeated/duplicated screenplay lines if a model repeated itself.',
     '',
     '### Writer (screenplay editor)',
     '- `addSceneHeading(text)` — e.g. "INT. WAREHOUSE - NIGHT"',
@@ -633,13 +778,15 @@ export function toolsManual(): string {
     '- `addTransition(text)` — e.g. "CUT TO:" or "FADE OUT."',
     '- `writeScreenplay(text)` — paste a whole Fountain-ish block at once. The parser figures out which lines are headings/dialogue/etc. Use this for "write me a scene".',
     '',
-    '### Characters',
-    '- `createCharacter(name, description, archetype, want, fear)`',
+    '### Characters (full fields — fill them out)',
+    '- `createCharacter(name, description, pronouns, age, occupation, archetype, voiceOf, personality, want, need, fear, secret, backstory, motivation, conflict, relationships)`',
     '',
     '### Director',
     '- `createScene(name, description)` — also sets it active',
     '- `updateSceneDescription(scene, description)` — scene is name or id',
-    '- `addShot(scene, description, shotType, camera)` — shotType: WIDE / MEDIUM / CLOSE-UP / EXTREME CLOSE-UP / OVER-THE-SHOULDER / POV / ESTABLISHING / INSERT / AERIAL',
+    '- `addShot(scene, description, shotType, camera, lens, durationSec, audioNote)` — shotType: WIDE / MEDIUM / CLOSE-UP / EXTREME CLOSE-UP / OVER-THE-SHOULDER / POV / ESTABLISHING / INSERT / AERIAL. Give each scene the number of shots IT needs — vary it per scene, never a fixed count.',
+    '- `addBRoll(shot, description)` — add b-roll footage to a shot (shot = id or scene name)',
+    '- `updateBRoll(brollId, description)`',
     '',
     '### Plot',
     '- `createAct(title)`',
@@ -683,7 +830,7 @@ export function toolsManual(): string {
     '- `listActsAndBeats()`',
     '- `listLocations()`',
     '- `listWorldItems()`',
-    '- `getScreenplaySummary()` — current title/logline/synopsis/outline + first 20 screenplay lines',
+    '- `getScreenplaySummary()` — current title/logline/synopsis/instructions/outline + first 20 screenplay lines',
     '',
     '### UI triggers',
     '- `triggerSave()`',
