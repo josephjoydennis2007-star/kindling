@@ -180,6 +180,19 @@ function interruptibleSleep(ms: number): Promise<void> {
 const MAX_ITERATIONS = 30;
 const STEP_DELAY_MS = 140;
 
+/** Provider-aware message when the agent gives up after repeated rate
+ *  limits. Gemini's FREE tier in particular can't sustain the co-worker:
+ *  it's fine for a single chat message, but the story builder fires many
+ *  calls in quick succession and Google's free per-minute/daily caps block
+ *  them — even on a brand-new, never-used key. Point the user at providers
+ *  that CAN keep up. */
+function rateLimitBailText(provider: string): string {
+  if (provider === 'gemini') {
+    return "Gemini's FREE tier can't keep up with the co-worker. A single chat message is fine, but the story builder fires MANY calls back-to-back, and Google's free per-minute/daily limit blocks them — even on a brand-new key you've never used. This is a Gemini free-tier limit, not your key and not the app. Fix: in Settings → AI, switch the co-worker to Groq (free, far higher limits — pick meta-llama/llama-4-scout-17b-16e-instruct) or DeepSeek (cheap). You can keep using Gemini for the chat.";
+  }
+  return "Hit the provider's rate limit repeatedly — likely its daily/free quota. Wait a while, or switch providers in Settings → AI (Groq has generous free limits; DeepSeek is cheap).";
+}
+
 /**
  * Decide whether to ENFORCE the strict ordered-build step gate for this
  * goal. We enforce for whole-story builds + "continue" (the cases the user
@@ -258,6 +271,10 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
   // past the cap the user has hit a genuine daily/quota wall and we stop
   // with an actionable message rather than waiting forever.
   let consecutiveRateLimits = 0;
+  // Whether the agent has had ANY successful AI turn this run. If it gets
+  // rate-limited from the very first call (Gemini free tier can't sustain
+  // the rapid agent calls), we bail fast instead of waiting ~4 minutes.
+  let hadSuccess = false;
 
   try {
     for (let iter = 0; iter < max; iter++) {
@@ -300,19 +317,20 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
         // waiting forever.
         if (ai.retryAfter && ai.retryAfter > 0 && ai.retryAfter <= 120) {
           consecutiveRateLimits++;
-          if (consecutiveRateLimits > 8) {
-            emitTurn({
-              ts: Date.now(),
-              kind: 'error',
-              text: 'Hit the AI provider\'s rate limit repeatedly — you\'ve likely reached its daily free quota. Wait a while, or switch providers in Settings → AI (Groq + Gemini have separate quotas, so swapping gets you going again).',
-            });
-            appendTurns(storyId, [{ role: 'assistant', content: 'Stopped: repeated rate limits (likely daily quota).', ts: Date.now() }]);
+          // Gemini's free tier gets rate-limited from the FIRST call when
+          // driving the agent. If we've made zero progress, don't waste ~4
+          // minutes waiting — bail after 2 with a clear, provider-specific
+          // explanation + the fix (use Groq/DeepSeek for the builder).
+          const cap = (settings.aiProvider === 'gemini' && !hadSuccess) ? 2 : 8;
+          if (consecutiveRateLimits > cap) {
+            emitTurn({ ts: Date.now(), kind: 'error', text: rateLimitBailText(settings.aiProvider) });
+            appendTurns(storyId, [{ role: 'assistant', content: 'Stopped: repeated rate limits.', ts: Date.now() }]);
             return;
           }
           emitTurn({
             ts: Date.now(),
             kind: 'plan',
-            text: `Rate limit hit — waiting ${ai.retryAfter}s and continuing (${consecutiveRateLimits}/8)…`,
+            text: `Rate limit hit — waiting ${ai.retryAfter}s and continuing (${consecutiveRateLimits}/${cap})…`,
           });
           await interruptibleSleep((ai.retryAfter! + 2) * 1000);
           if (checkCancelled()) { emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped.' }); break; }
@@ -323,8 +341,9 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
         appendTurns(storyId, [{ role: 'assistant', content: `Error: ${ai.error}`, ts: Date.now() }]);
         return;
       }
-      // Successful AI call — reset the rate-limit streak.
+      // Successful AI call — reset the rate-limit streak + note progress.
       consecutiveRateLimits = 0;
+      hadSuccess = true;
 
       // Detect upstream HTML error pages (Cloudflare 524, 502, etc.) —
       // Pollinations occasionally returns these instead of JSON.
@@ -512,12 +531,13 @@ async function runAgentNative(goal: string, max: number, storyId: string | null,
     if (!res.ok) {
       if (res.retryAfter && res.retryAfter <= 120) {
         consecutiveRateLimits++;
-        if (consecutiveRateLimits > 8) {
-          emitTurn({ ts: Date.now(), kind: 'error', text: 'Repeated rate limits — likely a daily quota wall. Switch providers in Settings → AI.' });
+        const cap = (settings.aiProvider === 'gemini' && stepsDone === 0) ? 2 : 8;
+        if (consecutiveRateLimits > cap) {
+          emitTurn({ ts: Date.now(), kind: 'error', text: rateLimitBailText(settings.aiProvider) });
           return;
         }
         const waitS = res.retryAfter;
-        emitTurn({ ts: Date.now(), kind: 'plan', text: `Rate limit — waiting ${waitS}s and continuing (${consecutiveRateLimits}/8)…` });
+        emitTurn({ ts: Date.now(), kind: 'plan', text: `Rate limit — waiting ${waitS}s and continuing (${consecutiveRateLimits}/${cap})…` });
         await interruptibleSleep((waitS + 2) * 1000);
         if (checkCancelled()) { emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped.' }); break; }
         iter--;

@@ -33,7 +33,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
 
 const PROVIDER_HELP: Record<string, { name: string; url: string; note: string }> = {
   builtin: { name: 'Built-in', url: 'https://pollinations.ai', note: 'FREE — no key needed, but their upstream can 524 occasionally. Falls back to Gemini if you set a Gemini key.' },
-  gemini: { name: 'Gemini', url: 'https://aistudio.google.com/apikey', note: '⭐ RECOMMENDED — free Google AI Studio key (no card), GPT-4o-mini-class quality, fast, 1500 req/day. The smartest free option.' },
+  gemini: { name: 'Gemini', url: 'https://aistudio.google.com/apikey', note: '⭐ Great for the CHAT (single questions). ⚠ NOT for the co-worker movie builder — its free per-minute/daily limit can\'t keep up with the agent\'s rapid calls, so it rate-limits even a brand-new key. For the builder, use Groq (free) or DeepSeek (cheap).' },
   openai: { name: 'OpenAI', url: 'https://platform.openai.com/api-keys', note: 'Paid (small free credits for new accounts)' },
   anthropic: { name: 'Anthropic', url: 'https://console.anthropic.com/', note: 'Paid' },
   openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', note: '✨ FREE models (":free" suffix). Co-worker uses NATIVE tool-calling here — most reliable agent. Try meta-llama/llama-3.3-70b-instruct:free.' },
