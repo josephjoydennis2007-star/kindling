@@ -224,6 +224,7 @@ export async function aiOnce(
     if (provider === 'anthropic') {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
+        signal: opts.signal,
         headers: {
           'content-type': 'application/json',
           'x-api-key': apiKey,
