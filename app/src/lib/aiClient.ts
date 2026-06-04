@@ -340,6 +340,9 @@ export async function aiOnce(
             `${provider} out of credits (402). Top up at openrouter.ai/settings/credits or switch to a free provider in Settings → AI (Gemini is the most reliable free option).`,
         };
       }
+      if (r.status === 401) {
+        return { ok: false, error: `${provider} rejected the key (401). Each provider needs ITS OWN key — open Settings → AI, make sure ${provider} is selected, and paste the key you created for ${provider} specifically.` };
+      }
       return { ok: false, error: `${provider} ${r.status}: ${body.slice(0, 300)}` };
     }
     const j = await r.json();
@@ -495,6 +498,12 @@ export async function aiToolCall(
     provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :
     /* custom */                (settings.aiEndpoint || '');
   if (!url) return { ok: false, error: 'No tool-calling endpoint for this provider.' };
+
+  // Gate on a missing key up-front — otherwise the provider returns an
+  // opaque 401 "Missing Authentication header" which looks like a bug.
+  if (!apiKey) {
+    return { ok: false, error: `${provider} needs its own API key. Open Settings → AI, pick ${provider}, and paste the key for THAT provider (each provider has a different key).` };
+  }
 
   const extraHeaders: Record<string, string> =
     provider === 'openrouter'

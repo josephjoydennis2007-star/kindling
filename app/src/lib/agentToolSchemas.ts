@@ -108,15 +108,28 @@ export const AGENT_TOOLS: OpenAITool[] = [
   t('done', 'Call LAST when the user\'s entire goal is complete.', { summary: str('One-line summary of what you did') }, []),
 ];
 
-/** Models / providers known to support OpenAI-style tool calling. */
+/**
+ * Which provider+model combos reliably support OpenAI-style tool calling.
+ *
+ * HARD-LEARNED: Groq's Llama models DON'T. They emit tool calls in their
+ * own `<function=name{...}>` text format, which Groq's API then rejects
+ * with a 400 `tool_use_failed`. So Groq (and OpenRouter when routed to a
+ * Llama/Mistral/free model) must use the JSON-prompt loop instead, which
+ * is genuinely more reliable for those models.
+ *
+ * Native tool-calling is therefore enabled ONLY for the model families
+ * that handle the tools API correctly: OpenAI GPT, Anthropic Claude, and
+ * Google Gemini-via-OpenRouter. Everything else → JSON-prompt fallback,
+ * which is the path that was reliably making changes before.
+ */
 export function providerSupportsTools(provider: string, model: string): boolean {
-  if (provider === 'openai' || provider === 'openrouter') return true;
-  if (provider === 'groq') {
-    // Groq supports tools on the llama-3.3 + llama-3.1 + mixtral lines.
-    return /llama-3|mixtral|qwen|gemma2/i.test(model);
+  const m = (model || '').toLowerCase();
+  if (provider === 'openai') return true; // GPT handles tools natively
+  if (provider === 'openrouter') {
+    // Only the big-lab models on OpenRouter do tools properly. Llama,
+    // Mistral, Qwen, Gemma, DeepSeek, ":free" community models → no.
+    return /(^|\/)(openai|gpt|anthropic|claude|google\/gemini)/i.test(m) && !m.includes(':free');
   }
-  // builtin (Pollinations) + gemini use the JSON-prompt fallback —
-  // Pollinations' tool support is unreliable; Gemini uses a different
-  // function-calling shape we handle separately.
+  // groq / builtin / gemini / ollama / custom → JSON-prompt loop.
   return false;
 }
