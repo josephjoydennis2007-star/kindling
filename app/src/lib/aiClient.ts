@@ -10,6 +10,26 @@
 
 import type { AppSettings } from '@/types';
 
+/**
+ * Clean an API key pasted by a human. The #1 cause of "401 Missing
+ * Authentication header" is junk that rides along on a copy/paste:
+ *   - surrounding quotes  ("sk-or-..."   '...')
+ *   - a copied "Authorization:" / "Bearer " prefix
+ *   - stray spaces, tabs, or a NEWLINE in the middle (key split across
+ *     two lines), or invisible unicode spaces / zero-width chars.
+ * Any of these make the Authorization header malformed, so the provider
+ * sees no usable token. API keys are a single whitespace-free token, so we
+ * strip ALL of the above. Used both when saving a key and when sending.
+ */
+export function sanitizeKey(raw: string): string {
+  let k = String(raw || '').trim();
+  k = k.replace(/^["'`]+|["'`]+$/g, '');           // surrounding quotes/backticks
+  k = k.replace(/^authorization\s*:\s*/i, '');      // pasted "Authorization:"
+  k = k.replace(/^bearer\s+/i, '');                 // pasted "Bearer "
+  k = k.replace(/\s+/g, '');
+  return k;
+}
+
 const DEFAULT_MODELS: Record<string, string> = {
   // 'builtin' is the no-key free default — Pollinations.ai. Their text endpoint
   // accepts a `model` param naming an upstream backend ('openai', 'mistral',
@@ -167,7 +187,7 @@ export async function aiOnce(
   opts: { maxTokens?: number; temperature?: number; signal?: AbortSignal } = {}
 ): Promise<AIResult> {
   const provider = settings.aiProvider;
-  const apiKey = (settings.aiApiKey || '').trim();
+  const apiKey = sanitizeKey(settings.aiApiKey);
   const model = (settings.aiModel || '').trim() || DEFAULT_MODELS[provider] || 'gpt-4o-mini';
   const maxTokens = opts.maxTokens ?? 1800;
   const temperature = opts.temperature ?? 0.4;
@@ -351,7 +371,7 @@ export async function aiOnce(
         };
       }
       if (r.status === 401) {
-        return { ok: false, error: `${provider} rejected the key (401). Each provider needs ITS OWN key — open Settings → AI, make sure ${provider} is selected, and paste the key you created for ${provider} specifically.` };
+        return { ok: false, error: `${provider} rejected the key (401 — missing/invalid auth). Re-paste the FULL key in Settings → AI (no spaces, no quotes, no "Bearer "), click away to save, and make sure ${provider} is the selected provider — each provider needs ITS OWN key.` };
       }
       return { ok: false, error: `${provider} ${r.status}: ${body.slice(0, 300)}` };
     }
@@ -501,7 +521,7 @@ export async function aiToolCall(
   opts: { maxTokens?: number; temperature?: number; signal?: AbortSignal } = {},
 ): Promise<AIToolResult> {
   const provider = settings.aiProvider;
-  const apiKey = (settings.aiApiKey || '').trim();
+  const apiKey = sanitizeKey(settings.aiApiKey);
   const model = (settings.aiModel || '').trim() || DEFAULT_MODELS[provider] || 'gpt-4o-mini';
   const maxTokens = opts.maxTokens ?? 2400;
   const temperature = opts.temperature ?? 0.4;
@@ -549,6 +569,9 @@ export async function aiToolCall(
       }
       if (r.status === 402) {
         return { ok: false, error: `${provider} out of credits (402). Top up or switch provider in Settings → AI.` };
+      }
+      if (r.status === 401) {
+        return { ok: false, error: `${provider} rejected the key (401 — missing/invalid auth). Re-paste the FULL key in Settings → AI (no spaces, no quotes, no "Bearer "), then click away to save. Make sure ${provider} is the selected provider.` };
       }
       return { ok: false, error: `${provider} ${r.status}: ${body.slice(0, 300)}` };
     }

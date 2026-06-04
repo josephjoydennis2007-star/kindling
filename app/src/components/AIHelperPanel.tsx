@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles, Send, Trash2, Settings2, Bot, Loader2, Wand2, Check, Eye, EyeOff, ArrowDownToLine, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
+import { sanitizeKey } from '@/lib/aiClient';
 
 // Sensible model defaults per provider. The user's earlier "model `chatgpt`
 // does not exist" 404 came from typing 'chatgpt' as the model name — these
@@ -125,8 +126,12 @@ export default function AIHelperPanel({ onClose }: Props) {
   // away from the field — no more "I pasted my key but it says no key".
   const persistDrafts = (silent = false) => {
     const cleanedModel = (modelDraft || DEFAULT_MODELS[settings.aiProvider] || '').trim();
+    const cleanKey = sanitizeKey(keyDraft);
+    // Reflect the cleaned key back into the field so the user sees exactly
+    // what's stored (any stray spaces / "Bearer " prefix removed).
+    if (cleanKey !== keyDraft) setKeyDraft(cleanKey);
     updateSettings({
-      aiApiKey: keyDraft.trim(),
+      aiApiKey: cleanKey,
       aiModel: cleanedModel,
       aiEndpoint: endpointDraft.trim(),
     });
