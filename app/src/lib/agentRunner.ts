@@ -57,7 +57,7 @@ CRITICAL behaviours:
 - FIRST ACTION EVERY RUN: call \`getBuildStatus\` to see which step is next + exactly what already exists. Resume from there.
 - Do the ENTIRE current step before moving on. A feature is long — keep going across many turns. Never stop a step half-done to jump ahead.
 - When (and only when) a step is genuinely 100% complete, call \`markStepDone({step})\` — it announces "✓ … step done". Then start the next step.
-- NEVER REPEAT. Before adding, check what exists (getBuildStatus / list* / getScreenplaySummary). Don't recreate a character/scene/act that's already there. If you spot repeated screenplay (same lines appearing twice), either rewrite the duplicate to the correct content or call \`dedupeScreenplay\` to remove exact repeats.
+- NEVER REPEAT. Before adding, check what exists (getBuildStatus / list* / getScreenplaySummary). Don't recreate a character/scene/act that's already there. If you spot the SAME character name twice, call \`mergeDuplicateCharacters\` to collapse them into one profile. If you spot repeated screenplay (same lines appearing twice), either rewrite the duplicate to the correct content or call \`dedupeScreenplay\` to remove exact repeats.
 - "continue" from the user = resume the current incomplete step from where it stopped. Do NOT restart the step or repeat finished work.
 - If the user asks for a step that getBuildStatus shows is ALREADY complete, do NOT silently redo it — reply asking "That step is already done — do you want to change it?" and wait. Only redo if they insist or name a specific target.
 - If the user asks for a SPECIFIC task (e.g. "add a shot to scene 3"), do that, then return to the ordered workflow.

@@ -79,6 +79,7 @@ export const AGENT_TOOLS: OpenAITool[] = [
   t('updateCharacter', 'Update an existing character (match by name or id). Any field, including imagePrompt.',
     { character: str('Name or id'), description: str('Description'), pronouns: str('Pronouns'), age: str('Age'), occupation: str('Occupation'), archetype: str('Archetype'), voiceOf: str('Voice'), personality: str('Personality'), want: str('Want'), need: str('Need'), fear: str('Fear'), secret: str('Secret'), backstory: str('Backstory'), motivation: str('Motivation'), conflict: str('Conflict'), relationships: str('Relationships'), imagePrompt: str('Appearance prompt: face, body, side view') },
     ['character']),
+  t('mergeDuplicateCharacters', 'Collapse same-name character cards into ONE profile each (merges fields, keeps earliest). Use to clean up duplicate characters.', {}, []),
 
   // ---- Director ----
   t('createScene', 'Create a Director scene (sets it active).', { name: str('Scene name'), description: str('One-line description') }, ['name']),

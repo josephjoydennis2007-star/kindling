@@ -916,6 +916,10 @@ function CharactersPanel({ characters, onUpdate, onDelete, onClose, focusCharact
   const [creating, setCreating] = useState(false);
 
   const addCharacter = useAppStore(state => state.addCharacter);
+  const mergeDuplicateCharacters = useAppStore(state => state.mergeDuplicateCharacters);
+
+  // How many duplicate cards exist (same name appearing more than once)?
+  const dupCount = characters.length - new Set(characters.map(c => (c.name || '').trim().toUpperCase())).size;
 
   useEffect(() => {
     if (focusCharacterId) {
@@ -979,6 +983,27 @@ function CharactersPanel({ characters, onUpdate, onDelete, onClose, focusCharact
           <div className="text-center py-8 text-[var(--text-muted)] text-xs">
             <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p>No characters yet</p>
+          </div>
+        )}
+
+        {dupCount > 0 && (
+          <div
+            className="mb-3 p-3 rounded-lg border"
+            style={{ borderColor: 'var(--accent)', background: 'var(--hover)' }}
+          >
+            <p className="text-[11px] text-[var(--text-secondary)] mb-2">
+              {dupCount} duplicate {dupCount === 1 ? 'profile' : 'profiles'} (same name appearing more than once). Merge them into one profile each — no detail is lost.
+            </p>
+            <button
+              onClick={() => {
+                const n = mergeDuplicateCharacters();
+                if (n > 0) toast.success(`Merged ${n} duplicate ${n === 1 ? 'profile' : 'profiles'} into single characters`);
+                else toast('No duplicates to merge');
+              }}
+              className="w-full py-2 bg-[var(--accent)] text-[var(--bg)] rounded-lg text-xs font-semibold hover:brightness-110 transition-all flex items-center justify-center gap-1.5"
+            >
+              <Users className="w-3.5 h-3.5" /> Merge {dupCount} duplicate{dupCount === 1 ? '' : 's'}
+            </button>
           </div>
         )}
 

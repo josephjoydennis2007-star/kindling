@@ -386,6 +386,15 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     useAppStore.getState().deleteCharacter(c.id);
     return { ok: true, message: `Deleted character ${c.name}` };
   },
+  // Collapse same-name character cards into ONE profile each (merges their
+  // fields, keeps the earliest). Use this to clean up duplicates created
+  // before the one-profile-per-name rule.
+  async mergeDuplicateCharacters() {
+    const removed = useAppStore.getState().mergeDuplicateCharacters();
+    return removed > 0
+      ? { ok: true, message: `Merged ${removed} duplicate character profile(s) into single characters.` }
+      : { ok: true, message: 'No duplicate characters found.' };
+  },
   async updateAct({ act, title }: { act: string; title: string }) {
     const a = findAct(act);
     if (!a) return { ok: false, message: `Act "${act}" not found` };
@@ -797,6 +806,7 @@ export function toolsManual(): string {
     '### Characters (full fields — fill them out)',
     '- `createCharacter(name, description, pronouns, age, occupation, archetype, voiceOf, personality, want, need, fear, secret, backstory, motivation, conflict, relationships, imagePrompt)` — ONE profile per name: creating the same name again MERGES, never duplicates. ALWAYS give `age` and an `imagePrompt` (face, hair, build, apparent age, wardrobe, distinctive features + a side-view/profile note so face, body & side view can be rendered).',
     '- `updateCharacter(character, …same fields incl. imagePrompt…)` — match by name or id.',
+    '- `mergeDuplicateCharacters()` — if you see the same name twice, call this to collapse them into one profile (merges fields, keeps earliest).',
     '',
     '### Director',
     '- `createScene(name, description)` — also sets it active',

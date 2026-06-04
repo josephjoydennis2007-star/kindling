@@ -193,6 +193,7 @@ interface AppActions {
   addCharacter: (char: Partial<Character>) => string;
   updateCharacter: (id: string, updates: Partial<Character>) => void;
   deleteCharacter: (id: string) => void;
+  mergeDuplicateCharacters: () => number;
   
   // Shots
   addShot: (sceneId: string) => string;
@@ -563,6 +564,53 @@ export const useAppStore = create<AppState & AppActions>()(
         set((state) => ({
           characters: state.characters.filter((c) => c.id !== id),
         })),
+      // Collapse same-name characters into ONE profile. Keeps the earliest
+      // profile, fills any of its blank fields from the duplicates (so no
+      // detail is lost), unions tags, and drops the extras. Returns how many
+      // duplicate cards were removed. Used by the "Merge duplicates" button
+      // and the AI's mergeDuplicateCharacters tool to clean up data that
+      // pre-dates the dedupe-on-add fix.
+      mergeDuplicateCharacters: () => {
+        const before = get().characters;
+        const groups = new Map<string, Character[]>();
+        for (const c of before) {
+          const key = (c.name || '').trim().toUpperCase();
+          const arr = groups.get(key);
+          if (arr) arr.push(c); else groups.set(key, [c]);
+        }
+        let removed = 0;
+        const STR_FIELDS: (keyof Character)[] = [
+          'displayName', 'description', 'backstory', 'goals', 'personality',
+          'age', 'occupation', 'motivation', 'conflict', 'relationships',
+          'notes', 'archetype', 'voiceOf', 'want', 'need', 'fear', 'secret',
+          'pronouns', 'imagePrompt',
+        ];
+        const merged: Character[] = [];
+        for (const [, arr] of groups) {
+          if (arr.length === 1) { merged.push(arr[0]); continue; }
+          // Earliest created becomes the surviving profile.
+          const sorted = [...arr].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+          const target = { ...sorted[0] } as Character;
+          for (const dup of sorted.slice(1)) {
+            for (const f of STR_FIELDS) {
+              const cur = (target as any)[f];
+              const incoming = (dup as any)[f];
+              if ((cur === undefined || cur === null || String(cur).trim() === '') &&
+                  typeof incoming === 'string' && incoming.trim() !== '') {
+                (target as any)[f] = incoming;
+              }
+            }
+            if (!target.image && dup.image) target.image = dup.image;
+            if (!target.voiceAudio && dup.voiceAudio) target.voiceAudio = dup.voiceAudio;
+            const tagSet = new Set([...(target.tags || []), ...(dup.tags || [])]);
+            target.tags = Array.from(tagSet);
+            removed++;
+          }
+          merged.push(target);
+        }
+        if (removed > 0) set({ characters: merged });
+        return removed;
+      },
 
       // Shots
       addShot: (sceneId) => {
