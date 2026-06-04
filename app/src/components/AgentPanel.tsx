@@ -122,10 +122,12 @@ export default function AgentPanel({ open, onClose }: Props) {
     if (running) return;
     if (!confirm('Clear all agent memory + build progress for this story? The agent will start the workflow fresh.')) return;
     clearMemory(activeStoryId);
-    // Also reset the ordered-build progress so the agent restarts at step 1.
+    // Also reset the ordered-build progress + the backend story plan so the
+    // agent restarts the whole workflow (re-designs the plan) from scratch.
     import('@/lib/agentBuildState').then((m) => m.clearBuildState(activeStoryId));
+    import('@/lib/agentBlueprint').then((m) => m.clearStoryPlan(activeStoryId));
     setLog([]);
-    toast.success('Agent memory + build progress cleared');
+    toast.success('Agent memory + plan + build progress cleared');
   };
 
   // Width: ~440px when expanded, ~56px when minimized so the user can

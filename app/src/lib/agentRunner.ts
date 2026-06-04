@@ -2,7 +2,15 @@ import { aiOnce, aiToolCall } from '@/lib/aiClient';
 import { runTool, snapshotState, toolsManual, setAgentRunning, setStepGate, type AgentEvent } from '@/lib/agentTools';
 import { appendTurns, loadMemory, type MemoryTurn } from '@/lib/agentMemory';
 import { AGENT_TOOLS, providerSupportsTools } from '@/lib/agentToolSchemas';
+import { loadStoryPlan, renderStoryPlan } from '@/lib/agentBlueprint';
 import { useAppStore } from '@/store/useAppStore';
+
+/** The locked story plan rendered for the prompt (the agent's source of
+ *  truth). Empty string until the agent has called setStoryPlan. */
+function currentPlanBlock(): string {
+  const storyId = useAppStore.getState().activeStoryId;
+  return renderStoryPlan(loadStoryPlan(storyId));
+}
 
 /**
  * agentRunner — the loop. Given a user goal, call the AI to produce a
@@ -46,14 +54,17 @@ function getToolsManual(): string {
 const WORKFLOW_RULES = `
 ## How you work — a STRICT, ORDERED, COMPLETE build
 
-You build a story in this EXACT order, one step fully finished before the next:
-  1. instructions — title, logline, synopsis, theme, outline points, instructions field
+STEP 0 — THE PLAN (do this before anything else): call \`getStoryPlan\`. If there is no plan, DESIGN THE WHOLE STORY in your head and call \`setStoryPlan\` once (premise, theme, protagonist, antagonist, the full character roster, the ordered story beats, and the ordered scene list). This locked plan is your single source of truth and is shown to you every turn. From then on you BUILD EXACTLY THIS PLAN — you never invent new beats/characters/scenes that aren't in it, and you never re-guess the story. This is what stops the repeat-and-drag: you already know the whole story, so you just execute it.
+
+Then you build in this EXACT order, one step fully finished before the next:
+  1. instructions — title, logline, synopsis, theme, outline points (= the plan's beats, each ONCE), instructions field
   2. acts — EVERY act AND EVERY beat for the whole story
   3. characters — EVERY character as ONE profile each (createCharacter merges by name, so NEVER create the same character twice), filled out: name, pronouns, AGE, occupation, archetype, voice, personality, want, need, fear, backstory AND an imagePrompt (appearance for image gen — face, body, side view). getBuildStatus.charactersNeedingDetail lists who still lacks age/imagePrompt/inner-life — finish them before marking this step done.
   4. screenplay — the ENTIRE screenplay in the writer (all scenes' prose), not just a sample
   5. scenes — EVERY scene in the Director view, EACH with the number of shots the story actually needs (vary it — an action set-piece needs more shots than a quiet dialogue scene; do NOT give every scene the same count), plus b-roll, lens, duration where useful
 
 CRITICAL behaviours:
+- YOU ALREADY KNOW THE STORY. The "STORY PLAN" block + the "Current app state" block (which lists your FULL outline, acts+beats, characters, scenes) are in this prompt every turn. READ them. You do not need to guess or go re-check what you wrote — it's right there. Use it to do the next NEW thing, never a repeat.
 - FIRST ACTION EVERY RUN: call \`getBuildStatus\` to see which step is next + exactly what already exists. Resume from there.
 - Do the ENTIRE current step before moving on. A feature is long — keep going across many turns. Never stop a step half-done to jump ahead.
 - When (and only when) a step is genuinely 100% complete, call \`markStepDone({step})\` — it announces "✓ … step done". Then start the next step.
@@ -70,6 +81,8 @@ You are KINDLING CO-WORKER — the agentic AI inside a screenwriting + film-prod
 ${getToolsManual()}
 
 ${WORKFLOW_RULES}
+
+${currentPlanBlock()}
 
 ## Response format (ONE JSON object, nothing else)
 
@@ -456,8 +469,11 @@ You are KINDLING CO-WORKER — an agentic AI operating a screenwriting + film-pr
 
 ${WORKFLOW_RULES}
 
+${currentPlanBlock()}
+
 Call \`navigate\` before sub-tasks so the user sees your work. For "write a scene", call \`writeScreenplay\` with a LOT of prose — one scene per call.
 
+The "Current app state" below lists your FULL outline, acts+beats, characters and scenes — READ it so you never repeat or re-guess; just do the next NEW thing.
 Current app state: ${JSON.stringify(state)}
 `.trim();
 

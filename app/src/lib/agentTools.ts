@@ -1,6 +1,50 @@
 import { useAppStore } from '@/store/useAppStore';
 import type { ScreenplayElement } from '@/types';
 import { BUILD_STEPS, STEP_LABEL, nextIncompleteStep } from '@/lib/agentBuildState';
+import { loadStoryPlan, upsertStoryPlan, type StoryPlan } from '@/lib/agentBlueprint';
+
+// ─── Repetition guard: detect near-duplicate text ────────────────────────
+// The agent used to spam dozens of near-identical outline points / beats
+// because it couldn't see what it had already written. These helpers give
+// the DATA LAYER a hard stop: a new line that's basically a restatement of
+// an existing one is refused, with a message pointing at the match.
+function normalizeText(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/['']/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function wordSet(s: string): Set<string> {
+  // Drop very common words so the comparison keys on the meaningful nouns.
+  const stop = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'his', 'her', 'their', 'is', 'are', 'who', 'has', 'have', 'been', 'for', 'with', 'as', 'by', 'from', 'into', 'must', 'he', 'she', 'they', 'it']);
+  return new Set(normalizeText(s).split(' ').filter((w) => w.length > 2 && !stop.has(w)));
+}
+/** Jaccard similarity of the meaningful-word sets, 0..1. */
+function textSimilarity(a: string, b: string): number {
+  const sa = wordSet(a), sb = wordSet(b);
+  if (!sa.size || !sb.size) return 0;
+  let inter = 0;
+  for (const w of sa) if (sb.has(w)) inter++;
+  const union = sa.size + sb.size - inter;
+  return union ? inter / union : 0;
+}
+/** Index of the first existing entry that `text` essentially repeats, or -1.
+ *  Catches exact (normalized) matches, full substring containment, and
+ *  high Jaccard overlap. */
+function findDuplicateIndex(text: string, existing: string[], threshold = 0.7): number {
+  const n = normalizeText(text);
+  if (!n) return -1;
+  for (let i = 0; i < existing.length; i++) {
+    const e = normalizeText(existing[i]);
+    if (!e) continue;
+    if (e === n) return i;
+    if (n.length > 14 && (e.includes(n) || n.includes(e))) return i;
+    if (textSimilarity(text, existing[i]) >= threshold) return i;
+  }
+  return -1;
+}
 
 /**
  * agentTools — the action vocabulary the AI co-worker can use to actually
@@ -150,10 +194,18 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     return { ok: true, message: `Theme set` };
   },
   async addOutlinePoint({ text }: { text: string }) {
+    const t = String(text || '').trim();
+    if (!t) return { ok: false, message: 'text required' };
     const screenplay = useAppStore.getState().screenplay as any;
     const current: string[] = Array.isArray(screenplay.outlinePoints) ? screenplay.outlinePoints : [];
-    useAppStore.getState().updateScreenplayField('outlinePoints' as any, [...current, String(text || '')]);
-    return { ok: true, message: `Added outline point` };
+    // Hard repeat-guard: refuse a point that just restates an existing one.
+    const dup = findDuplicateIndex(t, current);
+    if (dup >= 0) {
+      return { ok: false, message: `Skipped — outline point #${dup + 1} already says this ("${current[dup].slice(0, 60)}"). There are already ${current.length} points; don't repeat — move on to the next NEW beat or mark the step done.` };
+    }
+    useAppStore.getState().updateScreenplayField('outlinePoints' as any, [...current, t]);
+    const n = current.length + 1;
+    return { ok: true, message: `Added outline point #${n}`, data: { totalOutlinePoints: n } };
   },
 
   // ---- Writer content — each appends a screenplay element ----
@@ -274,6 +326,14 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
   // ---- Director: scenes + shots ----
   async createScene({ name, description }: { name: string; description?: string }) {
     if (!name) return { ok: false, message: 'name required' };
+    // One scene per name: if it already exists, select it + (optionally)
+    // update its description instead of creating a duplicate.
+    const existing = findScene(name);
+    if (existing) {
+      if (description) useAppStore.getState().updateScene(existing.id, { description });
+      useAppStore.getState().setActiveDirectorScene(existing.id);
+      return { ok: true, message: `Scene "${existing.name}" already exists — selected it (no duplicate). Move to the next scene.`, id: existing.id, existed: true };
+    }
     const newId = useAppStore.getState().addScene(name, '');
     if (description) {
       useAppStore.getState().updateScene(newId, { description });
@@ -332,6 +392,16 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
   async addBeat({ act, title, description }: { act: string; title?: string; description?: string }) {
     const a = findAct(act);
     if (!a) return { ok: false, message: `Act "${act}" not found. Create it first with createAct.` };
+    // Repeat-guard across ALL existing beats (compare title + description).
+    const combined = `${title || ''} ${description || ''}`.trim();
+    if (combined) {
+      const allBeats = Object.values(useAppStore.getState().beats || {}) as any[];
+      const existingStrings = allBeats.map((b) => `${b.title || ''} ${b.description || ''}`.trim()).filter(Boolean);
+      const dup = findDuplicateIndex(combined, existingStrings);
+      if (dup >= 0) {
+        return { ok: false, message: `Skipped — a beat already covers this ("${existingStrings[dup].slice(0, 60)}"). Don't repeat — add the NEXT distinct beat or mark the acts step done.` };
+      }
+    }
     const beatId = useAppStore.getState().addBeat(a.id);
     useAppStore.getState().updateBeat(beatId, {
       title: title || '',
@@ -564,6 +634,64 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     return { ok: true, message: 'Instructions set' };
   },
 
+  // ---- Story plan (the agent's backend "story bible") ----
+  // setStoryPlan locks the whole story ONCE up front so the agent executes
+  // a fixed plan instead of re-inventing the story every turn (which caused
+  // dozens of duplicate outline points). getStoryPlan reads it back.
+  async setStoryPlan(p: {
+    premise?: string; theme?: string; genre?: string; protagonist?: string; antagonist?: string;
+    characters?: Array<{ name: string; role?: string }> | string[];
+    beats?: string[]; scenes?: string[];
+  }) {
+    const storyId = useAppStore.getState().activeStoryId;
+    // Accept characters as objects OR plain name strings.
+    const chars = Array.isArray(p.characters)
+      ? p.characters.map((c: any) => (typeof c === 'string' ? { name: c, role: '' } : { name: String(c?.name || ''), role: String(c?.role || '') })).filter((c) => c.name)
+      : undefined;
+    const partial: Partial<StoryPlan> = {};
+    if (typeof p.premise === 'string') partial.premise = p.premise;
+    if (typeof p.theme === 'string') partial.theme = p.theme;
+    if (typeof p.genre === 'string') partial.genre = p.genre;
+    if (typeof p.protagonist === 'string') partial.protagonist = p.protagonist;
+    if (typeof p.antagonist === 'string') partial.antagonist = p.antagonist;
+    if (chars) partial.characters = chars;
+    if (Array.isArray(p.beats)) partial.beats = p.beats.map((b) => String(b || '')).filter(Boolean);
+    if (Array.isArray(p.scenes)) partial.scenes = p.scenes.map((s) => String(s || '')).filter(Boolean);
+    const plan = upsertStoryPlan(storyId, partial);
+    return {
+      ok: true,
+      message: `Story plan saved — ${plan.beats.length} beats, ${plan.characters.length} characters, ${plan.scenes.length} scenes. Now BUILD this plan step by step.`,
+      data: { beats: plan.beats.length, characters: plan.characters.length, scenes: plan.scenes.length },
+    };
+  },
+  async getStoryPlan() {
+    const storyId = useAppStore.getState().activeStoryId;
+    const plan = loadStoryPlan(storyId);
+    if (!plan || (!plan.premise && !plan.beats.length && !plan.characters.length)) {
+      return { ok: true, message: 'No story plan yet. Design the COMPLETE story and call setStoryPlan FIRST.', data: { exists: false } };
+    }
+    return { ok: true, message: `Story plan: ${plan.beats.length} beats, ${plan.characters.length} characters, ${plan.scenes.length} scenes.`, data: { exists: true, plan } };
+  },
+  // Collapse near-duplicate outline points (cleans up a story that already
+  // accumulated repeats, like one built before the repeat-guard existed).
+  async dedupeOutline() {
+    const sp = useAppStore.getState().screenplay as any;
+    const current: string[] = Array.isArray(sp.outlinePoints) ? sp.outlinePoints : [];
+    if (current.length < 2) return { ok: true, message: 'Outline has nothing to dedupe.' };
+    const kept: string[] = [];
+    let removed = 0;
+    for (const pt of current) {
+      if (findDuplicateIndex(pt, kept) >= 0) { removed++; continue; }
+      kept.push(pt);
+    }
+    if (removed > 0) useAppStore.getState().updateScreenplayField('outlinePoints' as any, kept);
+    return {
+      ok: true,
+      message: removed > 0 ? `Removed ${removed} duplicate outline point(s); ${kept.length} remain.` : 'No duplicate outline points found.',
+      data: { removed, remaining: kept.length },
+    };
+  },
+
   // ---- Build-workflow state machine ----
   // The agent calls these to stay organized: getBuildStatus to see which
   // ordered step it's on + what already exists (so it never repeats or
@@ -575,6 +703,8 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
     const storyId = s.activeStoryId;
     const build = loadBuildState(storyId);
     const next = nextIncompleteStep(storyId);
+    const plan = loadStoryPlan(storyId);
+    const planExists = !!(plan && (plan.premise || plan.beats.length || plan.characters.length));
     return {
       ok: true,
       data: {
@@ -582,6 +712,10 @@ export const TOOLS: Record<string, (args: any) => Promise<any>> = {
         stepLabels: STEP_LABEL,
         completedSteps: build.completed,
         nextStep: next,
+        // Whether the backend story plan exists. If false, the FIRST job is
+        // to design it and call setStoryPlan before building anything.
+        hasPlan: planExists,
+        planSummary: planExists ? { beats: plan!.beats.length, characters: plan!.characters.length, scenes: plan!.scenes.length } : null,
         // A precise count of what exists so the agent can resume exactly
         // where it left off + detect what's missing.
         exists: {
@@ -804,28 +938,61 @@ export async function runTool(tool: string, args: any): Promise<AgentEvent> {
   }
 }
 
-/** Return a compact, JSON-friendly summary of current app state so the
- *  agent can decide whether it's done. */
+/** Return a JSON-friendly summary of the CURRENT story so the agent always
+ *  knows exactly what it has already created — and therefore never repeats
+ *  or re-guesses. This is the agent's live picture of the build. Unlike the
+ *  old version (which capped lists at 12 and omitted the outline entirely —
+ *  the cause of dozens of duplicate outline points), this lists EVERYTHING,
+ *  just trimmed per item to stay token-light. */
 export function snapshotState() {
-  // Compact state summary fed to the AI in every system prompt. Kept
-  // small to fit Groq's free-tier 12k tokens/minute budget — capped
-  // arrays at 12 items, truncated long strings. The agent can always
-  // call listScenes/listCharacters/etc. to read more.
   const s = useAppStore.getState();
   const sp = s.screenplay as any;
+  const storyId = s.activeStoryId;
+
+  // Full outline (numbered) so the agent can SEE every point it wrote.
+  const outline: string[] = Array.isArray(sp.outlinePoints) ? sp.outlinePoints : [];
+  // Acts with their beat titles, in order — the full plot structure.
+  const acts = [...s.plotBoard.acts]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((a) => ({
+      title: a.title,
+      beats: (a.beatIds || [])
+        .map((bid) => s.beats[bid])
+        .filter(Boolean)
+        .map((b: any) => (b.title || b.description || '').slice(0, 70)),
+    }));
+  // Every scene with its shot count.
+  const scenes = s.scenes.map((sc) => ({ name: sc.name, shots: (sc.shotIds || []).length }));
+
+  // The backend plan (source of truth) — summary so the agent can compare
+  // plan vs. what's actually built and fill the gap.
+  const plan = loadStoryPlan(storyId);
+  const planSummary = plan
+    ? { exists: true, beats: plan.beats.length, characters: plan.characters.length, scenes: plan.scenes.length, charactersPlanned: plan.characters.map((c) => c.name) }
+    : { exists: false };
+
+  const nextStep = nextIncompleteStep(storyId);
+
   return {
     tab: s.activeTab,
-    title: (sp.title || '').slice(0, 80),
-    logline: (sp.logline || '').slice(0, 140),
-    theme: (sp.theme || '').slice(0, 60),
-    scriptLines: (sp.elements || []).length,
-    scenes: s.scenes.slice(0, 12).map((sc) => sc.name),
-    sceneCount: s.scenes.length,
-    shots: Object.keys(s.shots).length,
-    characters: s.characters.slice(0, 12).map((c) => c.name),
+    nextStep,                       // the step the agent should be working on
+    plan: planSummary,              // does a backend plan exist + its sizes
+    title: (sp.title || '').slice(0, 90),
+    logline: (sp.logline || '').slice(0, 160),
+    synopsis: (sp.synopsis || '').slice(0, 240),
+    theme: (sp.theme || '').slice(0, 80),
+    instructions: (sp.instructions || '').slice(0, 160),
+    outlineCount: outline.length,
+    outline: outline.map((p, i) => `${i + 1}. ${String(p).slice(0, 90)}`), // FULL list
+    actCount: s.plotBoard.acts.length,
+    beatCount: Object.keys(s.beats).length,
+    acts,                            // FULL acts + their beats
     characterCount: s.characters.length,
-    acts: s.plotBoard.acts.map((a) => a.title),
-    beats: Object.keys(s.beats).length,
+    characters: s.characters.map((c) => c.name), // FULL list
+    sceneCount: s.scenes.length,
+    scenes,                          // FULL scene list + shot counts
+    shotCount: Object.keys(s.shots).length,
+    scriptLines: (sp.elements || []).length,
     worldItems: Array.isArray(sp.world) ? sp.world.length : 0,
     locations: Array.isArray(sp.locations) ? sp.locations.length : 0,
   };
@@ -850,10 +1017,16 @@ export function toolsManual(): string {
     '- `setInstructions(text)` — the instructions/notes field in the story bible',
     '- `addOutlinePoint(text)` — one beat per call',
     '',
+    '### Story plan — your BACKEND PLAN / source of truth (do this FIRST)',
+    '- `getStoryPlan()` — read the locked plan. If none exists, you MUST design the whole story and call setStoryPlan before building anything.',
+    '- `setStoryPlan({premise, theme, genre, protagonist, antagonist, characters:[{name,role}], beats:[…ordered story beats…], scenes:[…ordered scene names…]})` — lock the COMPLETE story ONCE. After this, you BUILD this exact plan step by step — do not invent new beats/characters/scenes that are not in it. The plan is shown to you every turn.',
+    '- `dedupeOutline()` — remove near-duplicate outline points (clean up repeats).',
+    '',
     '### Build workflow — call these to stay organized',
-    '- `getBuildStatus()` — ALWAYS call FIRST. Returns the ordered step to work on next + a precise inventory of what exists (acts, beats, characters, scenes, shots-per-scene). Resume from here; never repeat.',
+    '- `getBuildStatus()` — ALWAYS call FIRST. Returns hasPlan, the ordered step to work on next + a precise inventory of what exists (outline, acts, beats, characters, scenes, shots-per-scene). Resume from here; never repeat.',
     '- `markStepDone(step)` — call when an ENTIRE step is finished. step ∈ instructions, acts, characters, screenplay, scenes. Announces "✓ … step done".',
     '- `dedupeScreenplay()` — removes repeated/duplicated screenplay lines if a model repeated itself.',
+    '- NOTE: the live app state in every prompt lists your FULL outline, acts+beats, characters and scenes. READ it — you already know what you wrote, so never re-add or re-guess. addOutlinePoint/addBeat/createScene REFUSE near-duplicates.',
     '',
     '### Writer (screenplay editor)',
     '- `addSceneHeading(text)` — e.g. "INT. WAREHOUSE - NIGHT"',

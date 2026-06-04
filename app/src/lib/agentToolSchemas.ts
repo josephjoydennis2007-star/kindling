@@ -51,8 +51,21 @@ export const AGENT_TOOLS: OpenAITool[] = [
     { tab: { type: 'string', enum: ['dashboard', 'writer', 'outline', 'world', 'director', 'plot', 'storyboard', 'calendar', 'locations', 'workspace'], description: 'Tab to open' } },
     ['tab']),
 
+  // ---- Story plan (backend source of truth) ----
+  t('getStoryPlan', 'Read the locked story plan (your source of truth). If it does not exist, design the whole story and call setStoryPlan FIRST before building anything.', {}, []),
+  t('setStoryPlan', 'Lock the COMPLETE story plan ONCE so you build a fixed plan instead of re-inventing it (which causes duplicates). After this, build exactly this plan — no beats/characters/scenes that are not in it. Shown to you every turn.',
+    {
+      premise: str('One-paragraph spine of the whole story'),
+      theme: str('Theme'), genre: str('Genre'),
+      protagonist: str('Protagonist name'), antagonist: str('Antagonist name'),
+      characters: { type: 'array', description: 'Full roster', items: { type: 'object', properties: { name: { type: 'string' }, role: { type: 'string' } }, required: ['name'] } },
+      beats: { type: 'array', description: 'Ordered story beats (the outline spine)', items: { type: 'string' } },
+      scenes: { type: 'array', description: 'Ordered scene names', items: { type: 'string' } },
+    }, []),
+  t('dedupeOutline', 'Remove near-duplicate outline points (clean up repetition).', {}, []),
+
   // ---- Build workflow (stay organized) ----
-  t('getBuildStatus', 'ALWAYS call this FIRST. Returns the ordered build step you should work on next + exactly what already exists (acts, characters, scenes, shots-per-scene) so you resume correctly and never repeat.', {}, []),
+  t('getBuildStatus', 'ALWAYS call this FIRST. Returns hasPlan + the ordered build step you should work on next + exactly what already exists (outline, acts, characters, scenes, shots-per-scene) so you resume correctly and never repeat.', {}, []),
   t('markStepDone', 'Call when an ENTIRE step is finished. Announces "✓ … step done".', { step: { type: 'string', enum: ['instructions', 'acts', 'characters', 'screenplay', 'scenes'] } }, ['step']),
   t('dedupeScreenplay', 'Remove repeated/duplicated screenplay lines (fixes a model that repeated itself).', {}, []),
 
