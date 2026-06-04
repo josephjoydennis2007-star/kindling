@@ -34,8 +34,8 @@ const PROVIDER_HELP: Record<string, { name: string; url: string; note: string }>
   gemini: { name: 'Gemini', url: 'https://aistudio.google.com/apikey', note: '⭐ RECOMMENDED — free Google AI Studio key (no card), GPT-4o-mini-class quality, fast, 1500 req/day. The smartest free option.' },
   openai: { name: 'OpenAI', url: 'https://platform.openai.com/api-keys', note: 'Paid (small free credits for new accounts)' },
   anthropic: { name: 'Anthropic', url: 'https://console.anthropic.com/', note: 'Paid' },
-  openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', note: '✨ Has FREE models (look for ":free" suffix)' },
-  groq: { name: 'Groq', url: 'https://console.groq.com/keys', note: '✨ FREE — extremely fast Llama 3.3 inference' },
+  openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', note: '✨ FREE models (":free" suffix). Co-worker uses NATIVE tool-calling here — most reliable agent. Try meta-llama/llama-3.3-70b-instruct:free.' },
+  groq: { name: 'Groq', url: 'https://console.groq.com/keys', note: '✨ FREE + fast Llama 3.3. Co-worker uses NATIVE tool-calling here — reliable + quick.' },
   ollama: { name: 'Ollama', url: 'http://localhost:11434', note: '✨ FREE — runs locally, no key needed' },
   custom: { name: 'Custom endpoint', url: '', note: 'Any OpenAI-compatible endpoint' },
 };

@@ -1,6 +1,7 @@
-import { aiOnce } from '@/lib/aiClient';
+import { aiOnce, aiToolCall } from '@/lib/aiClient';
 import { runTool, snapshotState, toolsManual, setAgentRunning, type AgentEvent } from '@/lib/agentTools';
 import { appendTurns, loadMemory, type MemoryTurn } from '@/lib/agentMemory';
+import { AGENT_TOOLS, providerSupportsTools } from '@/lib/agentToolSchemas';
 import { useAppStore } from '@/store/useAppStore';
 
 /**
@@ -124,6 +125,22 @@ export async function runAgent(goal: string, opts: { maxIterations?: number } = 
   const max = opts.maxIterations ?? MAX_ITERATIONS;
   const storyId = useAppStore.getState().activeStoryId;
   const settings = useAppStore.getState().settings;
+
+  // NATIVE TOOL-CALLING PATH. When the provider supports the standard
+  // OpenAI tools API (OpenRouter / OpenAI / Groq llama-3.3 etc.), use
+  // structured tool_calls instead of the brittle "emit JSON in text"
+  // approach. The API validates the tool arguments server-side, so the
+  // truncation + parse-failure bug class disappears entirely. Falls
+  // through to the legacy JSON-prompt loop for builtin/gemini.
+  const sModel = (settings.aiModel || '').trim();
+  if (providerSupportsTools(settings.aiProvider, sModel)) {
+    try {
+      await runAgentNative(goal, max, storyId, settings);
+    } finally {
+      setAgentRunning(false);
+    }
+    return;
+  }
 
   // Pull persistent memory for THIS story. We render the whole transcript
   // into the system prompt so the agent can answer "what did you just do?"
@@ -348,6 +365,127 @@ function renderHistory(turns: MemoryTurn[]): string {
   return recent
     .map((t) => `[${t.role.toUpperCase()}] ${(t.content || '').slice(0, 400)}`)
     .join('\n');
+}
+
+// ─── Native tool-calling agent loop ──────────────────────────────────────
+
+const NATIVE_SYSTEM = (state: any) => `
+You are KINDLING CO-WORKER — an agentic AI operating a screenwriting + film-production app. Make REAL changes by calling the provided tools. You have full access.
+
+Use as many tool calls as needed across many turns. Call \`navigate\` before sub-tasks so the user sees your work. For "write a scene", call \`writeScreenplay\` with a LOT of prose — one scene per call. For big requests (whole movie), keep going: title/logline/synopsis → characters → plot acts+beats → scenes → screenplay text → shots. Call \`done\` ONLY when the entire goal is complete.
+
+Current app state: ${JSON.stringify(state)}
+`.trim();
+
+/**
+ * Native tool-calling loop. Maintains a proper OpenAI messages array
+ * (system + user + assistant-with-tool_calls + tool-results) and lets
+ * the model drive via structured tool_calls. No JSON-in-text parsing,
+ * so the truncation/parse-failure bug class is gone. Emits the same
+ * agent:step / agent:turn / agent:progress events as the legacy loop so
+ * the AgentPanel UI is identical.
+ */
+async function runAgentNative(goal: string, max: number, storyId: string | null, settings: any): Promise<void> {
+  appendTurns(storyId, [{ role: 'user', content: `New goal: ${goal}`, ts: Date.now() }]);
+
+  // Conversation array. We refresh the system message's state snapshot
+  // each turn (cheap) so the model always sees current app state.
+  const messages: any[] = [
+    { role: 'system', content: NATIVE_SYSTEM(snapshotState()) },
+    { role: 'user', content: goal },
+  ];
+
+  let consecutiveRateLimits = 0;
+  let stepsDone = 0;
+
+  for (let iter = 0; iter < max; iter++) {
+    if (checkCancelled()) { emitTurn({ ts: Date.now(), kind: 'reply', text: 'Stopped by user.' }); break; }
+
+    // Refresh the live state in the system message.
+    messages[0] = { role: 'system', content: NATIVE_SYSTEM(snapshotState()) };
+    emitTurn({ ts: Date.now(), kind: 'plan', text: stepsDone ? `Working… (${stepsDone} actions done)` : 'Thinking…' });
+
+    const res = await aiToolCall(settings, messages, AGENT_TOOLS, { maxTokens: 2400, temperature: 0.4 });
+    if (!res.ok) {
+      if (res.retryAfter && res.retryAfter <= 120) {
+        consecutiveRateLimits++;
+        if (consecutiveRateLimits > 8) {
+          emitTurn({ ts: Date.now(), kind: 'error', text: 'Repeated rate limits — likely a daily quota wall. Switch providers in Settings → AI.' });
+          return;
+        }
+        const waitS = res.retryAfter;
+        emitTurn({ ts: Date.now(), kind: 'plan', text: `Rate limit — waiting ${waitS}s and continuing (${consecutiveRateLimits}/8)…` });
+        await new Promise((r) => setTimeout(r, (waitS + 2) * 1000));
+        if (checkCancelled()) break;
+        iter--;
+        continue;
+      }
+      emitTurn({ ts: Date.now(), kind: 'error', text: res.error });
+      appendTurns(storyId, [{ role: 'assistant', content: `Error: ${res.error}`, ts: Date.now() }]);
+      return;
+    }
+    consecutiveRateLimits = 0;
+
+    // No tool calls → the model is talking, not acting. Surface its text
+    // and finish (it either completed or had nothing to do).
+    if (!res.toolCalls.length) {
+      const text = res.text?.trim() || 'Done.';
+      emitTurn({ ts: Date.now(), kind: 'reply', text });
+      appendTurns(storyId, [{ role: 'assistant', content: text, ts: Date.now() }]);
+      break;
+    }
+
+    // Append the assistant message carrying the tool_calls (reconstructed
+    // so ids line up with the tool results we add next).
+    messages.push({
+      role: 'assistant',
+      content: res.text || null,
+      tool_calls: res.toolCalls.map((tc) => ({
+        id: tc.id,
+        type: 'function',
+        function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+      })),
+    });
+
+    // Execute each tool call, append a tool-role result message.
+    let sawDone = false;
+    for (const tc of res.toolCalls) {
+      if (checkCancelled()) break;
+      const ev = await runTool(tc.name, tc.args || {});
+      stepsDone++;
+      // Read-back tools return data the model needs verbatim; others
+      // just need ok/message.
+      const result = ev.result?.data
+        ? { ok: ev.ok, message: ev.message, data: ev.result.data }
+        : { ok: ev.ok, message: ev.message };
+      messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result).slice(0, 1500) });
+      if (tc.name === 'done' || ev.result?.done) sawDone = true;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+
+    appendTurns(storyId, [{ role: 'assistant', content: `Ran ${res.toolCalls.map((t) => t.name).join(', ')}`, ts: Date.now() }]);
+
+    if (sawDone) {
+      emitTurn({ ts: Date.now(), kind: 'reply', text: 'Done.' });
+      appendTurns(storyId, [{ role: 'assistant', content: 'Done with this goal.', ts: Date.now() }]);
+      break;
+    }
+
+    // Trim the messages array if it grows huge so we stay under context +
+    // token-per-minute limits. CRITICAL: the OpenAI tools API requires
+    // every `tool` message to follow its `assistant` (tool_calls) parent.
+    // So when we cut, we must NOT start the kept window on an orphaned
+    // `tool` message — walk forward past any leading tool messages to a
+    // clean turn boundary first.
+    if (messages.length > 42) {
+      const sys = messages[0];
+      let cut = messages.length - 36;
+      while (cut < messages.length && messages[cut].role === 'tool') cut++;
+      const tail = messages.slice(cut);
+      messages.length = 0;
+      messages.push(sys, ...tail);
+    }
+  }
 }
 
 /**

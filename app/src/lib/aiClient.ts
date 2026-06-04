@@ -457,6 +457,93 @@ async function geminiGenerateOne(
   return { ok: true, text };
 }
 
+// ─── Native tool-calling ─────────────────────────────────────────────────
+
+export interface AIToolCall {
+  id: string;
+  name: string;
+  args: any; // parsed from the tool_call's JSON arguments string
+}
+
+export type AIToolResult =
+  | { ok: true; toolCalls: AIToolCall[]; text: string; finishReason: string }
+  | { ok: false; error: string; retryAfter?: number };
+
+/**
+ * Native OpenAI-compatible tool-calling. Sends `messages` + `tools` to a
+ * /chat/completions endpoint and returns the model's structured
+ * tool_calls (validated server-side — no truncated-JSON parsing). Used
+ * by the agent for providers that support tools (OpenRouter / OpenAI /
+ * Groq). `messages` is the full conversation array INCLUDING prior
+ * assistant tool_calls + tool-role results, so the model has context.
+ */
+export async function aiToolCall(
+  settings: Pick<AppSettings, 'aiProvider' | 'aiApiKey' | 'aiModel' | 'aiEndpoint'>,
+  messages: any[],
+  tools: any[],
+  opts: { maxTokens?: number; temperature?: number } = {},
+): Promise<AIToolResult> {
+  const provider = settings.aiProvider;
+  const apiKey = (settings.aiApiKey || '').trim();
+  const model = (settings.aiModel || '').trim() || DEFAULT_MODELS[provider] || 'gpt-4o-mini';
+  const maxTokens = opts.maxTokens ?? 2400;
+  const temperature = opts.temperature ?? 0.4;
+
+  const url =
+    provider === 'openai'     ? 'https://api.openai.com/v1/chat/completions' :
+    provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
+    provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :
+    /* custom */                (settings.aiEndpoint || '');
+  if (!url) return { ok: false, error: 'No tool-calling endpoint for this provider.' };
+
+  const extraHeaders: Record<string, string> =
+    provider === 'openrouter'
+      ? { 'HTTP-Referer': typeof location !== 'undefined' ? location.origin : '', 'X-Title': 'Kindling' }
+      : {};
+
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+        ...extraHeaders,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        tools,
+        tool_choice: 'auto',
+        max_tokens: maxTokens,
+        temperature,
+      }),
+    });
+    if (!r.ok) {
+      const body = (await r.text()).slice(0, 600);
+      if (r.status === 429) {
+        return { ok: false, error: `${provider} rate-limited (429).`, retryAfter: parseRetryAfter(r, body) || 20 };
+      }
+      if (r.status === 402) {
+        return { ok: false, error: `${provider} out of credits (402). Top up or switch provider in Settings → AI.` };
+      }
+      return { ok: false, error: `${provider} ${r.status}: ${body.slice(0, 300)}` };
+    }
+    const j = await r.json();
+    const msg = j.choices?.[0]?.message || {};
+    const finishReason = j.choices?.[0]?.finish_reason || 'stop';
+    const rawCalls = msg.tool_calls || [];
+    const toolCalls: AIToolCall[] = rawCalls.map((c: any) => {
+      let args: any = {};
+      try { args = c.function?.arguments ? JSON.parse(c.function.arguments) : {}; }
+      catch { args = {}; }
+      return { id: c.id || `call_${c.function?.name}`, name: c.function?.name || '', args };
+    });
+    return { ok: true, toolCalls, text: (msg.content || '').toString(), finishReason };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error' };
+  }
+}
+
 /**
  * Pull a JSON object out of an AI response that may or may not have
  * surrounding prose / code fences. Returns null if no JSON could be found.
