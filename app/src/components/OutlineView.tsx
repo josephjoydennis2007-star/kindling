@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ListTree, Plus, ChevronRight, Trash2, GripVertical, Save } from 'lucide-react';
+import { ListTree, Plus, ChevronRight, Trash2, GripVertical, Save, ArrowRightToLine, ArrowLeftToLine, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
+
+const SCENE_RE = /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i;
+function mkEl(type: string, content: string) {
+  return { id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, content, sceneId: null };
+}
+function stripTags(s: string): string { return (s || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim(); }
 
 /**
  * OutlineView — the high-level "treatment" workspace for the writer.
@@ -54,6 +60,51 @@ export default function OutlineView() {
     setPoints((p) => p.map((x, idx) => (idx === i ? v : x)));
   const removePoint = (i: number) =>
     setPoints((p) => p.filter((_, idx) => idx !== i));
+
+  // ── Outline ⇄ Script sync ──────────────────────────────────────────────
+  // Append elements to the live screenplay and tell the writer to re-sync.
+  const appendToScript = (els: any[]) => {
+    const cur = useAppStore.getState().screenplay.elements || [];
+    updateScreenplayField('elements' as any, [...cur, ...els]);
+    setTimeout(() => document.dispatchEvent(new CustomEvent('writer:rebuild')), 0);
+  };
+
+  // One outline beat → a scene-heading scaffold (+ blank action) in the script.
+  const sendPointToScript = (text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    const heading = SCENE_RE.test(t) ? t.toUpperCase() : `INT./EXT. ${t.toUpperCase()} - DAY`;
+    appendToScript([mkEl('scene-heading', heading), mkEl('action', '')]);
+    toast.success('Beat scaffolded into the script');
+  };
+
+  // All beats → a full scene scaffold the writer can flesh out.
+  const buildScaffold = () => {
+    const real = points.filter((p) => p.trim());
+    if (!real.length) { toast.error('Add some outline points first.'); return; }
+    const els: any[] = [];
+    for (const p of real) {
+      const t = p.trim();
+      els.push(mkEl('scene-heading', SCENE_RE.test(t) ? t.toUpperCase() : `INT./EXT. ${t.toUpperCase()} - DAY`));
+      els.push(mkEl('action', ''));
+    }
+    appendToScript(els);
+    toast.success(`Scaffolded ${real.length} scene${real.length === 1 ? '' : 's'} into the script`);
+  };
+
+  // Script → Outline: pull every scene heading into the outline points.
+  const pullFromScript = () => {
+    const els = useAppStore.getState().screenplay.elements || [];
+    const headings = els.filter((e: any) => e.type === 'scene-heading').map((e: any) => stripTags(e.content)).filter(Boolean);
+    if (!headings.length) { toast.error('No scene headings in the script yet.'); return; }
+    const existing = new Set(points.map((p) => p.trim().toLowerCase()));
+    const added = headings.filter((h: string) => !existing.has(h.trim().toLowerCase()));
+    if (!added.length) { toast.info('Outline already has every scene heading.'); return; }
+    const next = [...points.filter((p) => p.trim()), ...added];
+    setPoints(next);
+    updateScreenplayField('outlinePoints' as any, next);
+    toast.success(`Pulled ${added.length} scene heading${added.length === 1 ? '' : 's'} into the outline`);
+  };
 
   return (
     <motion.div
@@ -135,12 +186,21 @@ export default function OutlineView() {
                 One line per major story moment.
               </span>
             </label>
-            <button
-              onClick={addPoint}
-              className="text-xs flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--text)] hover:border-[var(--accent)] transition-colors"
-            >
-              <Plus className="w-3 h-3" /> Add point
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={pullFromScript}
+                title="Add every scene heading from the script as an outline point"
+                className="text-xs flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+              >
+                <ArrowLeftToLine className="w-3 h-3" /> Pull from script
+              </button>
+              <button
+                onClick={addPoint}
+                className="text-xs flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--text)] hover:border-[var(--accent)] transition-colors"
+              >
+                <Plus className="w-3 h-3" /> Add point
+              </button>
+            </div>
           </div>
           {points.length === 0 ? (
             <div className="text-xs text-[var(--text-muted)] py-6 text-center border border-dashed border-[var(--rule)] rounded-md">
@@ -163,6 +223,13 @@ export default function OutlineView() {
                     className="flex-1 bg-transparent text-sm text-[var(--text)] focus:outline-none min-w-0"
                   />
                   <button
+                    onClick={() => sendPointToScript(pt)}
+                    title="Scaffold this beat into the script as a scene"
+                    className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--accent)] transition-all p-0.5"
+                  >
+                    <ArrowRightToLine className="w-3.5 h-3.5" />
+                  </button>
+                  <button
                     onClick={() => removePoint(i)}
                     title="Remove this point"
                     className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-[var(--danger)] transition-all p-0.5"
@@ -180,13 +247,22 @@ export default function OutlineView() {
             <span><ChevronRight className="w-3 h-3 inline" /> {stats.points} points</span>
             <span><ChevronRight className="w-3 h-3 inline" /> {stats.words} words</span>
           </div>
-          <button
-            onClick={save}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors"
-            style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}
-          >
-            <Save className="w-3.5 h-3.5" /> Save outline
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={buildScaffold}
+              title="Create a scene-heading scaffold in the script from every outline point"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+            >
+              <FileDown className="w-3.5 h-3.5" /> Build script scaffold
+            </button>
+            <button
+              onClick={save}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors"
+              style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}
+            >
+              <Save className="w-3.5 h-3.5" /> Save outline
+            </button>
+          </div>
         </footer>
       </div>
     </motion.div>

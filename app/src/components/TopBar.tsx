@@ -5,7 +5,7 @@ import {
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
   LogOut, UserCircle2, Share2, UserPlus, PanelRight, Lightbulb, StickyNote,
   Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X, Stethoscope,
-  MessageCircle, Briefcase, ExternalLink, Copy, Clapperboard,
+  MessageCircle, Briefcase, ExternalLink, Copy, Clapperboard, ShieldCheck,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { openInlineCommentFromSelection } from './InlineCommentPopup';
@@ -479,6 +479,11 @@ export default function TopBar({
                     label="Style Assistant"
                     shortcut={`${FMT_SHIFT}${FMT_MOD}S`}
                     onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('writer:openStyle')); }}
+                  />
+                  <Item
+                    icon={ShieldCheck}
+                    label="Continuity check"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openContinuity')); }}
                   />
                   <Item
                     icon={Copy}

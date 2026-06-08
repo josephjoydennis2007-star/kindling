@@ -22,6 +22,7 @@ const CloudDiagnostic = lazy(() => import('@/components/CloudDiagnostic'));
 const VersionHistory = lazy(() => import('@/components/VersionHistory'));
 const BreakdownView = lazy(() => import('@/components/BreakdownView'));
 const ProductionView = lazy(() => import('@/components/ProductionView'));
+const ContinuityGuard = lazy(() => import('@/components/ContinuityGuard'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -568,9 +569,15 @@ function App() {
             label: 'Manual save',
           }).catch(() => {/* versions are best-effort */});
         }
+        // Confirm to the UI that the work is safely in the cloud (drives the
+        // "Synced" save indicator).
+        document.dispatchEvent(new CustomEvent('writer:cloudsynced'));
       } catch (err: any) {
         // eslint-disable-next-line no-console
         console.warn('[Kindling] Cloud save failed (local copy was saved):', err?.code || err?.message || err);
+        // Tell the UI cloud sync didn't happen → indicator shows "Saved" (on
+        // device) rather than "Synced".
+        document.dispatchEvent(new CustomEvent('writer:cloudfailed'));
         // The story is too big for Firestore's 1MB limit — this used to fail
         // silently and stop cloud sync. Now we tell the user clearly (local
         // copy is still safe). Show it even on autosave since it's important.
@@ -1592,6 +1599,7 @@ function App() {
       <VersionHistory />
       <BreakdownView />
       <ProductionView />
+      <ContinuityGuard />
       {/* Floating inline comment popup. Opens via:
             - TopBar Comment button → app:openInlineComment event
             - Cmd/Ctrl+Shift+M keyboard shortcut (see keyboard handler)

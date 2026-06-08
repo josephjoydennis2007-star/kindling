@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, Check, Loader2 } from 'lucide-react';
+import { Save, Loader2, CloudOff, Cloud, HardDrive } from 'lucide-react';
 import type { Screenplay, Scene } from '@/types';
 
 /**
@@ -28,19 +28,37 @@ export default function StatusLine({ screenplay, scenes, onSave, dirty }: Props)
   const words = countWords(screenplay);
   const pages = Math.max(1, Math.ceil(screenplay.elements.length / 55));
 
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  // Save lifecycle: idle → saving → savedlocal (on device) → synced (cloud OK).
+  // `cloud` tracks the last cloud outcome so the indicator is HONEST about
+  // where the work actually lives.
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'savedlocal' | 'synced'>('idle');
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine !== false);
 
   useEffect(() => {
     const onSaving = () => setSaveState('saving');
-    const onSaved = () => { setSaveState('saved'); setSavedAt(Date.now()); };
+    const onSaved = () => { setSaveState((s) => (s === 'synced' ? s : 'savedlocal')); setSavedAt(Date.now()); };
+    const onSynced = () => { setSaveState('synced'); setSavedAt(Date.now()); };
+    const onCloudFailed = () => setSaveState('savedlocal');
     document.addEventListener('writer:saving', onSaving);
     document.addEventListener('writer:saved', onSaved);
+    document.addEventListener('writer:cloudsynced', onSynced);
+    document.addEventListener('writer:cloudfailed', onCloudFailed);
     return () => {
       document.removeEventListener('writer:saving', onSaving);
       document.removeEventListener('writer:saved', onSaved);
+      document.removeEventListener('writer:cloudsynced', onSynced);
+      document.removeEventListener('writer:cloudfailed', onCloudFailed);
     };
+  }, []);
+
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
   }, []);
 
   useEffect(() => {
@@ -53,6 +71,23 @@ export default function StatusLine({ screenplay, scenes, onSave, dirty }: Props)
     : ago < 60 ? `${ago}s ago`
     : ago < 3600 ? `${Math.round(ago / 60)}m ago`
     : `${Math.round(ago / 3600)}h ago`;
+
+  // Build the honest save chip.
+  let chip: { icon: any; label: string; cls: string; title: string };
+  if (!online) {
+    chip = { icon: CloudOff, label: 'Offline · saved here', cls: 'text-[var(--warning)]', title: 'You\'re offline. Your work is saved on this device and will sync when you reconnect.' };
+  } else if (saveState === 'saving') {
+    chip = { icon: Loader2, label: 'Saving…', cls: 'text-[var(--text-muted)]', title: 'Saving…' };
+  } else if (dirty) {
+    chip = { icon: Save, label: 'Unsaved', cls: 'text-[var(--warning)]', title: 'You have unsaved changes — click to save (Ctrl/Cmd+S).' };
+  } else if (saveState === 'synced') {
+    chip = { icon: Cloud, label: `Synced ${agoLabel}`, cls: 'text-[var(--success)]', title: 'Saved on this device and synced to the cloud.' };
+  } else if (saveState === 'savedlocal') {
+    chip = { icon: HardDrive, label: `Saved ${agoLabel}`, cls: 'text-[var(--text-secondary)]', title: 'Saved on this device. Sign in to sync to the cloud.' };
+  } else {
+    chip = { icon: Save, label: 'Save', cls: 'text-[var(--accent)]', title: 'Save now (Ctrl/Cmd+S)' };
+  }
+  const ChipIcon = chip.icon;
 
   return (
     <footer
@@ -69,21 +104,12 @@ export default function StatusLine({ screenplay, scenes, onSave, dirty }: Props)
 
       <button
         onClick={onSave}
-        title={dirty ? 'Unsaved changes — save now (Ctrl/Cmd+S)' : 'Save now (Ctrl/Cmd+S)'}
-        className={`flex items-center gap-1.5 transition-colors ${
-          saveState === 'saving' ? 'text-[var(--text-muted)]'
-          : dirty ? 'text-[var(--warning)]'
-          : saveState === 'saved' ? 'text-[var(--success)]'
-          : 'text-[var(--accent)]'
-        }`}
+        title={chip.title}
+        aria-label={chip.title}
+        className={`flex items-center gap-1.5 transition-colors hover:brightness-125 ${chip.cls}`}
       >
-        {saveState === 'saving'
-          ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving</>
-          : dirty
-            ? <><span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" aria-hidden /> Unsaved</>
-            : saveState === 'saved'
-              ? <><Check className="w-3 h-3" /> Saved {agoLabel}</>
-              : <><Save className="w-3 h-3" /> Save</>}
+        <ChipIcon className={`w-3 h-3 ${saveState === 'saving' ? 'animate-spin' : ''}`} />
+        {chip.label}
       </button>
     </footer>
   );
