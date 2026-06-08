@@ -63,7 +63,39 @@ export interface Scene {
   lastEditedAt?: number;
   /** Revision color tag — "blue" / "pink" / "yellow" / etc. */
   revisionColor?: string;
+  /** Production breakdown — tagged elements needed to shoot this scene. */
+  breakdown?: SceneBreakdown;
 }
+
+/** Standard 1st-AD script-breakdown categories. Each is a list of item names
+ *  needed to shoot a given scene (cast, props, wardrobe, SFX, vehicles, …). */
+export interface SceneBreakdown {
+  cast?: string[];
+  extras?: string[];
+  props?: string[];
+  wardrobe?: string[];
+  makeup?: string[];
+  vehicles?: string[];
+  animals?: string[];
+  sfx?: string[];          // special / visual effects
+  sound?: string[];
+  setDressing?: string[];
+  notes?: string;
+}
+
+/** The ordered, labelled breakdown categories (drives the UI + export). */
+export const BREAKDOWN_CATEGORIES: { key: keyof SceneBreakdown; label: string; color: string }[] = [
+  { key: 'cast',        label: 'Cast',         color: '#ef4444' },
+  { key: 'extras',      label: 'Background',   color: '#f59e0b' },
+  { key: 'props',       label: 'Props',        color: '#8b5cf6' },
+  { key: 'wardrobe',    label: 'Wardrobe',     color: '#ec4899' },
+  { key: 'makeup',      label: 'Hair / Makeup',color: '#14b8a6' },
+  { key: 'vehicles',    label: 'Vehicles',     color: '#3b82f6' },
+  { key: 'animals',     label: 'Animals',      color: '#84cc16' },
+  { key: 'sfx',         label: 'SFX / VFX',    color: '#06b6d4' },
+  { key: 'sound',       label: 'Sound',        color: '#a855f7' },
+  { key: 'setDressing', label: 'Set Dressing', color: '#f97316' },
+];
 
 export type ShotType =
   | 'WIDE'

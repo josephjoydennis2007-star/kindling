@@ -20,6 +20,7 @@ const ShareDialog = lazy(() => import('@/components/ShareDialog'));
 const InviteDialog = lazy(() => import('@/components/InviteDialog'));
 const CloudDiagnostic = lazy(() => import('@/components/CloudDiagnostic'));
 const VersionHistory = lazy(() => import('@/components/VersionHistory'));
+const BreakdownView = lazy(() => import('@/components/BreakdownView'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -1588,6 +1589,7 @@ function App() {
           (config / auth / network / write / read), with the raw error code. */}
       <CloudDiagnostic />
       <VersionHistory />
+      <BreakdownView />
       {/* Floating inline comment popup. Opens via:
             - TopBar Comment button → app:openInlineComment event
             - Cmd/Ctrl+Shift+M keyboard shortcut (see keyboard handler)

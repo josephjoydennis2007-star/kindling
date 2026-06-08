@@ -558,6 +558,11 @@ export default function TopBar({
                     label="Version history…"
                     onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openVersions')); }}
                   />
+                  <Item
+                    icon={ImageIcon}
+                    label="Script breakdown…"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openBreakdown')); }}
+                  />
                 </Group>
 
                 <Group title="Account">

@@ -167,6 +167,7 @@ function normalizeStoryData(data: any) {
     ...(s?.budget ? { budget: s.budget } : {}),
     ...(s?.revisionColor ? { revisionColor: s.revisionColor } : {}),
     ...(typeof s?.lastEditedAt === 'number' ? { lastEditedAt: s.lastEditedAt } : {}),
+    ...(s?.breakdown && typeof s.breakdown === 'object' ? { breakdown: s.breakdown } : {}),
   }));
 
   const rawShots = data?.shots && typeof data.shots === 'object' ? data.shots : {};
