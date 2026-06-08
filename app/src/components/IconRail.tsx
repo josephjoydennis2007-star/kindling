@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PenLine, Clapperboard, LayoutGrid, Calendar as CalendarIcon, Briefcase, Sparkles,
-  Settings, Plus, X, ChevronRight,
+  Settings, Plus, X, ChevronRight, Trash2,
   ListTree, Globe2, Image as ImageIcon, MapPin,
   Lock,
 } from 'lucide-react';
@@ -53,6 +53,7 @@ interface Props {
   activeStoryId: string | null;
   onStoryChange: (id: string) => void;
   onNewStory: () => void;
+  onDeleteStory?: (id: string) => void;
   onOpenSettings: () => void;
   onOpenProfile?: () => void;
   user?: { displayName?: string | null; photoURL?: string | null; email?: string | null } | null;
@@ -91,6 +92,7 @@ export default function IconRail({
   activeStoryId,
   onStoryChange,
   onNewStory,
+  onDeleteStory,
   onOpenSettings,
   onOpenProfile,
   user,
@@ -338,23 +340,36 @@ export default function IconRail({
                 {stories.map((story) => {
                   const isActive = story.id === activeStoryId;
                   return (
-                    <button
+                    <div
                       key={story.id}
-                      onClick={() => { onStoryChange(story.id); setDrawerOpen(false); }}
-                      className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
+                      className={`group/story w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors ${
                         isActive
                           ? 'rail-active-bg text-[var(--accent)]'
                           : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
                       }`}
                     >
-                      <span
-                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                        style={{ background: storyTypeColor(story.type) }}
-                        aria-hidden
-                      />
-                      <span className="flex-1 truncate font-medium">{story.title}</span>
-                      {isActive && <ChevronRight className="w-3 h-3 flex-shrink-0" />}
-                    </button>
+                      <button
+                        onClick={() => { onStoryChange(story.id); setDrawerOpen(false); }}
+                        className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ background: storyTypeColor(story.type) }}
+                          aria-hidden
+                        />
+                        <span className="flex-1 truncate font-medium">{story.title}</span>
+                        {isActive && <ChevronRight className="w-3 h-3 flex-shrink-0" />}
+                      </button>
+                      {onDeleteStory && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDeleteStory(story.id); }}
+                          title="Delete story"
+                          className="p-1 rounded text-[var(--text-muted)] opacity-0 group-hover/story:opacity-100 hover:text-[var(--danger)] hover:bg-[var(--hover)] transition-all flex-shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>

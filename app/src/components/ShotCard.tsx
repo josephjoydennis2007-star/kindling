@@ -10,6 +10,7 @@ import {
   ImagePlus,
 } from 'lucide-react';
 import type { Shot, BRoll, Character, ShotType } from '@/types';
+import { viewMedia } from '@/lib/mediaViewer';
 
 const SHOT_TYPES: ShotType[] = [
   'WIDE',
@@ -22,6 +23,81 @@ const SHOT_TYPES: ShotType[] = [
   'INSERT',
   'AERIAL',
 ];
+
+/** A single storyboard frame slot (first or last). Shows the image with a
+ *  remove button when set, or an upload affordance when empty. Accepts both
+ *  file uploads and AssetsPanel image drags (text/uri-list). */
+function FrameSlot({
+  label,
+  value,
+  accent,
+  onSet,
+  onClear,
+}: {
+  label: string;
+  value?: string | null;
+  accent?: boolean;
+  onSet: (v: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      className="min-w-[120px]"
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('application/x-kindling-asset')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDrop={(e) => {
+        const uri = e.dataTransfer.getData('text/uri-list');
+        if (uri) {
+          e.preventDefault();
+          onSet(uri);
+        }
+      }}
+    >
+      <div className={`text-[9px] uppercase tracking-wider font-bold mb-1 ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+        {label}
+      </div>
+      {value ? (
+        <div className="relative inline-block group/img">
+          <img
+            src={value}
+            alt={label}
+            onClick={() => viewMedia(value!, 'image', label)}
+            className="max-h-28 rounded-lg border border-[var(--border)] object-cover cursor-zoom-in"
+            title="Click to view full size"
+          />
+          <button
+            onClick={onClear}
+            className="absolute top-1 right-1 p-1 rounded-full bg-black/70 text-white opacity-0 group-hover/img:opacity-100 hover:bg-red-500 transition-opacity"
+            title={`Remove ${label.toLowerCase()}`}
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      ) : (
+        <label className={`inline-flex items-center gap-1.5 px-2 py-1 bg-[var(--card)] border border-dashed rounded-md text-[10px] cursor-pointer transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] ${accent ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>
+          <ImagePlus className="w-3 h-3" />
+          Add {label.toLowerCase()}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => onSet(reader.result as string);
+              reader.readAsDataURL(file);
+            }}
+          />
+        </label>
+      )}
+    </div>
+  );
+}
 
 interface ShotCardProps {
   shot: Shot;
@@ -57,6 +133,9 @@ export default function ShotCard({
 }: ShotCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [justAddedBRoll, setJustAddedBRoll] = useState<string | null>(null);
+  // Reveal the "last frame" slot when the shot already has one, when Claude
+  // flagged it as a first→last transition, or when the user opens it manually.
+  const [showLast, setShowLast] = useState<boolean>(!!(shot.lastFrame || shot.needsLastFrame));
   const shotBRolls = shot.bRollIds.map(id => bRolls[id]).filter(Boolean);
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -145,56 +224,39 @@ export default function ShotCard({
           />
         </div>
 
-        {/* Storyboard image — also a drop target for AssetsPanel image drags. */}
-        <div
-          className="mt-3"
-          onDragOver={(e) => {
-            // Accept image-asset drags as a copy.
-            if (e.dataTransfer.types.includes('application/x-kindling-asset')) {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'copy';
-            }
-          }}
-          onDrop={(e) => {
-            const uri = e.dataTransfer.getData('text/uri-list');
-            if (uri) {
-              e.preventDefault();
-              onUpdate(shot.id, { storyboard: uri } as any);
-            }
-          }}
-        >
-          {shot.storyboard ? (
-            <div className="relative inline-block group/img">
-              <img
-                src={shot.storyboard}
-                alt="storyboard"
-                className="max-h-32 rounded-lg border border-[var(--border)] object-cover"
+        {/* Storyboard frames — First frame + optional Last frame. Each slot
+            is also a drop target for AssetsPanel image drags. The last frame
+            drives Runway first→last-frame video generation. */}
+        <div className="mt-3">
+          <div className="flex gap-4 items-start flex-wrap">
+            <FrameSlot
+              label="First frame"
+              value={shot.storyboard}
+              onSet={(v) => onUpdate(shot.id, { storyboard: v } as any)}
+              onClear={() => onUpdate(shot.id, { storyboard: null } as any)}
+            />
+            {(showLast || shot.lastFrame || shot.needsLastFrame) ? (
+              <FrameSlot
+                label="Last frame"
+                accent={!!shot.needsLastFrame && !shot.lastFrame}
+                value={shot.lastFrame}
+                onSet={(v) => onUpdate(shot.id, { lastFrame: v } as any)}
+                onClear={() => onUpdate(shot.id, { lastFrame: null } as any)}
               />
+            ) : (
               <button
-                onClick={() => onUpdate(shot.id, { storyboard: null } as any)}
-                className="absolute top-1 right-1 p-1 rounded-full bg-black/70 text-white opacity-0 group-hover/img:opacity-100 hover:bg-red-500 transition-opacity"
-                title="Remove storyboard"
+                onClick={() => setShowLast(true)}
+                title="Add a last frame for a first→last transition (e.g. to generate a Runway video between two frames)."
+                className="mt-5 inline-flex items-center gap-1 px-2 py-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--accent)] border border-dashed border-[var(--border)] hover:border-[var(--accent)] rounded-md transition-colors"
               >
-                <X className="w-3 h-3" />
+                <Plus className="w-3 h-3" /> Add last frame
               </button>
+            )}
+          </div>
+          {shot.needsLastFrame && (
+            <div className="mt-1.5 text-[10px] text-[var(--accent)] font-medium">
+              ✦ This shot is a first→last transition{shot.lastFrameDescription ? ` — last frame: ${shot.lastFrameDescription}` : ''}
             </div>
-          ) : (
-            <label className="inline-flex items-center gap-1.5 px-2 py-1 bg-[var(--card)] border border-dashed border-[var(--border)] rounded-md text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer transition-colors">
-              <ImagePlus className="w-3 h-3" />
-              Add storyboard
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => onUpdate(shot.id, { storyboard: reader.result as string } as any);
-                  reader.readAsDataURL(file);
-                }}
-              />
-            </label>
           )}
         </div>
 
@@ -230,6 +292,7 @@ export default function ShotCard({
         )}
       </div>
 
+      {/* FrameSlot rendered above */}
       {/* Delete confirmation */}
       {showDeleteConfirm && (
         <motion.div

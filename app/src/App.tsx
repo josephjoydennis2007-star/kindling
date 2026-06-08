@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
 import { Users, Zap } from 'lucide-react';
@@ -50,6 +50,8 @@ import SettingsOverlay from '@/components/SettingsOverlay';
 import AgentPanel from '@/components/AgentPanel';
 import { installRunwayBridge } from '@/lib/sendToRunway';
 import FloatingActionButton from '@/components/FloatingActionButton';
+import MediaViewer from '@/components/MediaViewer';
+import RunwayPromptDialog from '@/components/RunwayPromptDialog';
 import './App.css';
 
 function App() {
@@ -86,7 +88,7 @@ function App() {
     loadStory,
   } = useAppStore();
 
-  const { ready, saveState, loadState } = useIndexedDB();
+  const { ready, saveState, loadState, deleteStory: idbDeleteStory } = useIndexedDB();
   const [initialized, setInitialized] = useState(false);
   const [showStorySelector, setShowStorySelector] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -357,6 +359,20 @@ function App() {
   // Auth-skip state stays in localStorage as before — that's a separate
   // concern from per-story document persistence.
   const [dirty, setDirty] = useState(false);
+
+  // Live-sync refs (used by the Firestore watcher below).
+  //   dirtyRef         — a ref mirror of `dirty` so the long-lived snapshot
+  //                      callback can read the latest value without the
+  //                      watcher effect re-subscribing on every keystroke.
+  //   lastCloudDataRef — the last story `data` string we either applied from
+  //                      the cloud or pushed to it. Lets the watcher ignore
+  //                      the echo of our own writes (and the initial
+  //                      snapshot) so it only reacts to genuinely new remote
+  //                      material (e.g. the Connector's add_to_story).
+  const dirtyRef = useRef(false);
+  const lastCloudDataRef = useRef<string | null>(null);
+  useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
+
   useEffect(() => {
     if (!activeStoryId) return;
     // The initial story load mutates screenplay/scenes/etc. as the data
@@ -441,6 +457,48 @@ function App() {
     setShowStorySelector(false);
   }, [loadStory, saveState]);
 
+  // Delete a story everywhere: in-memory store, this device's IndexedDB
+  // snapshot + history, AND the cloud copy. Deleting only locally would let
+  // the sign-in recovery pull resurrect it from Firestore on the next load,
+  // so we remove the cloud doc too (when signed in) to make it permanent.
+  const handleDeleteStory = useCallback(async (storyId: string) => {
+    const st = useAppStore.getState();
+    const story = st.stories.find((s) => s.id === storyId);
+    const title = story?.title || 'this story';
+    const ok = window.confirm(
+      `Delete "${title}" permanently?\n\nThis removes it from this device and from the cloud. It cannot be undone.`,
+    );
+    if (!ok) return;
+    const wasActive = st.activeStoryId === storyId;
+    // 1) In-memory store (also clears activeStoryId if it was the open one).
+    st.deleteStory(storyId);
+    // If we just closed the open story, hop to another one (if any) so the
+    // user isn't left staring at an empty workspace.
+    if (wasActive) {
+      const remaining = useAppStore.getState().stories;
+      if (remaining.length > 0) {
+        await handleSelectStory(remaining[0].id);
+      } else {
+        setShowStorySelector(true);
+      }
+    }
+    // 2) Local IndexedDB snapshot + history.
+    try { await idbDeleteStory(storyId); } catch {/* ignore */}
+    // 3) Cloud doc — so it isn't pulled back on next sign-in.
+    if (user) {
+      try {
+        const { deleteStoryCloud } = await import('@/lib/cloudStories');
+        await deleteStoryCloud(storyId);
+      } catch (err: any) {
+        // eslint-disable-next-line no-console
+        console.warn('[Kindling] Cloud delete failed:', err?.code || err?.message || err);
+        toast.error('Removed locally, but the cloud copy could not be deleted (you may not be the owner).');
+        return;
+      }
+    }
+    toast.success(`Deleted "${title}"`);
+  }, [user, idbDeleteStory, handleSelectStory]);
+
   const handleManualSave = useCallback(async () => {
     if (!activeStoryId) return;
     document.dispatchEvent(new CustomEvent('writer:saving'));
@@ -478,10 +536,14 @@ function App() {
       try {
         const { pushStory } = await import('@/lib/cloudStories');
         const story = state.stories.find((st) => st.id === activeStoryId);
+        const cloudData = state.exportStory();
+        // Remember exactly what we're sending so the live watcher recognizes
+        // the snapshot echo of our own write and doesn't re-import it.
+        lastCloudDataRef.current = cloudData;
         await pushStory({
           storyId: activeStoryId,
           title: story?.title || state.screenplay.title || 'Untitled',
-          data: state.exportStory(),
+          data: cloudData,
         });
       } catch (err: any) {
         // eslint-disable-next-line no-console
@@ -583,21 +645,30 @@ function App() {
         const { listMyStories } = await import('@/lib/cloudStories');
         const cloudStories = await listMyStories();
         if (cancelled || !cloudStories.length) return;
-        const known = new Set(useAppStore.getState().stories.map((s) => s.id));
+        // Map of the stories we already have locally → their last-known
+        // updatedAt, so we can tell a brand-new story apart from one that
+        // already exists locally but has been UPDATED in the cloud (e.g. by
+        // the Kindling Connector's add_to_story across several "continue"
+        // calls). Without this, an already-known id was skipped entirely and
+        // the appended scenes/screenplay never reached IndexedDB — the app
+        // kept loading the stale first snapshot. That's the "I only ever see
+        // the first step Claude wrote" bug.
+        const localById = new Map(useAppStore.getState().stories.map((s) => [s.id, s]));
+        const activeId = useAppStore.getState().activeStoryId;
         const fresh: any[] = [];
+        let updatedCount = 0;
         for (const cs of cloudStories) {
-          if (known.has(cs.id)) continue;
-          fresh.push({
-            id: cs.id,
-            title: cs.title || 'Untitled Story',
-            type: 'movie',
-            createdAt: (cs as any).createdAt || cs.updatedAt || Date.now(),
-            updatedAt: cs.updatedAt || Date.now(),
-          });
-          // Hydrate the per-story snapshot into IndexedDB so opening
-          // the story later loads its actual content (not a blank
-          // shell). The cloud `data` field is a JSON string produced
-          // by exportStory().
+          const existing = localById.get(cs.id);
+          const cloudUpdated = cs.updatedAt || 0;
+          const localUpdated = (existing as any)?.updatedAt || 0;
+          // Skip only when we already have this story AND the cloud copy is
+          // not newer than what we hold locally. A strictly-newer cloud
+          // updatedAt means new material was appended (or edited) remotely.
+          if (existing && cloudUpdated <= localUpdated) continue;
+
+          // (Re)hydrate the per-story snapshot into IndexedDB so opening the
+          // story loads its actual current content. The cloud `data` field is
+          // a JSON string produced by exportStory().
           try {
             const parsed = (cs as any).data ? JSON.parse((cs as any).data) : null;
             if (parsed) await saveState(cs.id, parsed);
@@ -605,12 +676,48 @@ function App() {
             // Corrupt blob — leave it; user can still open the cloud
             // story and re-save to fix.
           }
+
+          if (!existing) {
+            fresh.push({
+              id: cs.id,
+              title: cs.title || 'Untitled Story',
+              type: 'movie',
+              createdAt: (cs as any).createdAt || cs.updatedAt || Date.now(),
+              updatedAt: cs.updatedAt || Date.now(),
+            });
+          } else {
+            updatedCount += 1;
+            // Bump the local Story entry (title + updatedAt) so the drawer
+            // reflects the change and we don't re-hydrate it next refresh.
+            useAppStore.setState((s: any) => ({
+              stories: s.stories.map((st: any) =>
+                st.id === cs.id
+                  ? { ...st, title: cs.title || st.title, updatedAt: cloudUpdated || Date.now() }
+                  : st,
+              ),
+            }));
+            // If this updated story is the one currently open, refresh the
+            // live editor in place so the new material appears without the
+            // user having to switch stories or reload again.
+            if (cs.id === activeId && (cs as any).data) {
+              useAppStore.getState().importStory((cs as any).data);
+              setTimeout(() => {
+                document.dispatchEvent(new CustomEvent('writer:rebuild'));
+              }, 0);
+            }
+          }
         }
         if (fresh.length > 0 && !cancelled) {
           useAppStore.setState((s: any) => ({ stories: [...s.stories, ...fresh] }));
           toast.success(`Recovered ${fresh.length} stor${fresh.length === 1 ? 'y' : 'ies'} from cloud`, {
             description: 'Open the stories drawer (K logo) to see them.',
             duration: 6000,
+          });
+        }
+        if (updatedCount > 0 && !cancelled) {
+          toast.success(`Synced ${updatedCount} updated stor${updatedCount === 1 ? 'y' : 'ies'} from cloud`, {
+            description: 'New material added from Claude is now in the app.',
+            duration: 5000,
           });
         }
       } catch (err: any) {
@@ -622,6 +729,78 @@ function App() {
     })();
     return () => { cancelled = true; };
   }, [user, ready, saveState]);
+
+  // Live Firestore watcher on the OPEN story.
+  //
+  // The sign-in recovery pull above only runs on load/refresh. This adds a
+  // real-time subscription to the currently-active story so material the
+  // Kindling Connector appends from Claude (each "continue" → add_to_story)
+  // appears in the app instantly — no refresh needed.
+  //
+  // Safeguards:
+  //   - We ignore the FIRST snapshot (it's just the current doc; the story
+  //     is already loaded) and only record it as the baseline.
+  //   - We ignore any snapshot whose `data` equals what we last applied or
+  //     pushed (lastCloudDataRef) — that filters out the echo of our own
+  //     saves so the editor doesn't flicker or loop.
+  //   - We do NOT overwrite the editor while there are unsaved local edits
+  //     (dirtyRef) — your in-progress work always wins; the new remote
+  //     material is picked up the next time the story is clean (or on
+  //     refresh via the recovery pull).
+  useEffect(() => {
+    if (!user || !activeStoryId) return;
+    let first = true;
+    let unsub: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { watchStory } = await import('@/lib/cloudStories');
+        if (cancelled) return;
+        unsub = watchStory(
+          activeStoryId,
+          (story) => {
+            const remoteData = (story as any).data as string | undefined;
+            if (!remoteData) return;
+            // First snapshot = current state → just set the baseline.
+            if (first) { first = false; lastCloudDataRef.current = remoteData; return; }
+            // Echo of our own write, or nothing changed.
+            if (remoteData === lastCloudDataRef.current) return;
+            // Don't clobber unsaved local edits.
+            if (dirtyRef.current) return;
+            const ok = useAppStore.getState().importStory(remoteData);
+            if (!ok) return;
+            lastCloudDataRef.current = remoteData;
+            // Persist so a later reopen loads the fresh content offline too.
+            try { saveState(activeStoryId, JSON.parse(remoteData)); } catch {/* corrupt blob */}
+            // Bump the drawer entry's title/updatedAt.
+            useAppStore.setState((s: any) => ({
+              stories: s.stories.map((st: any) =>
+                st.id === activeStoryId
+                  ? { ...st, title: (story as any).title || st.title, updatedAt: (story as any).updatedAt || Date.now() }
+                  : st,
+              ),
+            }));
+            // TipTap reads elements once at mount — force it to resync.
+            setTimeout(() => {
+              document.dispatchEvent(new CustomEvent('writer:rebuild'));
+            }, 0);
+            toast.success('New material added from Claude', {
+              description: 'The latest scenes just synced into this story.',
+              duration: 4000,
+            });
+          },
+          (err) => {
+            // eslint-disable-next-line no-console
+            console.warn('[Kindling] Live story watch error:', (err as any)?.code || (err as any)?.message || err);
+          },
+        );
+      } catch (err: any) {
+        // eslint-disable-next-line no-console
+        console.warn('[Kindling] Could not start live story watch:', err?.code || err?.message || err);
+      }
+    })();
+    return () => { cancelled = true; if (unsub) unsub(); };
+  }, [user, activeStoryId, saveState]);
 
   // Kept exported via a custom event so the Command Palette + Settings can
   // call it. The rail/context layout no longer surfaces an "Import" button
@@ -954,10 +1133,24 @@ function App() {
       document.body.classList.add(mode === 'light' ? 'theme-light' : 'theme-dark');
 
       const accent = (settings as any).accent;
-      if (accent && accent !== 'indigo') {
-        root.setAttribute('data-accent', accent);
-      } else {
+      const customHex = (settings as any).accentColor as string | undefined;
+
+      if (accent === 'custom' && customHex) {
+        // Derive a full, professional palette from the user's colour and write
+        // it inline (overrides every preset). Works for ANY hue.
+        import('@/lib/accentGrading').then(({ applyCustomAccent }) => {
+          applyCustomAccent(customHex, mode);
+        });
         root.removeAttribute('data-accent');
+      } else {
+        // Built-in preset: clear any custom inline vars + set the data-accent
+        // attribute so index.css's tuned palette blocks apply.
+        import('@/lib/accentGrading').then(({ clearCustomAccent }) => clearCustomAccent());
+        if (accent && accent !== 'indigo') {
+          root.setAttribute('data-accent', accent);
+        } else {
+          root.removeAttribute('data-accent');
+        }
       }
     };
     apply();
@@ -966,17 +1159,7 @@ function App() {
     const onChange = () => { if (!settings.theme || (settings.theme as string) === 'auto' || (settings.theme as string) === 'system') apply(); };
     mq.addEventListener?.('change', onChange);
     return () => mq.removeEventListener?.('change', onChange);
-  }, [settings.theme, (settings as any).accent]);
-
-  // Sweep away any legacy custom CSS variables that may linger from older
-  // settings shapes. The new design system reads from index.css only.
-  useEffect(() => {
-    const root = document.documentElement;
-    ['--primary', '--bg', '--sidebar', '--panel', '--card', '--hover', '--active',
-     '--text', '--text-secondary', '--text-muted', '--border', '--border-light'].forEach((k) => {
-      root.style.removeProperty(k);
-    });
-  }, []);
+  }, [settings.theme, (settings as any).accent, (settings as any).accentColor]);
 
   // Focus mode: allow exit via the Escape key
   useEffect(() => {
@@ -1050,6 +1233,9 @@ function App() {
         stories={stories}
         onSelectStory={handleSelectStory}
         onCreateStory={handleCreateStory}
+        onDeleteStory={handleDeleteStory}
+        canClose={stories.length > 0}
+        onClose={() => setShowStorySelector(false)}
       />
     );
   }
@@ -1060,6 +1246,8 @@ function App() {
     <div className={`app-container ${isFocusMode ? 'focus-mode' : ''}`}>
       <a href="#main-content" className="skip-link">Skip to content</a>
       <Toaster theme={settings.theme === 'light' ? 'light' : 'dark'} position="bottom-right" richColors />
+      <MediaViewer />
+      <RunwayPromptDialog />
       {isFocusMode && (
         <button
           onClick={toggleFocusMode}
@@ -1089,6 +1277,7 @@ function App() {
           activeStoryId={activeStoryId}
           onStoryChange={handleSelectStory}
           onNewStory={() => setShowStorySelector(true)}
+          onDeleteStory={handleDeleteStory}
           onOpenSettings={() => setShowSettings(true)}
           onOpenProfile={() => setShowUserMenu((v) => !v)}
           user={user ? { displayName: profile?.displayName || user.displayName, photoURL: profile?.avatar || user.photoURL, email: user.email } : null}

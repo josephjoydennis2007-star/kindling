@@ -86,7 +86,18 @@ export interface Shot {
   order: number;
   audioNote?: string;        // optional audio cue (sfx / music / ambience)
   audioFile?: string | null; // optional audio data URL
-  storyboard?: string | null; // storyboard image as data URL
+  storyboard?: string | null; // FIRST frame — storyboard image as data URL or remote URL
+  /** Optional LAST frame — the end state of the shot, used to drive Runway
+   *  first→last-frame video generation. Same format as `storyboard`. */
+  lastFrame?: string | null;
+  /** When true, this shot is intended to be a first→last-frame transition
+   *  (e.g. a move or transformation). The UI then surfaces the "last frame"
+   *  slot prominently and Claude knows to generate/attach a second frame. */
+  needsLastFrame?: boolean;
+  /** Optional description of what the LAST frame should look like — the
+   *  end-state prompt for image generation (the shot's `description` is the
+   *  first-frame prompt). */
+  lastFrameDescription?: string;
   durationSec?: number;       // shot duration in seconds
   lens?: string;              // lens metadata, e.g. "35mm", "85mm anamorphic"
 }

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { Shot } from '@/types';
 import { sendPromptToRunway } from '@/lib/sendToRunway';
+import { viewMedia } from '@/lib/mediaViewer';
 
 /**
  * StoryboardView — a full-page grid of every storyboard image across all
@@ -126,7 +127,13 @@ export default function StoryboardView() {
               <figure key={shot.id} className="bg-[var(--card)] border border-[var(--rule)] rounded-md overflow-hidden group">
                 <div className="aspect-video bg-[var(--bg)] relative">
                   {shot.storyboard ? (
-                    <img src={shot.storyboard} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={shot.storyboard}
+                      alt=""
+                      onClick={() => viewMedia(shot.storyboard!, 'image', `${sceneName} · ${shot.shotType || 'shot'}`)}
+                      className="w-full h-full object-cover cursor-zoom-in"
+                      title="Click to view full size"
+                    />
                   ) : (
                     <button
                       onClick={() => triggerUpload(shot.id)}
@@ -155,6 +162,18 @@ export default function StoryboardView() {
                   <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-black/60 text-white tabular-nums">
                     {String(index).padStart(3, '0')}
                   </div>
+                  {/* First→last transition badge + last-frame thumbnail. */}
+                  {(shot.lastFrame || shot.needsLastFrame) && (
+                    <div className="absolute top-1 right-1 flex items-center gap-1">
+                      {shot.lastFrame ? (
+                        <img src={shot.lastFrame} alt="last frame" title="Last frame — click to view" onClick={() => viewMedia(shot.lastFrame!, 'image', `${sceneName} · last frame`)} className="w-10 h-7 rounded object-cover border border-white/60 shadow cursor-zoom-in" />
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)]/90 text-white" title={shot.lastFrameDescription || 'Needs a last frame'}>
+                          Needs last
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <figcaption className="p-2">
                   <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] truncate">{sceneName}</div>

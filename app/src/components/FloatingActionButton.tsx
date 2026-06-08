@@ -67,7 +67,7 @@ export default function FloatingActionButton({ actions, isFocusMode }: FloatingA
           onClick={() => setIsOpen(!isOpen)}
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.95 }}
-          className="fab-gradient w-14 h-14 rounded-full text-[var(--accent-ink)] shadow-lg hover:shadow-xl flex items-center justify-center transition-all"
+          className="glass-surface w-14 h-14 rounded-full text-[var(--accent)] shadow-lg hover:shadow-xl flex items-center justify-center transition-all"
         >
           <motion.div
             animate={{ rotate: isOpen ? 45 : 0 }}

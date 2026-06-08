@@ -185,6 +185,9 @@ function normalizeStoryData(data: any) {
       ...(sh.audioNote ? { audioNote: sh.audioNote } : {}),
       ...(sh.audioFile ? { audioFile: sh.audioFile } : {}),
       ...(sh.storyboard ? { storyboard: sh.storyboard } : {}),
+      ...(sh.lastFrame ? { lastFrame: sh.lastFrame } : {}),
+      ...(sh.needsLastFrame ? { needsLastFrame: true } : {}),
+      ...(sh.lastFrameDescription ? { lastFrameDescription: sh.lastFrameDescription } : {}),
       ...(typeof sh.durationSec === 'number' ? { durationSec: sh.durationSec } : {}),
       ...(sh.lens ? { lens: sh.lens } : {}),
     };

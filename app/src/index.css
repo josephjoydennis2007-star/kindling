@@ -927,3 +927,52 @@
   height: 100%;
   object-fit: cover;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   KEPT: frosted-glass for the top-bar dropdown menus (the "…", Tools and
+   My Tools menus). This is the only place the glass look is applied — the
+   rest of the app stays on its original solid surfaces.
+   ════════════════════════════════════════════════════════════════════════ */
+.glass-surface {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 48%),
+    color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: blur(30px) saturate(1.6);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-light));
+  box-shadow:
+    0 28px 80px -20px rgba(0, 0, 0, 0.64),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   KEPT: real paginated writer pages (tiptap-pagination-plus). The white
+   sheets sit on a calm solid dark "desk" — no ambient gradient, matching the
+   app's original surface look.
+   ════════════════════════════════════════════════════════════════════════ */
+:root { --writer-desk: #0B0C14; }
+
+.writer-desk-bg { background: var(--writer-desk); }
+.writer-paper { display: flex; justify-content: center; width: 100%; }
+
+.ProseMirror.rm-with-pagination {
+  background: #ffffff;
+  color: #1a1a1a;
+  border: none !important;
+  border-radius: 3px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.20),
+    0 12px 36px rgba(0, 0, 0, 0.45);
+}
+.rm-with-pagination .rm-pagination-gap {
+  background: var(--writer-desk) !important;
+}
+.rm-with-pagination .rm-page-footer-right,
+.rm-with-pagination .rm-page-footer-left,
+.rm-with-pagination .rm-page-header-right,
+.rm-with-pagination .rm-page-header-left {
+  color: #9aa0ad;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}

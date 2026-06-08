@@ -12,6 +12,7 @@ import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
+import { PaginationPlus } from 'tiptap-pagination-plus';
 import {
   ArrowRight,
   Bold,
@@ -64,7 +65,6 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
   const [pagesOpen, setPagesOpen] = useState(false);
   const [readingMode, setReadingMode] = useState(false);
   const [focusTyping, setFocusTyping] = useState(false);
-  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   // ===== Word-style pagination =====
   // The editor renders inside ONE TipTap document (multi-editor is a non-
   // starter — it would split history/undo/find-replace). To get Word's
@@ -79,9 +79,11 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
   //   4. Track the user's scroll position to surface "Page X of Y" and to
   //      highlight the active page in the sidebar.
   // The Pages sidebar previews now scroll the editor to the chosen page.
-  const PAGE_HEIGHT_PX = 11 * 96;      // 11" at 96dpi (standard letter)
-  const PAGE_INNER_HEIGHT_PX = 9 * 96; // page minus 1" top + 1" bottom
-  const PAGE_GAP_PX = 24;              // visual gap between stacked pages
+  // These MUST match the PaginationPlus config above so page jumps + the
+  // "Page X of Y" indicator line up with the real rendered pages.
+  const PAGE_HEIGHT_PX = 1056;         // 11" at 96dpi (US Letter)
+  const PAGE_GAP_PX = 28;              // gap between sheets (matches plugin)
+  const PAGE_STRIDE_PX = PAGE_HEIGHT_PX + PAGE_GAP_PX;
   const editorAreaRef = useRef<HTMLDivElement | null>(null); // scrollable container
   const editorContentRef = useRef<HTMLDivElement | null>(null); // paper / EditorContent wrapper
   const [pageCount, setPageCount] = useState(1);
@@ -128,6 +130,26 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
       Underline,
       TextStyle,
       Color,
+      // REAL pagination — decoration-based, so the document text actually
+      // breaks across US-Letter pages (8.5"×11" @96dpi) with proper margins
+      // and a gap between sheets, exactly like Google Docs / Word. The text
+      // resumes at the top margin of the next page instead of running through
+      // the gap. Margins match the screenplay spec (1.5" left, 1" elsewhere)
+      // so the dialogue/character indents in CSS land correctly.
+      PaginationPlus.configure({
+        pageHeight: 1056,
+        pageWidth: 816,
+        pageGap: 28,
+        pageGapBorderSize: 0,
+        pageBreakBackground: 'var(--writer-desk)',
+        marginTop: 96,
+        marginBottom: 96,
+        marginLeft: 144,
+        marginRight: 96,
+        contentMarginTop: 8,
+        contentMarginBottom: 8,
+        footerRight: '{page}',
+      }),
       TextAlign.configure({ types: ['paragraph', 'heading'] }),
       Highlight.configure({ multicolor: true }),
       Subscript,
@@ -465,8 +487,10 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
     const compute = () => {
       pm = pm || findPm();
       if (!pm) return;
+      // The plugin lays the document out as page blocks of PAGE_STRIDE each
+      // (page + gap). Round the rendered height to that stride for the count.
       const h = pm.scrollHeight;
-      const n = Math.max(1, Math.ceil(h / PAGE_INNER_HEIGHT_PX));
+      const n = Math.max(1, Math.round(h / PAGE_STRIDE_PX));
       setPageCount((prev) => (prev === n ? prev : n));
     };
     // Re-run on size change + after every editor update so freshly typed
@@ -488,8 +512,7 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
     if (!el) return;
     const onScroll = () => {
       const y = el.scrollTop;
-      const stride = PAGE_HEIGHT_PX + PAGE_GAP_PX;
-      const n = Math.floor(y / stride) + 1;
+      const n = Math.floor(y / PAGE_STRIDE_PX) + 1;
       setCurrentPage(Math.max(1, Math.min(n, pageCount)));
     };
     onScroll();
@@ -558,9 +581,8 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
   const jumpToPage = useCallback((pageIndex: number) => {
     const area = editorAreaRef.current;
     if (!area) return;
-    const stride = PAGE_HEIGHT_PX + PAGE_GAP_PX;
-    area.scrollTo({ top: (pageIndex - 1) * stride, behavior: 'smooth' });
-  }, []);
+    area.scrollTo({ top: (pageIndex - 1) * PAGE_STRIDE_PX, behavior: 'smooth' });
+  }, [PAGE_STRIDE_PX]);
 
   if (!screenplay.started) {
     return (
@@ -678,32 +700,17 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
         <div className="w-px h-5 bg-[var(--border)] mx-1" />
         <button
           onClick={() => {
-            // Push the cursor down to a fresh blank page by appending
-            // enough empty action paragraphs to overflow the current
-            // page. The ResizeObserver picks the new height up, the
-            // page-count auto-increments, and the editor scrolls so the
-            // cursor lands on the new sheet.
-            //
-            // We measure the current ProseMirror height + how far into
-            // the last page we are, then insert (lines-per-page minus
-            // lines-on-current-page) empty paragraphs.
-            const pm = editorContentRef.current?.querySelector('.ProseMirror') as HTMLElement | null;
-            const lineHeight = 18; // px — matches our screenplay paragraph line-height
-            const linesPerPage = Math.floor(PAGE_INNER_HEIGHT_PX / lineHeight);
-            const usedHeight = pm?.scrollHeight ?? 0;
-            const heightIntoLastPage = usedHeight % PAGE_INNER_HEIGHT_PX;
-            const linesToFill = Math.max(
-              4,
-              Math.ceil((PAGE_INNER_HEIGHT_PX - heightIntoLastPage) / lineHeight),
-            );
-            const blanks = Array.from({ length: Math.min(linesToFill, linesPerPage) })
+            // Start a fresh page: append a small run of blank action lines so
+            // the next thing the writer types flows onto a new sheet. The
+            // pagination engine reflows automatically, so we only need to add
+            // a little breathing room rather than measuring page fill.
+            const blanks = Array.from({ length: 3 })
               .map(() => '<p class="action">&nbsp;</p>')
               .join('');
             editor?.chain().focus('end').insertContent(blanks).insertContent('<p class="action"></p>').run();
-            setPagesOpen(true);
-            // Snap-scroll to the next page so the user lands on it.
-            setTimeout(() => jumpToPage(pageCount + 1), 80);
-            import('sonner').then(({ toast }) => toast.success('New page added'));
+            // Snap-scroll to the (likely) new page after reflow.
+            setTimeout(() => jumpToPage(pageCount + 1), 120);
+            import('sonner').then(({ toast }) => toast.success('New page started'));
           }}
           title="Push to a new blank page"
           className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)] transition-colors flex-shrink-0"
@@ -826,7 +833,7 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
         <div className="flex-1 overflow-hidden flex relative">
           <div
             ref={editorAreaRef}
-            className={`flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center gap-2 relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}
+            className={`writer-desk-bg flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center gap-2 relative ${focusTyping ? 'focus-typing' : ''} ${readingMode ? 'reading-mode' : ''}`}
           >
             {/* Dialogue density gutter — minimap-style strip on the left.
                 Hidden on small screens where it would crowd the paper, and
@@ -846,72 +853,28 @@ export default function WriterView({ screenplay, onUpdateField, onStartWriting, 
                 </div>
               )}
               {/*
-                MULTI-PAGE STACK.
+                REAL PAGINATION (tiptap-pagination-plus).
 
-                We render `pageCount` white paper sheets stacked vertically,
-                each 11in tall with a small gap between them — that gives the
-                visual "stacked pages" look the user is asking for (like Word
-                in Print Layout view). The TipTap EditorContent is absolutely
-                positioned on top of the stack so its text flows across all
-                pages from page 1 onward. The paper sheets are non-interactive
-                pointer-events:none so clicks pass straight through to the
-                editor.
-
-                Total height of the stack = pageCount × (page + gap) so the
-                scroll area sees one long document. The active page (computed
-                from scroll position) gets a faint highlight ring so the user
-                always knows where they are.
+                The PaginationPlus extension turns the single ProseMirror
+                document into genuine US-Letter pages: it inserts page-break
+                decorations so the text actually stops at the bottom margin of
+                one page and resumes at the top margin of the next — with a
+                real gap between sheets and a page number in the footer, just
+                like Google Docs / Word. We no longer fake a stack of sheets
+                behind a floating editor; the editor *is* the paginated page.
               */}
-              <div
-                className="relative w-full"
-                style={{
-                  // Stack height = (page * count) + gaps between them.
-                  height: `${pageCount * PAGE_HEIGHT_PX + Math.max(0, pageCount - 1) * PAGE_GAP_PX}px`,
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                ref={editorContentRef}
+                onMouseDown={(e) => {
+                  if (e.target === e.currentTarget && editor) editor.commands.focus('end');
                 }}
+                className={`writer-paper ${readingMode ? 'cursor-default' : 'cursor-text'}`}
               >
-                {Array.from({ length: pageCount }).map((_, i) => {
-                  const isActive = i + 1 === currentPage;
-                  return (
-                    <div
-                      key={i}
-                      ref={(el) => { pageRefs.current[i + 1] = el; }}
-                      className={`absolute left-0 right-0 bg-white shadow-2xl rounded-sm ${isActive ? 'ring-2 ring-[var(--accent)]/40' : ''}`}
-                      style={{
-                        top: `${i * (PAGE_HEIGHT_PX + PAGE_GAP_PX)}px`,
-                        height: `${PAGE_HEIGHT_PX}px`,
-                        pointerEvents: 'none', // editor text on top still receives clicks
-                      }}
-                      aria-hidden
-                    >
-                      {/* Page number badge in the bottom-right corner — like
-                          Word's status-bar page indicator but baked into the
-                          page itself. */}
-                      <div
-                        className="absolute bottom-2 right-3 text-[10px] text-zinc-400 font-mono"
-                      >
-                        {i + 1} / {pageCount}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* The editor itself — absolutely positioned over the stack
-                    starting at 1" margin from the top of page 1. The text
-                    flows naturally; the page boundaries above provide the
-                    visual structure. */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  onMouseDown={(e) => {
-                    if (e.target === e.currentTarget && editor) editor.commands.focus('end');
-                  }}
-                  ref={editorContentRef}
-                  className={`absolute left-0 right-0 top-0 p-[0.6in] sm:p-[1in] ${readingMode ? 'cursor-default' : 'cursor-text'}`}
-                  style={{ minHeight: `${PAGE_HEIGHT_PX}px` }}
-                >
-                  <EditorContent editor={editor} className="outline-none" />
-                </motion.div>
-              </div>
+                <EditorContent editor={editor} className="outline-none" />
+              </motion.div>
 
               {/* Floating "Coach ✨" pill — appears beside the dialogue line
                   the cursor is in, click to coach just that line. Disabled

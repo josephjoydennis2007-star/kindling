@@ -241,7 +241,7 @@ export default function InlineCommentPopup() {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.92, y: -4 }}
         transition={{ duration: 0.12 }}
-        className={`fixed z-[300] bg-[var(--panel)] border border-[var(--accent)]/40 rounded-lg shadow-2xl overflow-hidden ${dragging ? 'select-none' : ''}`}
+        className={`glass-surface fixed z-[300] rounded-lg overflow-hidden ${dragging ? 'select-none' : ''}`}
         style={{ left: pos.x, top: pos.y, width: POPUP_W }}
         role="dialog"
         aria-label="Add a comment"
@@ -251,7 +251,7 @@ export default function InlineCommentPopup() {
             hover so users discover the affordance. */}
         <div
           onMouseDown={onDragStart}
-          className="flex items-center justify-between px-3 h-9 border-b border-[var(--rule)] bg-[var(--bg)] cursor-move select-none"
+          className="flex items-center justify-between px-3 h-9 border-b border-[var(--rule)] cursor-move select-none"
           title="Drag to move"
         >
           <div className="flex items-center gap-1.5 pointer-events-none">
@@ -295,10 +295,10 @@ export default function InlineCommentPopup() {
           placeholder={state.editing ? 'Revise your comment…' : 'Type your note…'}
           disabled={busy || (state.editing && !canEdit)}
           readOnly={state.editing && !canEdit}
-          className="w-full px-3 py-2 bg-[var(--panel)] text-[12px] text-[var(--text)] outline-none resize-none border-b border-[var(--rule)]"
+          className="w-full px-3 py-2 bg-transparent text-[12px] text-[var(--text)] outline-none resize-none border-b border-[var(--rule)]"
         />
 
-        <div className="flex items-center justify-between gap-2 px-3 h-9 bg-[var(--bg)]">
+        <div className="flex items-center justify-between gap-2 px-3 h-9">
           {/* Delete on the left when editing AND author */}
           {state.editing && canEdit ? (
             <button

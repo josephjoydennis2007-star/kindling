@@ -4,6 +4,7 @@ import { X, Upload, Image as ImageIcon, Music, FileText, Trash2 } from 'lucide-r
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { Asset, AssetKind } from '@/types';
+import { viewMedia, looksLikeVideo } from '@/lib/mediaViewer';
 
 /**
  * Per-story asset library. Images, audio, references. Drag any image asset
@@ -97,7 +98,13 @@ export default function AssetsPanel({ onClose }: { onClose: () => void }) {
             className="relative group bg-[var(--card)] border border-[var(--border)] rounded-md overflow-hidden"
           >
             {a.kind === 'image' && (
-              <img src={a.data} alt={a.name} className="w-full h-24 object-cover" />
+              <img
+                src={a.data}
+                alt={a.name}
+                onClick={() => viewMedia(a.data, 'image', a.name)}
+                className="w-full h-24 object-cover cursor-zoom-in"
+                title="Click to view full size"
+              />
             )}
             {a.kind === 'audio' && (
               <div className="h-24 flex items-center justify-center bg-[var(--accent-soft)]">
@@ -105,9 +112,13 @@ export default function AssetsPanel({ onClose }: { onClose: () => void }) {
               </div>
             )}
             {a.kind === 'reference' && (
-              <div className="h-24 flex items-center justify-center bg-[var(--accent-soft)]">
+              <button
+                onClick={() => viewMedia(a.data, looksLikeVideo(a.data) ? 'video' : 'auto', a.name)}
+                className="w-full h-24 flex items-center justify-center bg-[var(--accent-soft)] hover:brightness-110 transition-all cursor-zoom-in"
+                title="Click to view"
+              >
                 <FileText className="w-8 h-8 text-[var(--text-secondary)]" />
-              </div>
+              </button>
             )}
             <div className="p-2">
               <div className="text-[10px] text-[var(--text)] truncate font-medium">{a.name}</div>

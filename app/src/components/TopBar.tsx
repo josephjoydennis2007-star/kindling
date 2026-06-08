@@ -248,12 +248,13 @@ export default function TopBar({
           <AnimatePresence>
             {myToolsOpen && (
               <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.12 }}
+                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                style={{ transformOrigin: 'top right' }}
                 role="menu"
-                className="absolute right-0 top-full mt-1 w-[280px] max-h-[60vh] overflow-y-auto bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-2xl z-50"
+                className="glass-surface absolute right-0 top-full mt-1.5 w-[280px] max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain rounded-xl z-[320]"
               >
                 <div className="px-3 py-2 border-b border-[var(--rule)] flex items-center justify-between flex-shrink-0">
                   <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
@@ -352,11 +353,12 @@ export default function TopBar({
               <motion.div
                 role="menu"
                 aria-label="Story tools"
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.12 }}
-                className="absolute top-full right-0 mt-1 w-[220px] bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg overflow-hidden z-50"
+                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                style={{ transformOrigin: 'top right' }}
+                className="glass-surface absolute top-full right-0 mt-1.5 w-[224px] rounded-xl max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain z-[320]"
               >
                 <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
                   Story tools
@@ -423,9 +425,9 @@ export default function TopBar({
             aria-label="More actions"
             aria-haspopup="menu"
             aria-expanded={open}
-            className={`flex items-center justify-center w-8 h-7 rounded-md transition-colors ${
+            className={`flex items-center justify-center w-8 h-7 rounded-md transition-all duration-150 active:scale-90 ${
               open
-                ? 'bg-[var(--surface-2)] text-[var(--text)]'
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/40'
                 : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
             }`}
           >
@@ -437,11 +439,12 @@ export default function TopBar({
               <motion.div
                 role="menu"
                 aria-label="Actions"
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.12 }}
-                className="absolute top-full right-0 mt-1 w-[260px] bg-[var(--panel)] border border-[var(--rule)] rounded-md shadow-lg overflow-hidden z-50"
+                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                style={{ transformOrigin: 'top right' }}
+                className="glass-surface absolute top-full right-0 mt-1.5 w-[264px] rounded-xl max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain z-[320]"
               >
                 <Group title="AI tools" disabled={!activeStoryId}>
                   <Item
@@ -611,16 +614,16 @@ function Item({
     <button
       onClick={onClick}
       role="menuitem"
-      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
+      className={`group/mi w-full flex items-center gap-2.5 px-3 py-2 text-left text-[12px] transition-all duration-150 ${
         danger
-          ? 'text-[var(--danger)] hover:bg-[var(--danger)]/10'
-          : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+          ? 'text-[var(--danger)] hover:bg-[var(--danger)]/12'
+          : 'text-[var(--text-secondary)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]'
       }`}
     >
-      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+      <Icon className="w-3.5 h-3.5 flex-shrink-0 transition-transform duration-150 group-hover/mi:scale-110" />
       <span className="flex-1 font-medium">{label}</span>
       {shortcut && (
-        <span className="text-[10px] text-[var(--text-muted)] tabular-nums select-none">
+        <span className="text-[10px] text-[var(--text-muted)] tabular-nums select-none px-1 py-0.5 rounded border border-[var(--border)] bg-[var(--card)]/60 group-hover/mi:border-[var(--accent)]/30">
           {shortcut}
         </span>
       )}

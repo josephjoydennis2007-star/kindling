@@ -33,7 +33,7 @@ interface Props {
 }
 
 const STORY_TYPES: { id: StoryType; label: string }[] = [
-  { id: 'movie', label: 'Feature Film' },
+  { id: 'movie', label: 'Movie (Feature Film)' },
   { id: 'tv-series', label: 'TV Series' },
   { id: 'tv-show', label: 'TV Show' },
   { id: 'mini-series', label: 'Mini Series' },
@@ -179,65 +179,98 @@ export default function SettingsOverlay({ open, onClose }: Props) {
     onClose();
   };
 
+  const TABS = [
+    { id: 'appearance' as const, icon: Palette,   label: 'Look',     full: 'Appearance & Theme' },
+    { id: 'editor' as const,     icon: Type,       label: 'Editor',   full: 'Editor & Writing' },
+    { id: 'story' as const,      icon: BookOpen,   label: 'Story',    full: 'Story Details' },
+    { id: 'files' as const,      icon: FolderOpen, label: 'Files',    full: 'Files & Data' },
+    { id: 'collab' as const,     icon: Users,      label: 'Profile',  full: 'Profile & Account' },
+    { id: 'ai' as const,         icon: Sparkles,   label: 'AI',       full: 'AI & Integrations' },
+    { id: 'cloud' as const,      icon: Wifi,       label: 'Cloud',    full: 'Cloud Sync & Backup' },
+    { id: 'shortcuts' as const,  icon: Keyboard,   label: 'Keys',     full: 'Keyboard Shortcuts' },
+  ];
+  const activeTabMeta = TABS.find((t) => t.id === tab);
+
   return (
     <AnimatePresence>
       {open && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[250] bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[250] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
           onClick={cancel}
         >
-          <motion.aside
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', stiffness: 240, damping: 28 }}
+          <motion.div
+            initial={{ scale: 0.96, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.97, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 26 }}
             onClick={(e) => e.stopPropagation()}
-            className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] bg-[var(--panel)] border-l border-[var(--border)] shadow-2xl flex flex-col"
+            className="bg-[var(--panel)] border border-[var(--border)] shadow-2xl w-full max-w-[940px] h-full max-h-[680px] rounded-2xl flex overflow-hidden"
           >
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shadow">
+            {/* Left nav sidebar */}
+            <div className="w-44 sm:w-52 flex-shrink-0 border-r border-[var(--border)] bg-[var(--sidebar)] flex flex-col">
+              <div className="px-4 py-4 flex items-center gap-2 border-b border-[var(--border)]">
+                <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center shadow">
                   <Sparkles className="w-4 h-4 text-white" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="text-sm font-bold text-[var(--text)]">Settings</div>
-                  <div className="text-[10px] text-[var(--text-muted)]">{dirty ? 'Unsaved changes' : 'Saved'}</div>
+                  <div className="text-[10px] text-[var(--text-muted)] truncate">{dirty ? 'Unsaved changes' : 'All saved'}</div>
                 </div>
               </div>
-              <button onClick={cancel} className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex border-b border-[var(--border)] overflow-x-auto thin-scrollbar">
-              {[
-                { id: 'appearance' as const, icon: Palette,    label: 'Look' },
-                { id: 'editor' as const,     icon: Type,        label: 'Editor' },
-                { id: 'story' as const,      icon: BookOpen,    label: 'Story' },
-                { id: 'files' as const,      icon: FolderOpen,  label: 'Files' },
-                { id: 'collab' as const,     icon: Users,       label: 'Profile' },
-                { id: 'ai' as const,         icon: Sparkles,    label: 'AI' },
-                { id: 'cloud' as const,      icon: Wifi,        label: 'Cloud' },
-                { id: 'shortcuts' as const,  icon: Keyboard,    label: 'Keys' },
-              ].map((t) => (
+              <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all text-left ${
+                      tab === t.id
+                        ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    <t.icon className="w-4 h-4 flex-shrink-0" />
+                    {t.label}
+                  </button>
+                ))}
+              </nav>
+              <div className="p-2 border-t border-[var(--border)]">
                 <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`flex-1 min-w-[64px] flex items-center justify-center gap-1.5 py-3 text-[11px] font-semibold transition-all whitespace-nowrap ${
-                    tab === t.id ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
+                  onClick={() => { if (confirm('Reset all settings to defaults?')) { resetSettings(); onClose(); toast.success('Settings reset'); } }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--hover)] transition-colors"
                 >
-                  <t.icon className="w-3.5 h-3.5" />
-                  {t.label}
+                  <RotateCcw className="w-3.5 h-3.5" /> Reset to defaults
                 </button>
-              ))}
+              </div>
             </div>
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Right pane */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Top bar: section title + actions */}
+              <div className="px-5 py-3 border-b border-[var(--border)] flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  {activeTabMeta && <activeTabMeta.icon className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />}
+                  <div className="text-sm font-bold text-[var(--text)] truncate">{activeTabMeta?.full || 'Settings'}</div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={cancel} className="px-3 py-1.5 rounded-md bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:border-[var(--text-muted)]">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={save}
+                    disabled={!dirty}
+                    className="px-3.5 py-1.5 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-xs font-bold hover:brightness-110 disabled:opacity-40 flex items-center gap-1.5"
+                  >
+                    <Save className="w-3.5 h-3.5" /> Save
+                  </button>
+                  <button onClick={cancel} className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {tab === 'appearance' && (
                 <div className="space-y-4">
                   <Section title="Theme">
@@ -282,8 +315,41 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                         );
                       })}
                     </div>
+
+                    {/* Custom accent — pick ANY colour; the app auto-grades a
+                        full professional palette (surfaces, borders, text) from
+                        it so it always looks intentional. */}
+                    <div className={`mt-2 flex items-center gap-3 p-2.5 rounded-md border transition-colors ${
+                      (draft as any).accent === 'custom' ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] bg-[var(--card)]'
+                    }`}>
+                      <input
+                        type="color"
+                        value={(draft as any).accentColor || '#818CF8'}
+                        onChange={(e) => setDraft({ ...(draft as any), accent: 'custom', accentColor: e.target.value })}
+                        className="w-9 h-9 rounded-md border border-[var(--border)] bg-transparent cursor-pointer p-0 flex-shrink-0"
+                        title="Pick any colour"
+                        aria-label="Custom accent colour"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-[11px] font-semibold ${(draft as any).accent === 'custom' ? 'text-[var(--accent)]' : 'text-[var(--text)]'}`}>
+                          Custom colour {(draft as any).accent === 'custom' && (draft as any).accentColor ? `· ${String((draft as any).accentColor).toUpperCase()}` : ''}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)]">Any colour — auto-graded to stay professional.</div>
+                      </div>
+                      <button
+                        onClick={() => setDraft({ ...(draft as any), accent: 'custom', accentColor: (draft as any).accentColor || '#818CF8' })}
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-colors ${
+                          (draft as any).accent === 'custom'
+                            ? 'border-[var(--accent)] text-[var(--accent)]'
+                            : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-light)] hover:text-[var(--text)]'
+                        }`}
+                      >
+                        {(draft as any).accent === 'custom' ? 'Active' : 'Use'}
+                      </button>
+                    </div>
+
                     <p className="text-[10px] text-[var(--text-muted)] mt-2">
-                      One accent, used sparingly — for the active tab, the save state, and revision badges. Tobacco Gold is the default.
+                      Pick a preset or any custom colour — the app grades surfaces, borders and text to match so it always looks professional.
                     </p>
                   </Section>
 
@@ -980,31 +1046,9 @@ export default function SettingsOverlay({ open, onClose }: Props) {
               {tab === 'shortcuts' && (
                 <ShortcutsPanel />
               )}
+              </div>
             </div>
-
-            {/* Footer */}
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-[var(--border)] bg-[var(--sidebar)]">
-              <button
-                onClick={() => { if (confirm('Reset all settings to defaults?')) { resetSettings(); onClose(); toast.success('Settings reset'); } }}
-                title="Reset to defaults"
-                className="p-2 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
-              <div className="flex-1" />
-              <button onClick={cancel} className="px-4 py-2 rounded-md bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:border-[var(--text-muted)]">
-                Cancel
-              </button>
-              <button
-                onClick={save}
-                disabled={!dirty}
-                className="px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--bg)] text-xs font-bold hover:brightness-110 disabled:opacity-40 flex items-center gap-1.5"
-              >
-                <Save className="w-3.5 h-3.5" />
-                Save
-              </button>
-            </div>
-          </motion.aside>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>

@@ -17,6 +17,8 @@ import {
   Drama,
   Wand2,
   Layers,
+  X,
+  Trash2,
 } from 'lucide-react';
 import type { Story, StoryType } from '@/types';
 
@@ -24,16 +26,21 @@ interface StorySelectorProps {
   stories: Story[];
   onSelectStory: (id: string) => void;
   onCreateStory: (title: string, type: StoryType) => string;
+  onDeleteStory?: (id: string) => void;
+  /** When true a close button is shown (only makes sense when at least one
+   *  story exists to go back to). */
+  canClose?: boolean;
+  onClose?: () => void;
 }
 
 const STORY_TYPES: { id: StoryType; label: string; description: string; icon: any; gradient: string }[] = [
-  { id: 'movie',       label: 'Feature Film',  description: '90–180 min, 3-act',          icon: Film,      gradient: 'from-blue-500 to-purple-600' },
+  { id: 'movie',       label: 'Movie',         description: 'Feature film · 90–180 min, 3-act', icon: Film,      gradient: 'from-blue-500 to-purple-600' },
   { id: 'tv-series',   label: 'TV Series',     description: 'Multi-season episodic',     icon: Tv,        gradient: 'from-pink-500 to-rose-600' },
   { id: 'tv-show',     label: 'TV Show',       description: 'Variety / talk / reality',  icon: Sparkles,  gradient: 'from-yellow-500 to-orange-600' },
   { id: 'mini-series', label: 'Mini Series',   description: '3–10 episode arc',          icon: Layers,    gradient: 'from-indigo-500 to-blue-600' },
-  { id: 'thriller',    label: 'Thriller',      description: 'Suspense-focused genre',    icon: Wand2,     gradient: 'from-red-600 to-zinc-900' },
+  { id: 'thriller',    label: 'Thriller Film', description: 'Suspense-focused movie',    icon: Wand2,     gradient: 'from-red-600 to-zinc-900' },
   { id: 'documentary', label: 'Documentary',   description: 'Non-fiction / interview',   icon: Camera,    gradient: 'from-emerald-500 to-teal-600' },
-  { id: 'short-film',  label: 'Short Film',    description: 'Under 40 min',              icon: Film,      gradient: 'from-cyan-500 to-blue-600' },
+  { id: 'short-film',  label: 'Short Film',    description: 'Short movie · under 40 min', icon: Film,      gradient: 'from-cyan-500 to-blue-600' },
   { id: 'music-video', label: 'Music Video',   description: 'Lyric / performance',       icon: Music2,    gradient: 'from-fuchsia-500 to-pink-600' },
   { id: 'commercial',  label: 'Commercial',    description: '15–60s spot',               icon: Megaphone, gradient: 'from-amber-500 to-red-600' },
   { id: 'youtube',     label: 'YouTube / Vlog',description: 'Long & short form',         icon: Youtube,   gradient: 'from-red-500 to-red-700' },
@@ -42,7 +49,7 @@ const STORY_TYPES: { id: StoryType; label: string; description: string; icon: an
   { id: 'animation',   label: 'Animation',     description: 'Animated / motion',         icon: Mic,       gradient: 'from-teal-500 to-emerald-600' },
 ];
 
-export default function StorySelector({ stories, onSelectStory, onCreateStory }: StorySelectorProps) {
+export default function StorySelector({ stories, onSelectStory, onCreateStory, onDeleteStory, canClose, onClose }: StorySelectorProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [selectedType, setSelectedType] = useState<StoryType>('movie');
@@ -61,8 +68,17 @@ export default function StorySelector({ stories, onSelectStory, onCreateStory }:
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-3xl"
+        className="w-full max-w-3xl relative"
       >
+        {canClose && onClose && (
+          <button
+            onClick={onClose}
+            title="Close"
+            className="absolute -top-2 right-0 p-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)] transition-colors z-10"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
         {/* Header */}
         <div className="text-center mb-10">
           <motion.div
@@ -167,33 +183,43 @@ export default function StorySelector({ stories, onSelectStory, onCreateStory }:
               {stories.map((story, i) => {
                 const meta = STORY_TYPES.find(t => t.id === story.type) || STORY_TYPES[0];
                 return (
-                  <motion.button
+                  <motion.div
                     key={story.id}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    onClick={() => onSelectStory(story.id)}
-                    className="w-full p-4 bg-[var(--card)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] transition-all flex items-center gap-4 text-left group"
+                    className="w-full p-4 bg-[var(--card)] border border-[var(--border)] rounded-xl hover:border-[var(--accent)] transition-all flex items-center gap-4 group"
                   >
-                    <div className="w-12 h-12 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center flex-shrink-0 group-hover:border-[var(--accent)] transition-colors">
-                      <meta.icon className="w-6 h-6 text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition-colors" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-[var(--text)] truncate group-hover:text-[var(--accent)] transition-colors">
-                        {story.title}
+                    <button onClick={() => onSelectStory(story.id)} className="flex items-center gap-4 flex-1 min-w-0 text-left">
+                      <div className="w-12 h-12 rounded-md bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center flex-shrink-0 group-hover:border-[var(--accent)] transition-colors">
+                        <meta.icon className="w-6 h-6 text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition-colors" />
                       </div>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--hover)] text-[var(--text-secondary)] uppercase tracking-wider">
-                          {meta.label}
-                        </span>
-                        <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {new Date(story.updatedAt).toLocaleDateString()}
-                        </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-[var(--text)] truncate group-hover:text-[var(--accent)] transition-colors">
+                          {story.title}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--hover)] text-[var(--text-secondary)] uppercase tracking-wider">
+                            {meta.label}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(story.updatedAt).toLocaleDateString()}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <ArrowRight className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" />
-                  </motion.button>
+                    </button>
+                    {onDeleteStory && (
+                      <button
+                        onClick={() => onDeleteStory(story.id)}
+                        title="Delete story"
+                        className="p-2 rounded-lg text-[var(--text-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--danger)] hover:bg-[var(--hover)] transition-all flex-shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    <ArrowRight className="w-5 h-5 text-[var(--text-muted)] flex-shrink-0" />
+                  </motion.div>
                 );
               })}
             </div>

@@ -31,6 +31,17 @@
 import { useAppStore } from '@/store/useAppStore';
 import { toast } from 'sonner';
 
+/** Event the in-app RunwayPromptDialog listens for. We always surface the
+ *  prompt in a copyable panel because Runway's prompt box can't be reliably
+ *  auto-filled. */
+export const RUNWAY_PROMPT_EVENT = 'app:runwayPrompt';
+export interface RunwayPromptDetail {
+  prompt: string;
+  target: 'image' | 'video';
+  shotId?: string;
+  shotLabel?: string;
+}
+
 /** A message we post on the window for the extension's content
  *  script to pick up. */
 export interface SendToRunwayPayload {
@@ -52,8 +63,6 @@ export interface RunwayReturnPayload {
   url: string;
   assetKind: 'image' | 'video';
 }
-
-const RUNWAY_WINDOW_NAME = 'kindling_runway';
 
 /** Tracks whether we've detected the extension. The content script
  *  pings us shortly after page load. */
@@ -100,36 +109,37 @@ export async function sendPromptToRunway(opts: {
     target,
   };
 
-  // Always pop Runway in a stable named tab so re-clicks reuse the
-  // existing logged-in session.
-  const runwayUrl = target === 'video'
-    ? 'https://app.runwayml.com/video-tools/teams/personal/ai-tools/gen-4'
-    : 'https://app.runwayml.com/video-tools/teams/personal/ai-tools/generative-images';
-
-  if (extensionPresent) {
-    // Extension takes care of focusing the right tab AND pasting.
-    window.postMessage(payload, '*');
-    // Still ensure the tab exists. The extension will focus the
-    // existing one if it's already open.
-    window.open(runwayUrl, RUNWAY_WINDOW_NAME);
-    toast.success('Sent to Runway — switch to that tab and click Generate', {
-      description: 'When the result loads, hit the "Send to Kindling" button the extension adds.',
-      duration: 8000,
-    });
-    return;
-  }
-
-  // No extension — fallback: clipboard + open tab + instruct.
+  // ALWAYS copy the prompt to the clipboard first — this is the reliable
+  // path. Runway's React prompt box frequently rejects programmatic input,
+  // so the user pastes (Ctrl/Cmd+V) instead of trusting an auto-fill.
+  let copied = false;
   try {
     await navigator.clipboard.writeText(opts.prompt);
+    copied = true;
   } catch {
-    // clipboard API may fail in non-secure contexts — fall through.
+    // clipboard API may fail in non-secure contexts — the dialog still shows
+    // the prompt with a manual Copy button as a fallback.
   }
-  window.open(runwayUrl, RUNWAY_WINDOW_NAME);
-  toast.success('Prompt copied to clipboard — Runway opened in a tab', {
-    description:
-      'Install the Kindling Runway Bridge extension for a one-click flow. Otherwise: paste into Runway (Ctrl+V), Generate, then drag the result back into the shot here.',
-    duration: 10000,
+
+  // ALWAYS surface the prompt in the in-app dialog so it's visible + copyable
+  // regardless of whether the extension or auto-fill works. This fixes the
+  // "I'm taken to Runway but the prompt never appears" problem.
+  const detail: RunwayPromptDetail = {
+    prompt: opts.prompt,
+    target,
+    shotId: opts.shotId,
+    shotLabel: opts.shotLabel,
+  };
+  document.dispatchEvent(new CustomEvent<RunwayPromptDetail>(RUNWAY_PROMPT_EVENT, { detail }));
+
+  // If the bridge extension is present, ALSO try to auto-fill (best-effort).
+  if (extensionPresent) {
+    window.postMessage(payload, '*');
+  }
+
+  toast.success(copied ? 'Prompt copied — paste it into Runway' : 'Prompt ready — copy it from the panel', {
+    description: 'A panel with the full prompt is open (bottom-right). Open Runway, paste, and Generate.',
+    duration: 6000,
   });
 }
 
