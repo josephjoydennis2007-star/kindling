@@ -371,6 +371,8 @@ function App() {
   //                      material (e.g. the Connector's add_to_story).
   const dirtyRef = useRef(false);
   const lastCloudDataRef = useRef<string | null>(null);
+  // One-shot guard so the "story is getting large" warning isn't spammed.
+  const nearLimitWarnedRef = useRef(false);
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
 
   useEffect(() => {
@@ -540,6 +542,15 @@ function App() {
         // Remember exactly what we're sending so the live watcher recognizes
         // the snapshot echo of our own write and doesn't re-import it.
         lastCloudDataRef.current = cloudData;
+        // Warn once when approaching the cloud size limit, before it blocks.
+        const { isNearCloudLimit, byteSize, humanSize, SAFE_DATA_LIMIT } = await import('@/lib/storySize');
+        if (isNearCloudLimit(cloudData) && !nearLimitWarnedRef.current) {
+          nearLimitWarnedRef.current = true;
+          toast.warning('This story is getting large', {
+            description: `It's ${humanSize(byteSize(cloudData))} of a ${humanSize(SAFE_DATA_LIMIT)} cloud limit. Large embedded images are usually the cause — attach images by URL rather than uploading to keep syncing smoothly.`,
+            duration: 9000,
+          });
+        }
         await pushStory({
           storyId: activeStoryId,
           title: story?.title || state.screenplay.title || 'Untitled',
@@ -548,6 +559,15 @@ function App() {
       } catch (err: any) {
         // eslint-disable-next-line no-console
         console.warn('[Kindling] Cloud save failed (local copy was saved):', err?.code || err?.message || err);
+        // The story is too big for Firestore's 1MB limit — this used to fail
+        // silently and stop cloud sync. Now we tell the user clearly (local
+        // copy is still safe). Show it even on autosave since it's important.
+        if (err?.name === 'StorySizeError') {
+          toast.error('Story too large to sync to the cloud', {
+            description: err.message,
+            duration: 12000,
+          });
+        }
       }
     }
 

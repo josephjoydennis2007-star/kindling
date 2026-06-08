@@ -51,6 +51,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db, auth } from '@/firebase';
+import { assertWithinCloudLimit } from '@/lib/storySize';
 
 /**
  * Self-healing retry wrapper.
@@ -204,6 +205,10 @@ export async function pushStory(input: {
 }): Promise<void> {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in');
+  // Guard the Firestore 1MB document limit BEFORE attempting the write, so an
+  // oversized story fails loudly (catchable StorySizeError) instead of silently
+  // not syncing. The local IndexedDB copy is unaffected.
+  assertWithinCloudLimit(input.data);
   return withRecovery(async () => {
     const ref = doc(db, 'stories', input.storyId);
     // Determine whether the doc exists. If the rules deny the read
