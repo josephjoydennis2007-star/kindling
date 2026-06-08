@@ -243,6 +243,21 @@ function normalizeStoryType(v) {
   return map[s] || 'movie';
 }
 function targetFor(type) { return TYPE_TARGETS[normalizeStoryType(type)] || TYPE_TARGETS.movie; }
+
+// Script-breakdown categories (must match the app's SceneBreakdown shape).
+const BREAKDOWN_KEYS = ['cast', 'extras', 'props', 'wardrobe', 'makeup', 'vehicles', 'animals', 'sfx', 'sound', 'setDressing'];
+function normalizeBreakdown(b) {
+  if (!b || typeof b !== 'object') return null;
+  const out = {};
+  let any = false;
+  for (const k of BREAKDOWN_KEYS) {
+    const v = b[k];
+    if (Array.isArray(v) && v.length) { out[k] = v.map((x) => String(x)).filter(Boolean); if (out[k].length) any = true; }
+    else if (typeof v === 'string' && v.trim()) { out[k] = v.split(',').map((x) => x.trim()).filter(Boolean); if (out[k].length) any = true; }
+  }
+  if (typeof b.notes === 'string' && b.notes.trim()) { out.notes = b.notes.trim(); any = true; }
+  return any ? out : null;
+}
 function progressNote(type, sceneCount, lineCount) {
   const t = targetFor(type);
   const pct = Math.min(
@@ -333,6 +348,8 @@ function makeScenes(list, startSceneIndex, startShotOrder, shotsOut, bRollsOut) 
     if (typeof s.shootDate === 'string' && s.shootDate.trim()) scene.shootDate = s.shootDate.trim();
     const budget = normalizeBudget(s.budget);
     if (budget) scene.budget = budget;
+    const breakdown = normalizeBreakdown(s.breakdown);
+    if (breakdown) scene.breakdown = breakdown;
     return scene;
   });
 }
@@ -586,6 +603,28 @@ const SHOT_ITEMS = {
     },
   },
 };
+const BUDGET_SCHEMA = {
+  type: 'object',
+  description: 'Per-category budget numbers (currency set in the app).',
+  properties: { cast: { type: 'number' }, crew: { type: 'number' }, location: { type: 'number' }, props: { type: 'number' }, post: { type: 'number' } },
+};
+const BREAKDOWN_SCHEMA = {
+  type: 'object',
+  description: '1st-AD production breakdown — what is needed to shoot this scene. Each field is a list of item names.',
+  properties: {
+    cast: { type: 'array', items: { type: 'string' }, description: 'Speaking/principal cast in the scene.' },
+    extras: { type: 'array', items: { type: 'string' }, description: 'Background / atmosphere.' },
+    props: { type: 'array', items: { type: 'string' } },
+    wardrobe: { type: 'array', items: { type: 'string' } },
+    makeup: { type: 'array', items: { type: 'string' }, description: 'Hair / makeup.' },
+    vehicles: { type: 'array', items: { type: 'string' } },
+    animals: { type: 'array', items: { type: 'string' } },
+    sfx: { type: 'array', items: { type: 'string' }, description: 'Special / visual effects.' },
+    sound: { type: 'array', items: { type: 'string' } },
+    setDressing: { type: 'array', items: { type: 'string' } },
+    notes: { type: 'string', description: 'Stunts, permits, weather, special equipment…' },
+  },
+};
 const SCENE_ITEMS = {
   type: 'array',
   description: 'Director scenes (the shot list / production breakdown), distinct from the screenplay text.',
@@ -596,11 +635,8 @@ const SCENE_ITEMS = {
       description: { type: 'string' },
       status: { type: 'string', enum: ['todo', 'in-progress', 'shot', 'final'], description: 'Production status (default todo).' },
       shootDate: { type: 'string', description: 'ISO date YYYY-MM-DD the scene is scheduled to shoot.' },
-      budget: {
-        type: 'object',
-        description: 'Per-category budget numbers.',
-        properties: { cast: { type: 'number' }, crew: { type: 'number' }, location: { type: 'number' }, props: { type: 'number' }, post: { type: 'number' } },
-      },
+      budget: BUDGET_SCHEMA,
+      breakdown: BREAKDOWN_SCHEMA,
       shots: SHOT_ITEMS,
     },
   },
@@ -681,7 +717,7 @@ const TOOLS = [
   {
     name: 'build_story',
     description:
-      "Create a COMPLETE new story in Kindling from a full spec and save it to the user's account. Fill in as much as you can — every part maps to a real workspace in the app: title/logline/synopsis/theme/genre, the character roster, acts+beats (Plot board), director scenes with shots + b-rolls (Director), the screenplay scene-blocks (Writer), worldbuilding entries (World), shoot locations (Locations), writer sections, and notes. IMPORTANT — write to LENGTH for the chosen `type`: a movie/feature must reach feature length (aim ~48 scenes / ~1100 script lines), not a short sketch. You won't fit a whole feature in one call, so build the opening batch here, then call add_to_story repeatedly until the returned progress note says it's at full length. Returns the story id + a length-progress note. To keep writing into THIS story afterward, pass that id to add_to_story.",
+      "Create a COMPLETE new story in Kindling from a full spec and save it to the user's account. Write to INDUSTRY STANDARD: scene headings as INT./EXT. LOCATION - DAY/NIGHT; action in present tense, lean and visual; dialogue with real subtext; acts→beats that follow a clear structure (setup/inciting/midpoint/crisis/climax/payoff); shots with proper grammar (establishing → wide → coverage → inserts). Fill in as much as you can — every part maps to a real workspace in the app: title/logline/synopsis/theme/genre, the character roster, acts+beats (Plot board), director scenes with shots + b-rolls (Director), the screenplay scene-blocks (Writer), worldbuilding entries (World), shoot locations (Locations), writer sections, and notes. IMPORTANT — write to LENGTH for the chosen `type`: a movie/feature must reach feature length (aim ~48 scenes / ~1100 script lines), not a short sketch. You won't fit a whole feature in one call, so build the opening batch here, then call add_to_story repeatedly until the returned progress note says it's at full length. Returns the story id + a length-progress note. To keep writing into THIS story afterward, pass that id to add_to_story.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -750,7 +786,61 @@ const TOOLS = [
       required: ['storyId', 'scene', 'shot', 'imageUrl'],
     },
   },
+  {
+    name: 'set_scene',
+    description:
+      "Update an EXISTING director scene in place — production status, shoot date, budget, and the 1st-AD breakdown (cast/props/wardrobe/SFX/vehicles/etc.). This is how you do the DIRECTING + scheduling + budgeting work on scenes you (or build_story/add_to_story) already created. Identify the scene by 1-based number OR exact name (see get_story → sceneShots). Only the fields you pass are changed.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        storyId: { type: 'string' },
+        scene: { type: ['string', 'number'], description: '1-based scene number OR exact scene name.' },
+        name: { type: 'string', description: 'Optional new scene name.' },
+        description: { type: 'string', description: 'Optional new scene description / action summary.' },
+        status: { type: 'string', enum: ['todo', 'in-progress', 'shot', 'final'] },
+        shootDate: { type: 'string', description: 'ISO date YYYY-MM-DD.' },
+        budget: BUDGET_SCHEMA,
+        breakdown: BREAKDOWN_SCHEMA,
+      },
+      required: ['storyId', 'scene'],
+    },
+  },
+  {
+    name: 'set_shot',
+    description:
+      "Update an EXISTING shot in place — its direction note (the storyboard caption: what happens in the frame), shot type, camera move, lens, duration, and first→last-frame flag. Use this to direct the visuals shot-by-shot. Identify by scene (number or name) + shot (1-based index). Only the fields you pass change. (Use set_shot_frame to attach the actual image.)",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        storyId: { type: 'string' },
+        scene: { type: ['string', 'number'] },
+        shot: { type: 'number', description: '1-based index within the scene.' },
+        description: { type: 'string', description: "The shot's direction note shown under its storyboard frame." },
+        shotType: { type: 'string', enum: ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'] },
+        camera: { type: 'string' },
+        lens: { type: 'string' },
+        durationSec: { type: 'number' },
+        audioNote: { type: 'string' },
+        needsLastFrame: { type: 'boolean' },
+        lastFrameDescription: { type: 'string' },
+      },
+      required: ['storyId', 'scene', 'shot'],
+    },
+  },
 ];
+
+// Resolve a scene by 1-based number or exact (case-insensitive) name.
+function resolveScene(data, sceneArg) {
+  const scenes = Array.isArray(data.scenes) ? data.scenes : [];
+  if (typeof sceneArg === 'number' || (typeof sceneArg === 'string' && /^\d+$/.test(sceneArg.trim()))) {
+    return scenes[Number(typeof sceneArg === 'string' ? sceneArg.trim() : sceneArg) - 1] || null;
+  }
+  if (typeof sceneArg === 'string') {
+    const needle = sceneArg.trim().toLowerCase();
+    return scenes.find((s) => String(s.name || '').trim().toLowerCase() === needle) || null;
+  }
+  return null;
+}
 
 async function callTool(env, name, args) {
   const auth = await signIn(env);
@@ -796,21 +886,38 @@ async function callTool(env, name, args) {
     const allShots = data.shots && typeof data.shots === 'object' ? data.shots : {};
     // Per-scene shot breakdown with 1-based indices + frame status so the
     // caller can target set_shot_frame precisely.
-    const sceneShots = (data.scenes || []).map((s, si) => ({
-      scene: si + 1,
-      name: s.name,
-      shots: (s.shotIds || []).map((id, shi) => {
-        const sh = allShots[id] || {};
-        return {
-          shot: shi + 1,
-          shotType: sh.shotType || '',
-          description: sh.description || '',
-          hasFirstFrame: !!sh.storyboard,
-          hasLastFrame: !!sh.lastFrame,
-          needsLastFrame: !!sh.needsLastFrame,
-          lastFrameDescription: sh.lastFrameDescription || '',
-        };
-      }),
+    const sceneShots = (data.scenes || []).map((s, si) => {
+      const bd = s.breakdown || {};
+      const bdSummary = {};
+      for (const k of BREAKDOWN_KEYS) if (Array.isArray(bd[k]) && bd[k].length) bdSummary[k] = bd[k];
+      return {
+        scene: si + 1,
+        name: s.name,
+        status: s.status || 'todo',
+        shootDate: s.shootDate || null,
+        budget: s.budget || null,
+        breakdown: Object.keys(bdSummary).length ? bdSummary : null,
+        shots: (s.shotIds || []).map((id, shi) => {
+          const sh = allShots[id] || {};
+          return {
+            shot: shi + 1,
+            shotType: sh.shotType || '',
+            directionNote: sh.description || '',  // storyboard caption
+            camera: sh.camera || '',
+            lens: sh.lens || '',
+            hasFirstFrame: !!sh.storyboard,
+            hasLastFrame: !!sh.lastFrame,
+            needsLastFrame: !!sh.needsLastFrame,
+            lastFrameDescription: sh.lastFrameDescription || '',
+          };
+        }),
+      };
+    });
+    // Plot beats (acts → beats) so the AI can read + extend the structure.
+    const beatsById = data.beats && typeof data.beats === 'object' ? data.beats : {};
+    const acts = ((data.plotBoard && data.plotBoard.acts) || []).map((a) => ({
+      title: a.title,
+      beats: (a.beatIds || []).map((bid) => beatsById[bid]).filter(Boolean).map((b) => ({ title: b.title, type: b.beatType || '', description: b.description || '' })),
     }));
     const target = targetFor(sp.type);
     const lineCount = (sp.elements || []).length;
@@ -823,10 +930,8 @@ async function callTool(env, name, args) {
       genre: sp.genre || '',
       theme: sp.theme || '',
       characters: charNames,
-      actCount: (data.plotBoard?.acts || []).length,
-      beatCount: Object.keys(data.beats || {}).length,
+      acts,
       sceneCount: sceneNames.length,
-      sceneNames,
       shotCount: Object.keys(allShots).length,
       sceneShots,
       screenplayLineCount: (sp.elements || []).length,
@@ -834,10 +939,10 @@ async function callTool(env, name, args) {
       lastHeading: headings[headings.length - 1] || '(none yet)',
       sections: (sp.sections || []).map((s) => s.name),
       worldItems: (sp.world || []).map((w) => `${w.name} (${w.kind})`),
-      locations: (sp.locations || []).map((l) => l.name),
+      locations: (sp.locations || []).map((l) => `${l.name} (${l.intExt || 'int'}/${l.timeOfDay || 'day'})`),
       noteCount: (data.notes || []).length,
     };
-    return { content: [{ type: 'text', text: `"${title}" current state:\n${JSON.stringify(summary, null, 2)}\n\nTo continue writing, call add_to_story. To attach a generated frame image to a shot, call set_shot_frame with the scene + shot numbers shown under sceneShots.` }] };
+    return { content: [{ type: 'text', text: `"${title}" current state:\n${JSON.stringify(summary, null, 2)}\n\nWrite/extend: add_to_story (screenplay, scenes, shots, acts/beats, characters, world, locations, notes). Direct existing scenes/shots: set_scene (status/date/budget/breakdown), set_shot (direction note/type/camera/lens), set_shot_frame (attach images). Don't repeat what already exists.` }] };
   }
 
   if (name === 'add_to_story') {
@@ -914,6 +1019,48 @@ async function callTool(env, name, args) {
         text: `✅ Set the ${frame} frame on scene "${sceneObj.name}" (scene ${scenes.indexOf(sceneObj) + 1}), shot #${args.shot}${shot.shotType ? ` (${shot.shotType})` : ''}. It will appear in Kindling's Director + Storyboard views.\nOpen it: ${appUrl}`,
       }],
     };
+  }
+
+  if (name === 'set_scene') {
+    if (!args.storyId) throw new Error('set_scene needs a storyId.');
+    const { title, data } = await readStoryData(env, auth, args.storyId);
+    const scene = resolveScene(data, args.scene);
+    if (!scene) throw new Error(`Could not find scene "${args.scene}". Call get_story to see scene numbers/names.`);
+    const changed = [];
+    if (typeof args.name === 'string' && args.name.trim()) { scene.name = args.name.trim(); scene.heading = scene.heading || scene.name; changed.push('name'); }
+    if (typeof args.description === 'string') { scene.description = args.description; changed.push('description'); }
+    if (typeof args.status === 'string') { scene.status = normalizeSceneStatus(args.status); changed.push('status'); }
+    if (typeof args.shootDate === 'string' && args.shootDate.trim()) { scene.shootDate = args.shootDate.trim(); changed.push('shootDate'); }
+    const bud = normalizeBudget(args.budget); if (bud) { scene.budget = { ...(scene.budget || {}), ...bud }; changed.push('budget'); }
+    const bd = normalizeBreakdown(args.breakdown); if (bd) { scene.breakdown = { ...(scene.breakdown || {}), ...bd }; changed.push('breakdown'); }
+    if (!changed.length) throw new Error('set_scene: nothing to update — pass at least one of name/description/status/shootDate/budget/breakdown.');
+    data.exportedAt = Date.now();
+    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data));
+    return { content: [{ type: 'text', text: `✅ Updated scene "${scene.name}": ${changed.join(', ')}.\nOpen it: ${appUrl}` }] };
+  }
+
+  if (name === 'set_shot') {
+    if (!args.storyId) throw new Error('set_shot needs a storyId.');
+    const { title, data } = await readStoryData(env, auth, args.storyId);
+    const scene = resolveScene(data, args.scene);
+    if (!scene) throw new Error(`Could not find scene "${args.scene}". Call get_story to see scene numbers/names.`);
+    const shotsMap = data.shots && typeof data.shots === 'object' ? data.shots : {};
+    const shotId = (scene.shotIds || [])[Number(args.shot) - 1];
+    const shot = shotId ? shotsMap[shotId] : null;
+    if (!shot) throw new Error(`Scene "${scene.name}" has no shot #${args.shot}.`);
+    const changed = [];
+    if (typeof args.description === 'string') { shot.description = args.description; changed.push('direction note'); }
+    if (typeof args.shotType === 'string') { shot.shotType = normalizeShotType(args.shotType); changed.push('shotType'); }
+    if (typeof args.camera === 'string') { shot.camera = args.camera; changed.push('camera'); }
+    if (typeof args.lens === 'string') { shot.lens = args.lens; changed.push('lens'); }
+    if (typeof args.durationSec === 'number') { shot.durationSec = args.durationSec; changed.push('duration'); }
+    if (typeof args.audioNote === 'string') { shot.audioNote = args.audioNote; changed.push('audio'); }
+    if (typeof args.needsLastFrame === 'boolean') { shot.needsLastFrame = args.needsLastFrame; changed.push('needsLastFrame'); }
+    if (typeof args.lastFrameDescription === 'string') { shot.lastFrameDescription = args.lastFrameDescription; shot.needsLastFrame = true; changed.push('lastFrameDescription'); }
+    if (!changed.length) throw new Error('set_shot: nothing to update.');
+    data.exportedAt = Date.now();
+    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data));
+    return { content: [{ type: 'text', text: `✅ Updated shot #${args.shot} in scene "${scene.name}": ${changed.join(', ')}.\nOpen it: ${appUrl}` }] };
   }
 
   throw new Error(`Unknown tool: ${name}`);
