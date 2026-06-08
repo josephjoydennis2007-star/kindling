@@ -127,8 +127,13 @@ service cloud.firestore {
     // the matching uid can write their own row.
     match /profilesByEmail/{email} {
       allow read: if request.auth != null;
+      // HARDENED: a user may only write the row for THEIR OWN email (doc id),
+      // not claim someone else's email → uid mapping (which would poison invite
+      // lookups). Requires the email token to match the doc id.
       allow write: if request.auth != null
-                   && request.resource.data.uid == request.auth.uid;
+                   && request.resource.data.uid == request.auth.uid
+                   && request.auth.token.email != null
+                   && email == request.auth.token.email.lower();
     }
 
     // ── Presence (Round 3) ───────────────────────────────────────────
