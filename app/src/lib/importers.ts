@@ -42,7 +42,9 @@ function fountainToElements(text: string): ScreenplayElement[] {
       continue;
     }
     if (/^(int|ext|i\/e|est)[. ]/i.test(stripped) || (/^\.[A-Z]/.test(stripped) && !stripped.startsWith('...'))) {
-      out.push({ id: genId(), type: 'scene-heading', content: escape(stripped.replace(/^\./, '')), sceneId: null });
+      // Strip a leading "." (forced heading) and a trailing "#n#" scene number.
+      const heading = stripped.replace(/^\./, '').replace(/\s*#[^#]+#\s*$/, '').trim();
+      out.push({ id: genId(), type: 'scene-heading', content: escape(heading), sceneId: null });
       inDialogue = false; continue;
     }
     if (/^>/.test(stripped) || /TO:\s*$/.test(stripped)) {
@@ -85,7 +87,12 @@ function fdxToElements(xml: string): ScreenplayElement[] {
     'general': 'action',
     'cast list': 'action',
   };
-  doc.querySelectorAll('Paragraph').forEach((p) => {
+  // Only read paragraphs from the BODY <Content> — not the <TitlePage> (whose
+  // paragraphs would otherwise import as Action noise). The body Content is the
+  // one whose parent is <FinalDraft>.
+  const contents = Array.from(doc.querySelectorAll('Content'));
+  const body = contents.find((c) => c.parentElement?.tagName === 'FinalDraft') || contents[0] || doc;
+  body.querySelectorAll('Paragraph').forEach((p) => {
     const type = (p.getAttribute('Type') || 'Action').toLowerCase();
     const mapped = map[type] || 'action';
     const text = Array.from(p.querySelectorAll('Text')).map((t) => t.textContent || '').join('').trim();

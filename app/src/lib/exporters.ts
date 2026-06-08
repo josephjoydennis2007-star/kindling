@@ -309,29 +309,33 @@ function blocksToText(blocks: Block[]): string {
  * Other apps (Highland, Final Draft, WriterDuet, KIT Scenarist…) read it.
  * https://fountain.io/syntax
  */
-function blocksToFountain(blocks: Block[], title: string): string {
-  const out: string[] = [];
-  // Fountain title page is a key-value block separated from the body by a blank line.
-  if (title) {
-    out.push(`Title: ${title}`);
-    out.push('Credit: written by');
-    out.push('');
-  }
-  for (const b of blocks) {
-    if (b.kind === 'pageBreak') { out.push('', '===', ''); continue; }
-    if (b.kind === 'rule')       { out.push(''); continue; }
-    if (b.kind === 'spacer')     { out.push(''); continue; }
-    if (b.kind === 'list')       { (b.items || []).forEach((i) => out.push('* ' + i)); continue; }
-    if (b.kind === 'h1')         { out.push('', `# ${(b.text || '').toUpperCase()}`); continue; }
-    if (b.kind === 'h2')         { out.push('', `## ${(b.text || '').toUpperCase()}`); continue; }
-    if (b.kind === 'h3' || b.kind === 'h4') { out.push('', (b.text || '').toUpperCase()); continue; }
+const SCENE_HEADING_RE = /^(INT|EXT|EST|INT\.?\/EXT|I\/E)[.\s]/i;
 
+function blocksToFountain(blocks: Block[], title: string, author?: string): string {
+  const out: string[] = [];
+  // ── Title page (Fountain key:value block, blank line ends it) ──
+  out.push(`Title: ${title || 'Untitled'}`);
+  out.push('Credit: Written by');
+  if (author) out.push(`Author: ${author}`);
+  out.push('');
+
+  // Fountain is a SCREENPLAY interchange format — emit only the scripted
+  // elements (not prose sections like logline/synopsis/characters, which
+  // would import as Action noise in other tools). Scene numbers as #n#.
+  let sceneNo = 0;
+  for (const b of blocks) {
+    if (!b.scrFormat) continue;
     const t = (b.text || '').trim();
-    if (!t) { out.push(''); continue; }
+    if (!t) continue;
     switch (b.scrFormat) {
-      case 'scene-heading':
-        out.push('', t.toUpperCase());
+      case 'scene-heading': {
+        sceneNo++;
+        let h = t.toUpperCase();
+        // Force a scene heading with a leading dot if it doesn't look like one.
+        if (!SCENE_HEADING_RE.test(h)) h = `.${h}`;
+        out.push('', `${h} #${sceneNo}#`);
         break;
+      }
       case 'character':
         out.push('', t.toUpperCase());
         break;
@@ -342,11 +346,10 @@ function blocksToFountain(blocks: Block[], title: string): string {
         out.push(t);
         break;
       case 'transition':
-        // Fountain transitions start with > or end with TO:
-        out.push('', `> ${t.toUpperCase()}`);
+        out.push('', `> ${t.toUpperCase().replace(/^>\s*/, '')}`);
         break;
       default:
-        out.push(t);
+        out.push('', t); // action
     }
   }
   return out.join('\n') + '\n';
@@ -356,7 +359,7 @@ function blocksToFountain(blocks: Block[], title: string): string {
  * Final Draft .fdx — XML the FinalDraft.app reads natively. We emit a minimal
  * but valid FinalDraft 5 document with one <Paragraph Type="..."> per element.
  */
-function blocksToFdx(blocks: Block[], title: string): string {
+function blocksToFdx(blocks: Block[], title: string, author?: string): string {
   const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const typeMap: Record<string, string> = {
     'scene-heading': 'Scene Heading',
@@ -367,14 +370,29 @@ function blocksToFdx(blocks: Block[], title: string): string {
     'transition': 'Transition',
   };
   const paragraphs: string[] = [];
+  let sceneNo = 0;
   for (const b of blocks) {
-    const t = (b.text || '').trim();
-    if (!t && !b.scrFormat) continue;
-    const fdxType = b.scrFormat ? (typeMap[b.scrFormat] || 'Action') : 'Action';
-    paragraphs.push(
-      `    <Paragraph Type="${fdxType}">\n      <Text>${escAttr(t)}</Text>\n    </Paragraph>`
-    );
+    // FDX is a SCREENPLAY format — only emit scripted elements so the body
+    // isn't polluted with prose sections as Action.
+    if (!b.scrFormat) continue;
+    let t = (b.text || '').trim();
+    if (!t) continue;
+    const fdxType = typeMap[b.scrFormat] || 'Action';
+    if (b.scrFormat === 'scene-heading') {
+      sceneNo++;
+      paragraphs.push(`    <Paragraph Number="${sceneNo}" Type="Scene Heading">\n      <Text>${escAttr(t.toUpperCase())}</Text>\n    </Paragraph>`);
+    } else {
+      if (b.scrFormat === 'character' || b.scrFormat === 'transition') t = t.toUpperCase();
+      if (b.scrFormat === 'parenthetical') t = `(${t.replace(/^\(|\)$/g, '')})`;
+      paragraphs.push(`    <Paragraph Type="${fdxType}">\n      <Text>${escAttr(t)}</Text>\n    </Paragraph>`);
+    }
   }
+  const tp: string[] = [
+    `      <Paragraph Alignment="Center"><Text>${escAttr(title || 'Untitled')}</Text></Paragraph>`,
+    `      <Paragraph Alignment="Center"><Text></Text></Paragraph>`,
+    `      <Paragraph Alignment="Center"><Text>Written by</Text></Paragraph>`,
+  ];
+  if (author) tp.push(`      <Paragraph Alignment="Center"><Text>${escAttr(author)}</Text></Paragraph>`);
   return `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <FinalDraft DocumentType="Script" Template="No" Version="5">
   <Content>
@@ -382,29 +400,38 @@ ${paragraphs.join('\n')}
   </Content>
   <TitlePage>
     <Content>
-      <Paragraph><Text>${escAttr(title)}</Text></Paragraph>
+${tp.join('\n')}
     </Content>
   </TitlePage>
 </FinalDraft>
 `;
 }
 
-function blocksToPdfBlob(blocks: Block[], title: string): Blob {
+function blocksToPdfBlob(blocks: Block[], title: string, author?: string): Blob {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const marginX = 72;     // 1 inch
-  const marginY = 72;
-  let y = marginY;
+  const pageW = doc.internal.pageSize.getWidth();   // 612pt (8.5")
+  const pageH = doc.internal.pageSize.getHeight();  // 792pt (11")
+  // Industry spec: 1.5" left, 1" right/top/bottom. Courier 12pt at 6 lines/inch
+  // (12pt leading) → 54 lines in the 9" writable column.
+  const mL = 108, mR = 72, mT = 72, mB = 72;
+  const LH = 12;
+  let y = mT;
+  let pageNum = 1;
+  let sceneNo = 0;
 
   doc.setProperties({ title });
   doc.setFont('courier', 'normal');
   doc.setFontSize(12);
 
-  const lineGap = (size: number) => size * 1.35;
-
-  const newPage = () => { doc.addPage(); y = marginY; };
-  const ensure = (h: number) => { if (y + h > pageH - marginY) newPage(); };
+  const drawPageNumber = () => {
+    if (pageNum <= 1) return; // title/first page unnumbered
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(12);
+    const s = `${pageNum}.`;
+    doc.text(s, pageW - mR - doc.getTextWidth(s), mT - 36); // top-right, 0.5" down
+  };
+  const newPage = () => { doc.addPage(); pageNum++; y = mT; drawPageNumber(); };
+  const ensure = (h: number) => { if (y + h > pageH - mB) newPage(); };
 
   const writeWrapped = (text: string, opts: { size?: number; bold?: boolean; align?: 'left' | 'center' | 'right'; indentLeft?: number; indentRight?: number; upper?: boolean }) => {
     const size = opts.size || 12;
@@ -412,47 +439,78 @@ function blocksToPdfBlob(blocks: Block[], title: string): Blob {
     doc.setFontSize(size);
     const indentL = opts.indentLeft || 0;
     const indentR = opts.indentRight || 0;
-    const width = pageW - marginX * 2 - indentL - indentR;
+    const width = Math.max(40, pageW - mL - mR - indentL - indentR);
     const lines = doc.splitTextToSize(opts.upper ? text.toUpperCase() : text, width) as string[];
-    const lh = lineGap(size);
+    const lh = size === 12 ? LH : size * 1.2;
     for (const ln of lines) {
       ensure(lh);
-      let x = marginX + indentL;
+      let x = mL + indentL;
       if (opts.align === 'center') x = (pageW - doc.getTextWidth(ln)) / 2;
-      else if (opts.align === 'right') x = pageW - marginX - doc.getTextWidth(ln);
+      else if (opts.align === 'right') x = pageW - mR - doc.getTextWidth(ln);
       doc.text(ln, x, y);
       y += lh;
     }
   };
 
-  for (const b of blocks) {
+  // ── Title page: if the document opens with an h1 (the title block), render
+  //    a proper centered title page and start the script on a fresh page. ──
+  let i = 0;
+  if (blocks[0]?.kind === 'h1') {
+    y = pageH * 0.4;
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(16);
+    for (const ln of doc.splitTextToSize((blocks[0].text || title || 'Untitled').toUpperCase(), pageW - mL - mR) as string[]) {
+      doc.text(ln, (pageW - doc.getTextWidth(ln)) / 2, y); y += 22;
+    }
+    i = 1;
+    y += 28;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(12);
+    if (author) { const s = `Written by ${author}`; doc.text(s, (pageW - doc.getTextWidth(s)) / 2, y); y += 16; }
+    // Consume the title-page prose blocks (Written by / contact) so they don't
+    // repeat in the body.
+    while (blocks[i] && blocks[i].kind === 'p') i++;
+    while (blocks[i] && (blocks[i].kind === 'spacer' || blocks[i].kind === 'rule')) i++;
+    newPage();
+  }
+
+  for (; i < blocks.length; i++) {
+    const b = blocks[i];
     if (b.kind === 'pageBreak') { newPage(); continue; }
     if (b.kind === 'spacer') { y += 8; continue; }
     if (b.kind === 'rule') {
-      ensure(12);
-      doc.setDrawColor(150);
-      doc.line(marginX, y, pageW - marginX, y);
-      y += 10;
-      continue;
+      ensure(12); doc.setDrawColor(150); doc.line(mL, y, pageW - mR, y); y += 10; continue;
     }
-    if (b.kind === 'list') {
-      (b.items || []).forEach((i) => writeWrapped('• ' + i, { size: 11, indentLeft: 12 }));
-      y += 4;
-      continue;
-    }
-    if (b.kind === 'h1') { y += 6; writeWrapped(b.text || '', { size: 20, bold: true, align: 'center', upper: true }); y += 10; continue; }
-    if (b.kind === 'h2') { y += 8; writeWrapped(b.text || '', { size: 16, bold: true, upper: true }); y += 6; continue; }
+    if (b.kind === 'list') { (b.items || []).forEach((it) => writeWrapped('• ' + it, { size: 11, indentLeft: 12 })); y += 4; continue; }
+    if (b.kind === 'h1') { y += 6; writeWrapped(b.text || '', { size: 18, bold: true, align: 'center', upper: true }); y += 10; continue; }
+    if (b.kind === 'h2') { y += 8; writeWrapped(b.text || '', { size: 15, bold: true, upper: true }); y += 6; continue; }
     if (b.kind === 'h3') { y += 6; writeWrapped(b.text || '', { size: 13, bold: true, upper: true }); y += 4; continue; }
     if (b.kind === 'h4') { y += 4; writeWrapped(b.text || '', { size: 11, bold: true }); y += 2; continue; }
 
     const t = b.text || '';
-    if (b.scrFormat === 'scene-heading') { y += 6; writeWrapped(t, { size: 12, bold: true, upper: true }); continue; }
-    if (b.scrFormat === 'character') { y += 4; writeWrapped(t, { size: 12, bold: true, align: 'center', upper: true }); continue; }
-    if (b.scrFormat === 'parenthetical') { writeWrapped(`(${t.replace(/^\(|\)$/g, '')})`, { size: 11, align: 'center' }); continue; }
-    if (b.scrFormat === 'dialogue') { writeWrapped(t, { size: 12, indentLeft: 110, indentRight: 110 }); continue; }
-    if (b.scrFormat === 'transition') { y += 4; writeWrapped(t, { size: 12, bold: true, align: 'right', upper: true }); continue; }
-
-    writeWrapped(t, { size: 12 });
+    switch (b.scrFormat) {
+      case 'scene-heading': {
+        y += LH; // blank line before a scene
+        ensure(LH);
+        sceneNo++;
+        const num = String(sceneNo);
+        doc.setFont('courier', 'bold'); doc.setFontSize(12);
+        doc.text(num, mL - 36, y);            // scene number in the left margin
+        doc.text(num, pageW - mR + 12, y);    // ...and the right margin
+        writeWrapped(t, { size: 12, bold: true, upper: true });
+        continue;
+      }
+      case 'character':
+        writeWrapped(t, { size: 12, upper: true, indentLeft: 158 }); continue;        // ~3.7" from page left
+      case 'parenthetical':
+        writeWrapped(`(${t.replace(/^\(|\)$/g, '')})`, { size: 12, indentLeft: 115, indentRight: 150 }); continue;
+      case 'dialogue':
+        writeWrapped(t, { size: 12, indentLeft: 72, indentRight: 108 }); continue;     // 2.5"–6" column
+      case 'transition':
+        y += LH; writeWrapped(t, { size: 12, upper: true, align: 'right' }); continue;
+      default:
+        writeWrapped(t, { size: 12 }); continue;                                        // action, full width
+    }
   }
 
   return doc.output('blob');
@@ -579,7 +637,7 @@ export async function exportProject(
 
   switch (sel.format) {
     case 'pdf': {
-      blob = blocksToPdfBlob(blocks, storyTitle);
+      blob = blocksToPdfBlob(blocks, storyTitle, state.screenplay?.author);
       filename = `${baseName}.pdf`;
       break;
     }
@@ -606,12 +664,12 @@ export async function exportProject(
       break;
     }
     case 'fountain': {
-      blob = new Blob([blocksToFountain(blocks, storyTitle)], { type: 'text/plain;charset=utf-8' });
+      blob = new Blob([blocksToFountain(blocks, storyTitle, state.screenplay?.author)], { type: 'text/plain;charset=utf-8' });
       filename = `${baseName}.fountain`;
       break;
     }
     case 'fdx': {
-      blob = new Blob([blocksToFdx(blocks, storyTitle)], { type: 'application/xml;charset=utf-8' });
+      blob = new Blob([blocksToFdx(blocks, storyTitle, state.screenplay?.author)], { type: 'application/xml;charset=utf-8' });
       filename = `${baseName}.fdx`;
       break;
     }
