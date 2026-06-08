@@ -124,13 +124,14 @@ export default function StoryboardView() {
             style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
           >
             {sequence.map(({ sceneName, shot, index }) => (
-              <figure key={shot.id} className="bg-[var(--card)] border border-[var(--rule)] rounded-md overflow-hidden group">
+              <figure key={shot.id} className="group relative flex flex-col bg-[var(--card)] border border-[var(--rule)] rounded-xl overflow-hidden transition-all hover:border-[var(--accent)]/50 hover:shadow-[0_12px_34px_-14px_rgba(0,0,0,0.55)]">
+                {/* ── Frame ── */}
                 <div className="aspect-video bg-[var(--bg)] relative">
                   {shot.storyboard ? (
                     <img
                       src={shot.storyboard}
                       alt=""
-                      onClick={() => viewMedia(shot.storyboard!, 'image', `${sceneName} · ${shot.shotType || 'shot'}`)}
+                      onClick={() => viewMedia(shot.storyboard!, 'image', `Shot ${index} · ${sceneName}`)}
                       className="w-full h-full object-cover cursor-zoom-in"
                       title="Click to view full size"
                     />
@@ -140,81 +141,67 @@ export default function StoryboardView() {
                       className="w-full h-full flex flex-col items-center justify-center gap-1 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
                     >
                       <Upload className="w-5 h-5" />
-                      <span className="text-[10px] uppercase tracking-widest font-bold">Upload frame</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold">Upload / generate</span>
                     </button>
                   )}
                   {shot.storyboard && (
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => triggerUpload(shot.id)}
-                        className="px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]"
-                      >
-                        Replace
-                      </button>
-                      <button
-                        onClick={() => clearFrame(shot.id)}
-                        className="px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white"
-                      >
-                        Remove
-                      </button>
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/45 flex items-center justify-center gap-2">
+                      <button onClick={() => triggerUpload(shot.id)} className="px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]">Replace</button>
+                      <button onClick={() => clearFrame(shot.id)} className="px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white">Remove</button>
                     </div>
                   )}
-                  <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-black/60 text-white tabular-nums">
-                    {String(index).padStart(3, '0')}
+                  {/* sequence number */}
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/70 text-white tabular-nums backdrop-blur-sm">
+                    {String(index).padStart(2, '0')}
                   </div>
-                  {/* First→last transition badge + last-frame thumbnail. */}
-                  {(shot.lastFrame || shot.needsLastFrame) && (
-                    <div className="absolute top-1 right-1 flex items-center gap-1">
-                      {shot.lastFrame ? (
-                        <img src={shot.lastFrame} alt="last frame" title="Last frame — click to view" onClick={() => viewMedia(shot.lastFrame!, 'image', `${sceneName} · last frame`)} className="w-10 h-7 rounded object-cover border border-white/60 shadow cursor-zoom-in" />
-                      ) : (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)]/90 text-white" title={shot.lastFrameDescription || 'Needs a last frame'}>
-                          Needs last
-                        </span>
-                      )}
+                  {/* shot-type chip */}
+                  {shot.shotType && (
+                    <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)] text-[var(--accent-ink)] shadow">
+                      {shot.shotType}
                     </div>
                   )}
+                  {/* last frame (first→last transition) */}
+                  {shot.lastFrame ? (
+                    <button onClick={() => viewMedia(shot.lastFrame!, 'image', `Shot ${index} · last frame`)} title="Last frame — click to view"
+                      className="absolute bottom-2 right-2 w-12 h-8 rounded-md overflow-hidden border-2 border-white/70 shadow-lg cursor-zoom-in">
+                      <img src={shot.lastFrame} alt="last frame" className="w-full h-full object-cover" />
+                    </button>
+                  ) : shot.needsLastFrame ? (
+                    <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)]/90 text-white" title={shot.lastFrameDescription || 'Needs a last frame'}>
+                      + last
+                    </span>
+                  ) : null}
                 </div>
-                <figcaption className="p-2">
-                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] truncate">{sceneName}</div>
-                  <div className="text-xs text-[var(--text)] truncate font-medium">
-                    {shot.shotType || 'Shot'} {shot.lens ? `· ${shot.lens}` : ''}
+
+                {/* ── Caption ── */}
+                <figcaption className="p-2.5 flex flex-col flex-1">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] truncate">{sceneName}</span>
+                    {shot.lens && <span className="text-[9px] text-[var(--text-muted)] flex-shrink-0">{shot.lens}</span>}
                   </div>
-                  {shot.description && (
-                    <div className="text-[10px] text-[var(--text-muted)] truncate mt-0.5">
-                      {shot.description}
-                    </div>
-                  )}
-                  {/* Send-to-Runway buttons. Image button always shown,
-                      video button only when a still already exists
-                      (since Runway image_to_video needs a source frame). */}
-                  <div className="mt-2 flex gap-1">
+                  {/* Editable directing note — "what happens in this frame". */}
+                  <textarea
+                    defaultValue={shot.description || ''}
+                    onBlur={(e) => updateShot(shot.id, { description: e.target.value })}
+                    placeholder="Direction — what happens in this frame…"
+                    className="w-full min-h-[42px] resize-y bg-transparent text-[11px] leading-snug text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none border border-transparent focus:border-[var(--accent)]/40 rounded-md px-1.5 py-1 transition-colors"
+                  />
+                  {/* Generate buttons */}
+                  <div className="mt-auto pt-2 flex gap-1">
                     <button
-                      onClick={() => sendPromptToRunway({
-                        prompt: buildRunwayPrompt(shot, sceneName),
-                        shotId: shot.id,
-                        shotLabel: `${sceneName} · ${shot.shotType || 'shot'}`,
-                        target: 'image',
-                      })}
-                      title="Copy this shot's prompt + open Runway. Free if you use Explore mode."
-                      className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+                      onClick={() => sendPromptToRunway({ prompt: buildRunwayPrompt(shot, sceneName), shotId: shot.id, shotLabel: `${sceneName} · ${shot.shotType || 'shot'}`, target: 'image' })}
+                      title="Generate this frame in Runway"
+                      className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--bg)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
                     >
-                      <ExternalLink className="w-2.5 h-2.5" />
-                      Image
+                      <ExternalLink className="w-2.5 h-2.5" /> Image
                     </button>
                     <button
-                      onClick={() => sendPromptToRunway({
-                        prompt: buildRunwayPrompt(shot, sceneName),
-                        shotId: shot.id,
-                        shotLabel: `${sceneName} · ${shot.shotType || 'shot'}`,
-                        target: 'video',
-                      })}
+                      onClick={() => sendPromptToRunway({ prompt: buildRunwayPrompt(shot, sceneName), shotId: shot.id, shotLabel: `${sceneName} · ${shot.shotType || 'shot'}`, target: 'video' })}
                       disabled={!shot.storyboard}
-                      title={shot.storyboard ? 'Send to Runway video. Free in Explore mode.' : 'Generate or upload an image first.'}
-                      className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={shot.storyboard ? 'Animate this frame in Runway' : 'Add a frame first'}
+                      className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--bg)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <Film className="w-2.5 h-2.5" />
-                      Video
+                      <Film className="w-2.5 h-2.5" /> Video
                     </button>
                   </div>
                 </figcaption>
