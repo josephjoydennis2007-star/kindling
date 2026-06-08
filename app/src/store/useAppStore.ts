@@ -14,6 +14,8 @@ import type {
   ScreenplayElement,
   Story,
   StoryType,
+  Project,
+  ProjectKnowledge,
   Section,
   CoworkerInfo,
   ChatMessage,
@@ -101,6 +103,8 @@ const DEFAULT_WORKSPACE_LINKS: WorkspaceLink[] = [
 const defaultState: AppState = {
   activeStoryId: null,
   stories: [],
+  projects: [],
+  activeProjectId: null,
   activeTab: 'writer',
   activeSceneId: null,
   activeDirectorSceneId: null,
@@ -268,8 +272,15 @@ function normalizeStoryData(data: any) {
 
 interface AppActions {
   // Stories
-  createStory: (title: string, type?: StoryType) => string;
+  createStory: (title: string, type?: StoryType, projectId?: string) => string;
   loadStory: (storyId: string) => void;
+  // Projects
+  createProject: (name: string, about?: string) => string;
+  updateProject: (id: string, patch: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
+  setActiveProject: (id: string | null) => void;
+  addProjectKnowledge: (projectId: string, name: string, content: string) => void;
+  removeProjectKnowledge: (projectId: string, knowledgeId: string) => void;
   deleteStory: (storyId: string) => void;
   setActiveStory: (storyId: string | null) => void;
   updateStory: (storyId: string, updates: Partial<Story>) => void;
@@ -387,13 +398,15 @@ export const useAppStore = create<AppState & AppActions>()(
       ...defaultState,
 
       // Stories
-      createStory: (title, type) => {
+      createStory: (title, type, projectId) => {
+        const pid = projectId ?? get().activeProjectId ?? undefined;
         const story: Story = {
           id: genId(),
           title: title || 'Untitled Story',
           type: type || 'movie',
           createdAt: Date.now(),
           updatedAt: Date.now(),
+          ...(pid ? { projectId: pid } : {}),
         };
         // Pull a per-type template so a YouTube short doesn't open the same
         // blank screenplay as a Feature Film.
@@ -432,6 +445,41 @@ export const useAppStore = create<AppState & AppActions>()(
         stories: state.stories.map((s) =>
           s.id === storyId ? { ...s, ...updates, updatedAt: Date.now() } : s
         ),
+      })),
+
+      // ---- Projects ----
+      createProject: (name, about) => {
+        const project: Project = {
+          id: genId(),
+          name: name || 'Untitled Project',
+          about: about || '',
+          instructions: '',
+          knowledge: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        set((state) => ({ projects: [...state.projects, project], activeProjectId: project.id }));
+        return project.id;
+      },
+      updateProject: (id, patch) => set((state) => ({
+        projects: state.projects.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: Date.now() } : p)),
+      })),
+      deleteProject: (id) => set((state) => ({
+        projects: state.projects.filter((p) => p.id !== id),
+        activeProjectId: state.activeProjectId === id ? null : state.activeProjectId,
+        // Detach (don't delete) the project's stories so work is never lost.
+        stories: state.stories.map((s) => (s.projectId === id ? { ...s, projectId: undefined } : s)),
+      })),
+      setActiveProject: (id) => set({ activeProjectId: id }),
+      addProjectKnowledge: (projectId, name, content) => set((state) => ({
+        projects: state.projects.map((p) => p.id === projectId
+          ? { ...p, updatedAt: Date.now(), knowledge: [...p.knowledge, { id: genId(), name: name || 'Note', content: content || '', addedAt: Date.now() } as ProjectKnowledge] }
+          : p),
+      })),
+      removeProjectKnowledge: (projectId, knowledgeId) => set((state) => ({
+        projects: state.projects.map((p) => p.id === projectId
+          ? { ...p, updatedAt: Date.now(), knowledge: p.knowledge.filter((k) => k.id !== knowledgeId) }
+          : p),
       })),
 
       // ---- Writer sections ----
@@ -1087,6 +1135,8 @@ export const useAppStore = create<AppState & AppActions>()(
       partialize: (state) => ({
         stories: state.stories,
         activeStoryId: state.activeStoryId,
+        projects: state.projects,
+        activeProjectId: state.activeProjectId,
         settings: state.settings,
         workspaceLinks: state.workspaceLinks,
         coworkers: state.coworkers,

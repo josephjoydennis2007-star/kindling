@@ -5,7 +5,7 @@ import {
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
   LogOut, UserCircle2, Share2, UserPlus, PanelRight, Lightbulb, StickyNote,
   Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X, Stethoscope,
-  MessageCircle, Briefcase, ExternalLink, Copy, Clapperboard, ShieldCheck,
+  MessageCircle, Briefcase, ExternalLink, Copy, Clapperboard, ShieldCheck, FolderKanban,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { openInlineCommentFromSelection } from './InlineCommentPopup';
@@ -547,6 +547,11 @@ export default function TopBar({
                 </Group>
 
                 <Group title="Files">
+                  <Item
+                    icon={FolderKanban}
+                    label="Projects…"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openProjects')); }}
+                  />
                   <Item
                     icon={FileDown}
                     label="Export…"

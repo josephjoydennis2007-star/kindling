@@ -100,7 +100,7 @@ function fsVal(v) {
   return { stringValue: String(v) };
 }
 
-async function writeStoryDoc(env, auth, storyId, title, dataString) {
+async function writeStoryDoc(env, auth, storyId, title, dataString, projectId) {
   const now = new Date().toISOString();
   const fields = {
     owner: fsVal(auth.uid),
@@ -112,6 +112,7 @@ async function writeStoryDoc(env, auth, storyId, title, dataString) {
     createdAt: { timestampValue: now },
     updatedAt: { timestampValue: now },
   };
+  if (projectId) fields.projectId = fsVal(String(projectId));
   const url = `${fsBase(env)}/stories/${storyId}`;
   const r = await fetch(url, {
     method: 'PATCH',
@@ -148,9 +149,107 @@ async function listStoryDocs(env, auth) {
     if (!row.document) continue;
     const id = row.document.name.split('/').pop();
     const f = row.document.fields || {};
-    out.push({ id, title: f.title?.stringValue || 'Untitled' });
+    out.push({ id, title: f.title?.stringValue || 'Untitled', projectId: f.projectId?.stringValue || '' });
   }
   return out;
+}
+
+// ─── Projects ──────────────────────────────────────────────────────────────
+// A project is a creative brief (master prompt + instructions + knowledge)
+// that many stories belong to. The connector reads it so Claude can write new
+// stories ON-BRAND, and can create a project on the user's behalf.
+function parseProjectFields(f) {
+  let knowledge = [];
+  try { knowledge = JSON.parse(f.knowledge?.stringValue || '[]'); } catch { /* ignore */ }
+  return {
+    name: f.name?.stringValue || 'Untitled Project',
+    about: f.about?.stringValue || '',
+    instructions: f.instructions?.stringValue || '',
+    defaultType: f.defaultType?.stringValue || '',
+    knowledge: Array.isArray(knowledge) ? knowledge : [],
+  };
+}
+
+async function listProjectDocs(env, auth) {
+  const url = `${fsBase(env)}:runQuery`;
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: 'projects' }],
+      where: { fieldFilter: { field: { fieldPath: 'owner' }, op: 'EQUAL', value: { stringValue: auth.uid } } },
+      limit: 100,
+    },
+  };
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.idToken}` },
+    body: JSON.stringify(body),
+  });
+  const arr = await r.json();
+  if (!r.ok) throw new Error(`Firestore project query failed: ${JSON.stringify(arr).slice(0, 200)}`);
+  const out = [];
+  for (const row of arr) {
+    if (!row.document) continue;
+    const id = row.document.name.split('/').pop();
+    out.push({ id, ...parseProjectFields(row.document.fields || {}) });
+  }
+  return out;
+}
+
+async function readProjectDoc(env, auth, projectId) {
+  const r = await fetch(`${fsBase(env)}/projects/${projectId}`, { headers: { Authorization: `Bearer ${auth.idToken}` } });
+  if (!r.ok) throw new Error(`Could not read project "${projectId}" (${r.status}). Call list_projects to get a valid id.`);
+  const doc = await r.json();
+  return { id: projectId, ...parseProjectFields(doc.fields || {}) };
+}
+
+// Resolve a project by id OR by (case-insensitive) name. Returns the project
+// object or null. Used so Claude can say "build into my Flatmates project".
+async function resolveProject(env, auth, idOrName) {
+  if (!idOrName) return null;
+  const all = await listProjectDocs(env, auth);
+  const byId = all.find((p) => p.id === idOrName);
+  if (byId) return byId;
+  const want = String(idOrName).trim().toLowerCase();
+  return all.find((p) => (p.name || '').trim().toLowerCase() === want) || null;
+}
+
+async function writeProjectDoc(env, auth, projectId, p) {
+  const now = new Date().toISOString();
+  const fields = {
+    owner: fsVal(auth.uid),
+    name: fsVal(p.name || 'Untitled Project'),
+    about: fsVal(p.about || ''),
+    instructions: fsVal(p.instructions || ''),
+    defaultType: fsVal(p.defaultType || ''),
+    knowledge: fsVal(JSON.stringify(p.knowledge || [])),
+    createdAt: { timestampValue: now },
+    updatedAt: { timestampValue: now },
+  };
+  const r = await fetch(`${fsBase(env)}/projects/${projectId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.idToken}` },
+    body: JSON.stringify({ fields }),
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`Firestore project write failed (${r.status}): ${t.slice(0, 300)}`);
+  }
+}
+
+// Compact, prompt-ready brief the AI uses to build on-brand stories.
+function projectBriefText(p) {
+  const lines = [`PROJECT: ${p.name} (id: ${p.id})`];
+  if (p.defaultType) lines.push(`Default story type: ${p.defaultType}`);
+  if (p.about) lines.push(`\nMASTER PROMPT (what every story here is about + format & tone):\n${p.about}`);
+  if (p.instructions) lines.push(`\nINSTRUCTIONS (standing rules to follow):\n${p.instructions}`);
+  if (p.knowledge && p.knowledge.length) {
+    lines.push(`\nKNOWLEDGE (${p.knowledge.length} item${p.knowledge.length === 1 ? '' : 's'} — reference material):`);
+    for (const k of p.knowledge) {
+      const body = String(k.content || '').slice(0, 4000);
+      lines.push(`\n— ${k.name || 'Note'} —\n${body}`);
+    }
+  }
+  return lines.join('\n');
 }
 
 // ─── Story builders (output the exact shapes Kindling's importStory expects) ─
@@ -525,9 +624,10 @@ async function readStoryData(env, auth, storyId) {
   if (!r.ok) throw new Error(`Could not read story "${storyId}" (${r.status}). Call list_stories to get a valid id.`);
   const doc = await r.json();
   const title = doc.fields?.title?.stringValue || 'Untitled';
+  const projectId = doc.fields?.projectId?.stringValue || '';
   let data = {};
   try { data = JSON.parse(doc.fields?.data?.stringValue || '{}'); } catch { /* keep {} */ }
-  return { title, data };
+  return { title, data, projectId };
 }
 
 // ─── Shared schema fragments (used by both build_story and add_to_story) ───
@@ -715,6 +815,41 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'list_projects',
+    description: "List the user's Kindling Projects (id, name, story type, and how many stories each holds). A Project is a creative brief — a master prompt, standing instructions and knowledge — that many stories belong to (e.g. a YouTube comedy series whose episodes share characters and tone). Call this first when the user mentions building a story 'in my <name> project'.",
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_project',
+    description: "Read a Project's full brief — its master prompt (what every story is about + format & tone), standing instructions, and all knowledge entries (character bios, lore, style guides). ALWAYS call this before writing a new story for a project, then write the story to FIT this brief: same world, recurring characters, format, and tone. Identify the project by id OR by name.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'The project id (from list_projects).' },
+        name: { type: 'string', description: 'OR the project name (case-insensitive), e.g. "Flatmates".' },
+      },
+    },
+  },
+  {
+    name: 'create_project',
+    description: "Create a new Kindling Project (a reusable creative brief many stories share). Use when the user wants to start a new series/brand and have future stories built on-brand. Provide the master prompt (about), standing instructions, default story type, and any knowledge entries. Returns the new project id — pass it as projectId to build_story to file stories under it.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Project name, e.g. "Flatmates — weekly comedy".' },
+        about: { type: 'string', description: 'MASTER PROMPT: what every story here is about + the format & tone the AI should write to.' },
+        instructions: { type: 'string', description: 'Standing rules for the AI (recurring characters, structure, do\'s & don\'ts).' },
+        defaultType: { type: 'string', description: 'Default story type for stories in this project (youtube | tv-series | movie | short-film | music-video | commercial | animation).' },
+        knowledge: {
+          type: 'array',
+          description: 'Reference material the AI should know (character bios, lore, examples, style guide).',
+          items: { type: 'object', properties: { name: { type: 'string' }, content: { type: 'string' } }, required: ['name', 'content'] },
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
     name: 'build_story',
     description:
       "Create a COMPLETE new story in Kindling from a full spec and save it to the user's account. Write to INDUSTRY STANDARD: scene headings as INT./EXT. LOCATION - DAY/NIGHT; action in present tense, lean and visual; dialogue with real subtext; acts→beats that follow a clear structure (setup/inciting/midpoint/crisis/climax/payoff); shots with proper grammar (establishing → wide → coverage → inserts). Fill in as much as you can — every part maps to a real workspace in the app: title/logline/synopsis/theme/genre, the character roster, acts+beats (Plot board), director scenes with shots + b-rolls (Director), the screenplay scene-blocks (Writer), worldbuilding entries (World), shoot locations (Locations), writer sections, and notes. IMPORTANT — write to LENGTH for the chosen `type`: a movie/feature must reach feature length (aim ~48 scenes / ~1100 script lines), not a short sketch. You won't fit a whole feature in one call, so build the opening batch here, then call add_to_story repeatedly until the returned progress note says it's at full length. Returns the story id + a length-progress note. To keep writing into THIS story afterward, pass that id to add_to_story.",
@@ -722,6 +857,8 @@ const TOOLS = [
       type: 'object',
       properties: {
         title: { type: 'string' },
+        projectId: { type: 'string', description: 'Optional — file this story under a Project (from list_projects / create_project). When set, FIRST call get_project and write the story to fit its master prompt, instructions & knowledge.' },
+        projectName: { type: 'string', description: 'Optional alternative to projectId — the project name (case-insensitive) to file this story under.' },
         logline: { type: 'string' },
         synopsis: { type: 'string' },
         theme: { type: 'string' },
@@ -854,10 +991,53 @@ async function callTool(env, name, args) {
     return { content: [{ type: 'text', text }] };
   }
 
+  if (name === 'list_projects') {
+    const list = await listProjectDocs(env, auth);
+    if (!list.length) {
+      return { content: [{ type: 'text', text: 'No projects yet. Create one with create_project (a master prompt + instructions + knowledge that future stories share), then build stories into it.' }] };
+    }
+    const stories = await listStoryDocs(env, auth);
+    const text = 'Your Kindling projects:\n' + list.map((p) => {
+      const n = stories.filter((s) => s.projectId === p.id).length;
+      return `- ${p.name} (id: ${p.id}${p.defaultType ? `, type: ${p.defaultType}` : ''}) — ${n} stor${n === 1 ? 'y' : 'ies'}`;
+    }).join('\n') + '\n\nCall get_project to read a project\'s brief before writing a story for it.';
+    return { content: [{ type: 'text', text }] };
+  }
+
+  if (name === 'get_project') {
+    const p = await resolveProject(env, auth, args.projectId || args.name);
+    if (!p) throw new Error(`No project matched "${args.projectId || args.name || ''}". Call list_projects to see ids + names.`);
+    const stories = (await listStoryDocs(env, auth)).filter((s) => s.projectId === p.id);
+    const existing = stories.length ? `\n\nExisting stories in this project (don't repeat them):\n${stories.map((s) => `- ${s.title} (id: ${s.id})`).join('\n')}` : '\n\nNo stories in this project yet.';
+    return { content: [{ type: 'text', text: `${projectBriefText(p)}${existing}\n\nTo create a NEW on-brand story here: call build_story with projectId: "${p.id}", writing the story to FIT the master prompt, instructions and knowledge above.` }] };
+  }
+
+  if (name === 'create_project') {
+    const projectId = genId('proj');
+    const p = {
+      name: args.name || 'New project',
+      about: args.about || '',
+      instructions: args.instructions || '',
+      defaultType: args.defaultType || '',
+      knowledge: Array.isArray(args.knowledge)
+        ? args.knowledge.filter((k) => k && (k.name || k.content)).map((k, i) => ({ id: `${Date.now()}-${i}`, name: k.name || `Note ${i + 1}`, content: k.content || '', addedAt: Date.now() }))
+        : [],
+    };
+    await writeProjectDoc(env, auth, projectId, p);
+    return { content: [{ type: 'text', text: `✅ Created project "${p.name}".\nProject id: ${projectId}\n${p.knowledge.length} knowledge item(s)${p.defaultType ? `, default type ${p.defaultType}` : ''}.\nNow build on-brand stories with build_story (projectId: "${projectId}"). Open the app → Projects to view it: ${appUrl}` }] };
+  }
+
   if (name === 'build_story') {
     const storyId = genId('story');
     const data = buildStoryData(args || {});
-    await writeStoryDoc(env, auth, storyId, args.title || 'Untitled', JSON.stringify(data));
+    // Resolve an optional project so the story is filed under it (and the app
+    // links it on recovery). Accept id or name.
+    let proj = null;
+    if (args.projectId || args.projectName) {
+      proj = await resolveProject(env, auth, args.projectId || args.projectName);
+      if (!proj) throw new Error(`No project matched "${args.projectId || args.projectName}". Call list_projects for valid ids/names, or omit to create a standalone story.`);
+    }
+    await writeStoryDoc(env, auth, storyId, args.title || 'Untitled', JSON.stringify(data), proj ? proj.id : undefined);
     const counts = [
       `${data.characters.length} characters`,
       `${data.plotBoard.acts.length} acts`,
@@ -872,7 +1052,7 @@ async function callTool(env, name, args) {
     return {
       content: [{
         type: 'text',
-        text: `✅ Built "${args.title}" in Kindling (${counts}).\n${progressNote(data.screenplay.type, data.scenes.length, data.screenplay.elements.length)}\nStory id: ${storyId}  ← pass this to add_to_story to keep writing into THIS story.\nOpen it: ${appUrl}`,
+        text: `✅ Built "${args.title}" in Kindling${proj ? ` (in project "${proj.name}")` : ''} (${counts}).\n${progressNote(data.screenplay.type, data.scenes.length, data.screenplay.elements.length)}\nStory id: ${storyId}  ← pass this to add_to_story to keep writing into THIS story.\nOpen it: ${appUrl}`,
       }],
     };
   }
@@ -947,7 +1127,7 @@ async function callTool(env, name, args) {
 
   if (name === 'add_to_story') {
     if (!args.storyId) throw new Error('add_to_story needs a storyId. Use list_stories or get_story to find it, or the id printed by build_story.');
-    const { title, data } = await readStoryData(env, auth, args.storyId);
+    const { title, data, projectId } = await readStoryData(env, auth, args.storyId);
     const before = {
       lines: (data.screenplay?.elements || []).length,
       scenes: (data.scenes || []).length,
@@ -959,7 +1139,8 @@ async function callTool(env, name, args) {
     };
     const merged = appendToStoryData(data, args || {});
     const newTitle = (typeof args.title === 'string' && args.title) ? args.title : title;
-    await writeStoryDoc(env, auth, args.storyId, newTitle, JSON.stringify(merged));
+    // Preserve the project link across appends (writeStoryDoc rewrites the doc).
+    await writeStoryDoc(env, auth, args.storyId, newTitle, JSON.stringify(merged), projectId || undefined);
     const delta = (n, label) => (n > 0 ? `+${n} ${label}` : null);
     const added = [
       delta(merged.scenes.length - before.scenes, 'scenes'),
@@ -981,7 +1162,7 @@ async function callTool(env, name, args) {
   if (name === 'set_shot_frame') {
     if (!args.storyId) throw new Error('set_shot_frame needs a storyId.');
     if (!args.imageUrl || !String(args.imageUrl).trim()) throw new Error('set_shot_frame needs an imageUrl (the generated frame to attach).');
-    const { title, data } = await readStoryData(env, auth, args.storyId);
+    const { title, data, projectId } = await readStoryData(env, auth, args.storyId);
     const scenes = Array.isArray(data.scenes) ? data.scenes : [];
     const shotsMap = data.shots && typeof data.shots === 'object' ? data.shots : {};
     if (!scenes.length) throw new Error('This story has no director scenes/shots yet. Add scenes with shots first (build_story / add_to_story).');
@@ -1012,7 +1193,7 @@ async function callTool(env, name, args) {
       shot.storyboard = String(args.imageUrl);
     }
     data.exportedAt = Date.now();
-    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data));
+    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data), projectId || undefined);
     return {
       content: [{
         type: 'text',
@@ -1023,7 +1204,7 @@ async function callTool(env, name, args) {
 
   if (name === 'set_scene') {
     if (!args.storyId) throw new Error('set_scene needs a storyId.');
-    const { title, data } = await readStoryData(env, auth, args.storyId);
+    const { title, data, projectId } = await readStoryData(env, auth, args.storyId);
     const scene = resolveScene(data, args.scene);
     if (!scene) throw new Error(`Could not find scene "${args.scene}". Call get_story to see scene numbers/names.`);
     const changed = [];
@@ -1035,13 +1216,13 @@ async function callTool(env, name, args) {
     const bd = normalizeBreakdown(args.breakdown); if (bd) { scene.breakdown = { ...(scene.breakdown || {}), ...bd }; changed.push('breakdown'); }
     if (!changed.length) throw new Error('set_scene: nothing to update — pass at least one of name/description/status/shootDate/budget/breakdown.');
     data.exportedAt = Date.now();
-    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data));
+    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data), projectId || undefined);
     return { content: [{ type: 'text', text: `✅ Updated scene "${scene.name}": ${changed.join(', ')}.\nOpen it: ${appUrl}` }] };
   }
 
   if (name === 'set_shot') {
     if (!args.storyId) throw new Error('set_shot needs a storyId.');
-    const { title, data } = await readStoryData(env, auth, args.storyId);
+    const { title, data, projectId } = await readStoryData(env, auth, args.storyId);
     const scene = resolveScene(data, args.scene);
     if (!scene) throw new Error(`Could not find scene "${args.scene}". Call get_story to see scene numbers/names.`);
     const shotsMap = data.shots && typeof data.shots === 'object' ? data.shots : {};
@@ -1059,7 +1240,7 @@ async function callTool(env, name, args) {
     if (typeof args.lastFrameDescription === 'string') { shot.lastFrameDescription = args.lastFrameDescription; shot.needsLastFrame = true; changed.push('lastFrameDescription'); }
     if (!changed.length) throw new Error('set_shot: nothing to update.');
     data.exportedAt = Date.now();
-    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data));
+    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data), projectId || undefined);
     return { content: [{ type: 'text', text: `✅ Updated shot #${args.shot} in scene "${scene.name}": ${changed.join(', ')}.\nOpen it: ${appUrl}` }] };
   }
 

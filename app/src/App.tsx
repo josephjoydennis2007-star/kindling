@@ -23,6 +23,7 @@ const VersionHistory = lazy(() => import('@/components/VersionHistory'));
 const BreakdownView = lazy(() => import('@/components/BreakdownView'));
 const ProductionView = lazy(() => import('@/components/ProductionView'));
 const ContinuityGuard = lazy(() => import('@/components/ContinuityGuard'));
+const ProjectsView = lazy(() => import('@/components/ProjectsView'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -559,6 +560,7 @@ function App() {
           storyId: activeStoryId,
           title: story?.title || state.screenplay.title || 'Untitled',
           data: cloudData,
+          projectId: story?.projectId,
         });
         // On an EXPLICIT save (not the 30s autosave) drop a restorable cloud
         // snapshot. Deduped + pruned to the newest N inside saveVersion.
@@ -721,6 +723,7 @@ function App() {
               id: cs.id,
               title: cs.title || 'Untitled Story',
               type: 'movie',
+              ...((cs as any).projectId ? { projectId: (cs as any).projectId } : {}),
               createdAt: (cs as any).createdAt || cs.updatedAt || Date.now(),
               updatedAt: cs.updatedAt || Date.now(),
             });
@@ -731,7 +734,7 @@ function App() {
             useAppStore.setState((s: any) => ({
               stories: s.stories.map((st: any) =>
                 st.id === cs.id
-                  ? { ...st, title: cs.title || st.title, updatedAt: cloudUpdated || Date.now() }
+                  ? { ...st, title: cs.title || st.title, updatedAt: cloudUpdated || Date.now(), ...((cs as any).projectId ? { projectId: (cs as any).projectId } : {}) }
                   : st,
               ),
             }));
@@ -758,6 +761,27 @@ function App() {
             description: 'New material added from Claude is now in the app.',
             duration: 5000,
           });
+        }
+
+        // Recover Projects (master prompt + instructions + knowledge) so they
+        // appear on every device and the Connector can build stories into
+        // them. Merge: cloud wins when its updatedAt is newer; brand-new
+        // cloud projects are added; local-only projects are kept.
+        try {
+          const { listMyProjects } = await import('@/lib/cloudProjects');
+          const cloudProjects = await listMyProjects();
+          if (!cancelled && cloudProjects.length) {
+            useAppStore.setState((s: any) => {
+              const byId = new Map<string, any>(s.projects.map((p: any) => [p.id, p]));
+              for (const cp of cloudProjects) {
+                const ex: any = byId.get(cp.id);
+                if (!ex || (cp.updatedAt || 0) > (ex.updatedAt || 0)) byId.set(cp.id, cp);
+              }
+              return { projects: Array.from(byId.values()) as any };
+            });
+          }
+        } catch (e: any) {
+          console.warn('[Kindling] Cloud project pull failed:', e?.code || e?.message || e);
         }
       } catch (err: any) {
         // Firestore unreachable or rules block reads. Silent — local
@@ -1600,6 +1624,7 @@ function App() {
       <BreakdownView />
       <ProductionView />
       <ContinuityGuard />
+      <ProjectsView onOpenStory={() => { setShowStorySelector(false); setTab('writer'); }} />
       {/* Floating inline comment popup. Opens via:
             - TopBar Comment button → app:openInlineComment event
             - Cmd/Ctrl+Shift+M keyboard shortcut (see keyboard handler)

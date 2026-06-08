@@ -220,6 +220,34 @@ export interface Story {
   type?: StoryType;
   createdAt: number;
   updatedAt: number;
+  /** The project this story belongs to (optional — loose stories have none). */
+  projectId?: string;
+}
+
+/** A piece of reference material attached to a Project — pasted text or the
+ *  text content of a dropped .txt/.md file. The AI reads these as knowledge. */
+export interface ProjectKnowledge {
+  id: string;
+  name: string;
+  content: string;
+  addedAt: number;
+}
+
+/** A Project groups many stories under one creative brief — like a Claude
+ *  Project. Its `about` (master prompt), `instructions`, and `knowledge` tell
+ *  the AI what every story in the project should be and how to build it. */
+export interface Project {
+  id: string;
+  name: string;
+  /** Master prompt: what this project's stories are about + the format/tone. */
+  about: string;
+  /** Extra standing instructions for the AI when building stories here. */
+  instructions: string;
+  /** Default story type for new stories in this project. */
+  defaultType?: StoryType;
+  knowledge: ProjectKnowledge[];
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface CoworkerInfo {
@@ -437,6 +465,8 @@ export type RightPanelType =
 export interface AppState {
   activeStoryId: string | null;
   stories: Story[];
+  projects: Project[];
+  activeProjectId: string | null;
   activeTab: AppTab;
   activeSceneId: string | null;
   activeDirectorSceneId: string | null;

@@ -144,6 +144,7 @@ export interface CloudStory {
   shareable: boolean;
   title: string;
   data: string;        // JSON payload (exportStory output)
+  projectId?: string;  // the Project this story belongs to (if any)
   updatedAt?: number;  // ms since epoch (converted from Timestamp)
   createdAt?: number;
 }
@@ -202,6 +203,7 @@ export async function pushStory(input: {
   storyId: string;
   title: string;
   data: string;
+  projectId?: string;
 }): Promise<void> {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in');
@@ -235,14 +237,16 @@ export async function pushStory(input: {
         shareable: false,
         title: input.title,
         data: input.data,
+        ...(input.projectId ? { projectId: input.projectId } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     } else {
-      // Update — only the data slice changes.
+      // Update — data + (optional) project membership.
       await updateDoc(ref, {
         title: input.title,
         data: input.data,
+        ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
         updatedAt: serverTimestamp(),
       });
     }
@@ -917,6 +921,7 @@ function hydrate(id: string, raw: DocumentData): CloudStory {
     shareable: !!raw.shareable,
     title: raw.title || 'Untitled',
     data: raw.data || '',
+    projectId: raw.projectId || undefined,
     createdAt: tsToMs(raw.createdAt),
     updatedAt: tsToMs(raw.updatedAt),
   };

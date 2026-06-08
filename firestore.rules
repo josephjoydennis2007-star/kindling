@@ -89,6 +89,19 @@ service cloud.firestore {
                     && resource.data.owner == request.auth.uid;
     }
 
+    // ── Projects ─────────────────────────────────────────────────────
+    // Doc id = project id. A project groups stories + a master prompt /
+    // instructions / knowledge. Owner-only read + write.
+    match /projects/{projectId} {
+      allow read: if request.auth != null && (
+        resource == null || resource.data.owner == request.auth.uid
+      );
+      allow create: if request.auth != null
+                    && request.resource.data.owner == request.auth.uid;
+      allow update, delete: if request.auth != null
+                    && resource.data.owner == request.auth.uid;
+    }
+
     // ── Invites ──────────────────────────────────────────────────────
     // Doc id = autogen. Fields: storyId, fromUid, toEmail, status,
     // createdAt. Used so an owner can "invite by email" before the

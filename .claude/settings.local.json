@@ -87,7 +87,8 @@
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('vitest:', p.devDependencies.vitest, '| happy-dom:', p.devDependencies['happy-dom']\\);\")",
       "Bash(npx vitest *)",
       "Bash(printf '\\\\nexport { buildStoryData, normalizeBreakdown, resolveScene };\\\\n')",
-      "Bash(node -e 'let s=\"\";process.stdin.on\\(\"data\",d=>s+=d\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(s\\);console.log\\(\"tools:\",j.result.tools.map\\(t=>t.name\\).join\\(\", \"\\)\\);const sc=j.result.tools.find\\(t=>t.name===\"build_story\"\\).inputSchema.properties.scenes.items.properties;console.log\\(\"scene has breakdown:\", \"breakdown\" in sc\\);}\\);')"
+      "Bash(node -e 'let s=\"\";process.stdin.on\\(\"data\",d=>s+=d\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(s\\);console.log\\(\"tools:\",j.result.tools.map\\(t=>t.name\\).join\\(\", \"\\)\\);const sc=j.result.tools.find\\(t=>t.name===\"build_story\"\\).inputSchema.properties.scenes.items.properties;console.log\\(\"scene has breakdown:\", \"breakdown\" in sc\\);}\\);')",
+      "Bash(node --check worker.js)"
     ]
   }
 }
