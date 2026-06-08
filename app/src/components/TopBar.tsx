@@ -5,7 +5,7 @@ import {
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
   LogOut, UserCircle2, Share2, UserPlus, PanelRight, Lightbulb, StickyNote,
   Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X, Stethoscope,
-  MessageCircle, Briefcase, ExternalLink, Copy,
+  MessageCircle, Briefcase, ExternalLink, Copy, Clapperboard,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { openInlineCommentFromSelection } from './InlineCommentPopup';
@@ -562,6 +562,11 @@ export default function TopBar({
                     icon={ImageIcon}
                     label="Script breakdown…"
                     onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openBreakdown')); }}
+                  />
+                  <Item
+                    icon={Clapperboard}
+                    label="Production (budget · schedule)…"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openProduction')); }}
                   />
                 </Group>
 

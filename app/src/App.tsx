@@ -21,6 +21,7 @@ const InviteDialog = lazy(() => import('@/components/InviteDialog'));
 const CloudDiagnostic = lazy(() => import('@/components/CloudDiagnostic'));
 const VersionHistory = lazy(() => import('@/components/VersionHistory'));
 const BreakdownView = lazy(() => import('@/components/BreakdownView'));
+const ProductionView = lazy(() => import('@/components/ProductionView'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -1590,6 +1591,7 @@ function App() {
       <CloudDiagnostic />
       <VersionHistory />
       <BreakdownView />
+      <ProductionView />
       {/* Floating inline comment popup. Opens via:
             - TopBar Comment button → app:openInlineComment event
             - Cmd/Ctrl+Shift+M keyboard shortcut (see keyboard handler)
