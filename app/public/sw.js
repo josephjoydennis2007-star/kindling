@@ -17,7 +17,7 @@
  * deletes any cache that does not match the current name.
  */
 
-const CACHE_NAME = 'kindling-shell-v13';
+const CACHE_NAME = 'kindling-shell-v14';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Toaster, toast } from 'sonner';
 import { Users, Zap } from 'lucide-react';
@@ -6,7 +6,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useIndexedDB } from '@/hooks/useIndexedDB';
 import { watchAuth, getProfile, upsertProfile, type UserProfile } from '@/firebase';
 import AuthWall from '@/components/AuthWall';
-import ProfileEditor from '@/components/ProfileEditor';
+const ProfileEditor = lazy(() => import('@/components/ProfileEditor'));
 import type { User as FirebaseUser } from 'firebase/auth';
 // Sidebar / CharacterBar / StatusBar / SocialBar replaced by IconRail +
 // ContextPanel + StatusLine in the layout rewrite. Old files kept on disk
@@ -16,9 +16,9 @@ import ContextPanel from '@/components/ContextPanel';
 import StatusLine from '@/components/StatusLine';
 import TopBar from '@/components/TopBar';
 import UserMenu from '@/components/UserMenu';
-import ShareDialog from '@/components/ShareDialog';
-import InviteDialog from '@/components/InviteDialog';
-import CloudDiagnostic from '@/components/CloudDiagnostic';
+const ShareDialog = lazy(() => import('@/components/ShareDialog'));
+const InviteDialog = lazy(() => import('@/components/InviteDialog'));
+const CloudDiagnostic = lazy(() => import('@/components/CloudDiagnostic'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -26,28 +26,28 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { useStoryRole } from '@/hooks/useStoryRole';
 import Toolbar from '@/components/Toolbar';
 import WriterView from '@/components/WriterView';
-import DirectorView from '@/components/DirectorView';
-import PlotBoardView from '@/components/PlotBoardView';
+const DirectorView = lazy(() => import('@/components/DirectorView'));
+const PlotBoardView = lazy(() => import('@/components/PlotBoardView'));
 import RightPanel from '@/components/RightPanel';
 import StorySelector from '@/components/StorySelector';
-import WorkspaceView from '@/components/WorkspaceView';
-import StoryDashboard from '@/components/StoryDashboard';
-import CalendarView from '@/components/CalendarView';
-import OutlineView from '@/components/OutlineView';
-import WorldView from '@/components/WorldView';
-import StoryboardView from '@/components/StoryboardView';
-import LocationsView from '@/components/LocationsView';
-import CommandPalette from '@/components/CommandPalette';
-import Onboarding from '@/components/Onboarding';
-import FindReplace from '@/components/FindReplace';
-import StylePane from '@/components/StylePane';
-import CompareOverlay from '@/components/CompareOverlay';
-import DialogueCoach from '@/components/DialogueCoach';
-import TableRead from '@/components/TableRead';
-import AltTakeOverlay from '@/components/AltTakeOverlay';
-import ExportDialog from '@/components/ExportDialog';
-import SettingsOverlay from '@/components/SettingsOverlay';
-import AgentPanel from '@/components/AgentPanel';
+const WorkspaceView = lazy(() => import('@/components/WorkspaceView'));
+const StoryDashboard = lazy(() => import('@/components/StoryDashboard'));
+const CalendarView = lazy(() => import('@/components/CalendarView'));
+const OutlineView = lazy(() => import('@/components/OutlineView'));
+const WorldView = lazy(() => import('@/components/WorldView'));
+const StoryboardView = lazy(() => import('@/components/StoryboardView'));
+const LocationsView = lazy(() => import('@/components/LocationsView'));
+const CommandPalette = lazy(() => import('@/components/CommandPalette'));
+const Onboarding = lazy(() => import('@/components/Onboarding'));
+const FindReplace = lazy(() => import('@/components/FindReplace'));
+const StylePane = lazy(() => import('@/components/StylePane'));
+const CompareOverlay = lazy(() => import('@/components/CompareOverlay'));
+const DialogueCoach = lazy(() => import('@/components/DialogueCoach'));
+const TableRead = lazy(() => import('@/components/TableRead'));
+const AltTakeOverlay = lazy(() => import('@/components/AltTakeOverlay'));
+const ExportDialog = lazy(() => import('@/components/ExportDialog'));
+const SettingsOverlay = lazy(() => import('@/components/SettingsOverlay'));
+const AgentPanel = lazy(() => import('@/components/AgentPanel'));
 import { installRunwayBridge } from '@/lib/sendToRunway';
 import FloatingActionButton from '@/components/FloatingActionButton';
 import MediaViewer from '@/components/MediaViewer';
@@ -1355,6 +1355,7 @@ function App() {
         )}
 
         <div className="view-container">
+          <Suspense fallback={<div className="h-full flex items-center justify-center text-[var(--text-muted)] text-sm">Loading…</div>}>
             {activeTab === 'writer' && (
               <div key="writer" className={`h-full ${canWrite ? '' : 'pointer-events-none select-text opacity-90'}`}>
                 <WriterView
@@ -1447,6 +1448,7 @@ function App() {
                 <LocationsView />
               </div>
             )}
+          </Suspense>
         </div>
 
         {/* Replaced the heavy CharacterBar + StatusBar + SocialBar pill stack
@@ -1534,6 +1536,7 @@ function App() {
         />
       )}
 
+      <Suspense fallback={null}>
       <ExportDialog open={showExport} onClose={() => setShowExport(false)} />
       <SettingsOverlay open={showSettings} onClose={() => setShowSettings(false)} />
       {/* Share & invite dialogs — opened via TopBar ⋯ menu via custom events.
@@ -1581,6 +1584,7 @@ function App() {
           onSaved={(p) => { setProfile(p); updateSettings({ userDisplayName: p.displayName, userRole: p.role === 'both' ? 'writer' : (p.role as any) }); }}
         />
       )}
+      </Suspense>
 
       {/* User menu popover — opens from the rail avatar. Local mode shows
           a Sign-in CTA that re-opens the AuthWall by flipping skippedAuth
