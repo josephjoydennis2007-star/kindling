@@ -19,6 +19,7 @@ import UserMenu from '@/components/UserMenu';
 const ShareDialog = lazy(() => import('@/components/ShareDialog'));
 const InviteDialog = lazy(() => import('@/components/InviteDialog'));
 const CloudDiagnostic = lazy(() => import('@/components/CloudDiagnostic'));
+const VersionHistory = lazy(() => import('@/components/VersionHistory'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -536,7 +537,7 @@ function App() {
     // in the Studio tab's diagnostic banner instead.
     if (user) {
       try {
-        const { pushStory } = await import('@/lib/cloudStories');
+        const { pushStory, saveVersion } = await import('@/lib/cloudStories');
         const story = state.stories.find((st) => st.id === activeStoryId);
         const cloudData = state.exportStory();
         // Remember exactly what we're sending so the live watcher recognizes
@@ -556,6 +557,15 @@ function App() {
           title: story?.title || state.screenplay.title || 'Untitled',
           data: cloudData,
         });
+        // On an EXPLICIT save (not the 30s autosave) drop a restorable cloud
+        // snapshot. Deduped + pruned to the newest N inside saveVersion.
+        if (!triggeredByAutoSave) {
+          saveVersion(activeStoryId, {
+            data: cloudData,
+            title: story?.title || state.screenplay.title || 'Untitled',
+            label: 'Manual save',
+          }).catch(() => {/* versions are best-effort */});
+        }
       } catch (err: any) {
         // eslint-disable-next-line no-console
         console.warn('[Kindling] Cloud save failed (local copy was saved):', err?.code || err?.message || err);
@@ -867,6 +877,15 @@ function App() {
     document.addEventListener('app:openAgent', onOpenAgent);
     return () => document.removeEventListener('app:openAgent', onOpenAgent);
   }, []);
+
+  // Generic save trigger — used by Version-history restore (and anywhere that
+  // needs to force an immediate persist) so it doesn't have to wait for the
+  // 30s autosave.
+  useEffect(() => {
+    const onSave = () => handleManualSave();
+    document.addEventListener('app:save', onSave);
+    return () => document.removeEventListener('app:save', onSave);
+  }, [handleManualSave]);
 
   // Install the Runway browser-bridge listeners once at boot. The
   // bridge listens for postMessages from the Kindling Runway Bridge
@@ -1568,6 +1587,7 @@ function App() {
           event from any UI surface. Tells the user EXACTLY which step fails
           (config / auth / network / write / read), with the raw error code. */}
       <CloudDiagnostic />
+      <VersionHistory />
       {/* Floating inline comment popup. Opens via:
             - TopBar Comment button → app:openInlineComment event
             - Cmd/Ctrl+Shift+M keyboard shortcut (see keyboard handler)

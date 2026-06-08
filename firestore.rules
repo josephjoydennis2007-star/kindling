@@ -191,6 +191,22 @@ service cloud.firestore {
       );
     }
 
+    // ── Version history (snapshots) ──────────────────────────────────
+    // /stories/{storyId}/versions/{versionId}
+    // Any story member can read snapshots + create new ones, and delete
+    // (used to prune old snapshots). Snapshots are immutable (no update).
+    match /stories/{storyId}/versions/{versionId} {
+      function storyData() {
+        return get(/databases/$(database)/documents/stories/$(storyId)).data;
+      }
+      function isStoryMember() {
+        let s = storyData();
+        return s.owner == request.auth.uid
+            || request.auth.uid in s.get('collaborators', []);
+      }
+      allow read, create, delete: if request.auth != null && isStoryMember();
+    }
+
     // Default deny everything else.
     match /{document=**} {
       allow read, write: if false;

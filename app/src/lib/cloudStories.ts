@@ -260,6 +260,74 @@ export async function setShareable(storyId: string, shareable: boolean): Promise
   });
 }
 
+// ─── Version history (snapshots) ─────────────────────────────────────────────
+//
+// Each explicit save pushes a timestamped snapshot to
+//   /stories/{storyId}/versions/{versionId}
+// so the user can roll a story back to an earlier point — a document-level
+// safety net distinct from the editor's in-document undo. We keep the newest
+// MAX_VERSIONS and prune the rest to bound storage cost.
+
+export const MAX_VERSIONS = 20;
+
+export interface StoryVersion {
+  id: string;
+  data: string;          // full story payload (exportStory output) at that time
+  title: string;
+  label?: string;        // e.g. "Manual save", "Before restore"
+  bytes?: number;
+  authorName?: string;
+  createdAt?: number;
+}
+
+/** Save a snapshot of the story, then prune to the newest MAX_VERSIONS.
+ *  Skips writing if identical to the most recent snapshot (no churn). */
+export async function saveVersion(storyId: string, input: { data: string; title: string; label?: string }): Promise<void> {
+  const user = auth?.currentUser;
+  if (!user) return; // versions are a cloud-only nicety; silently skip when offline/local
+  return withRecovery(async () => {
+    const col = collection(db, 'stories', storyId, 'versions');
+    // Dedupe against the latest snapshot.
+    const latest = await getDocs(query(col, orderBy('createdAt', 'desc'), limit(1)));
+    if (!latest.empty && (latest.docs[0].data() as any).data === input.data) return;
+
+    await addDoc(col, {
+      data: input.data,
+      title: input.title,
+      label: input.label || 'Save',
+      bytes: input.data.length,
+      authorName: user.displayName || user.email || 'Anonymous',
+      createdAt: serverTimestamp(),
+    });
+
+    // Prune oldest beyond MAX_VERSIONS.
+    const all = await getDocs(query(col, orderBy('createdAt', 'desc')));
+    const extra = all.docs.slice(MAX_VERSIONS);
+    await Promise.all(extra.map((d) => deleteDoc(d.ref).catch(() => {})));
+  });
+}
+
+/** List snapshots, newest first. */
+export async function listVersions(storyId: string): Promise<StoryVersion[]> {
+  if (!auth?.currentUser) return [];
+  return withRecovery(async () => {
+    const col = collection(db, 'stories', storyId, 'versions');
+    const snap = await getDocs(query(col, orderBy('createdAt', 'desc'), limit(MAX_VERSIONS)));
+    return snap.docs.map((d) => {
+      const raw = d.data() as any;
+      return {
+        id: d.id,
+        data: raw.data || '',
+        title: raw.title || 'Untitled',
+        label: raw.label,
+        bytes: raw.bytes,
+        authorName: raw.authorName,
+        createdAt: tsToMs(raw.createdAt),
+      } as StoryVersion;
+    });
+  });
+}
+
 // ─── Read ───────────────────────────────────────────────────────────────────
 
 /** One-shot pull. Returns null if the story doesn't exist or the current

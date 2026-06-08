@@ -553,6 +553,11 @@ export default function TopBar({
                     label="Import…"
                     onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:import')); }}
                   />
+                  <Item
+                    icon={HistoryIcon}
+                    label="Version history…"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openVersions')); }}
+                  />
                 </Group>
 
                 <Group title="Account">
