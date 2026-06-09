@@ -26,6 +26,7 @@ const ContinuityGuard = lazy(() => import('@/components/ContinuityGuard'));
 const ProjectsView = lazy(() => import('@/components/ProjectsView'));
 const StorageManager = lazy(() => import('@/components/StorageManager'));
 const QuickToolsPanel = lazy(() => import('@/components/QuickToolsPanel'));
+const YouTubeStudio = lazy(() => import('@/components/YouTubeStudio'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -1664,6 +1665,11 @@ function App() {
             {activeTab === 'locations' && (
               <div key="locations" className={`h-full ${canDirect ? '' : 'pointer-events-none select-text opacity-90'}`}>
                 <LocationsView />
+              </div>
+            )}
+            {activeTab === 'youtube' && (
+              <div key="youtube" className="h-full">
+                <YouTubeStudio />
               </div>
             )}
           </Suspense>

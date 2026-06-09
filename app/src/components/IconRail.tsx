@@ -4,7 +4,7 @@ import {
   PenLine, Clapperboard, LayoutGrid, Calendar as CalendarIcon, Briefcase, Sparkles,
   Settings, Plus, X, ChevronRight, Trash2,
   ListTree, Globe2, Image as ImageIcon, MapPin,
-  Lock,
+  Lock, Youtube,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
@@ -81,6 +81,7 @@ const DIRECTOR_VIEWS = [
 
 // General — accessible to all roles.
 const GENERAL_VIEWS = [
+  { id: 'youtube',   labelKey: 'tab.youtube',   fallback: 'YouTube',   icon: Youtube,   desc: 'YouTube creator studio — shorts & content' },
   { id: 'dashboard', labelKey: 'tab.dashboard', fallback: 'Dashboard', icon: Sparkles,  desc: 'Story dashboard' },
   { id: 'workspace', labelKey: 'tab.workspace', fallback: 'Workspace', icon: Briefcase, desc: 'External tools + links' },
 ];

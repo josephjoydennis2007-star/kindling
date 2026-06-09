@@ -438,6 +438,27 @@ export interface Screenplay {
   assets?: Asset[];              // per-story asset library
   /** Industry revision-color stage. Index into REVISION_COLORS. */
   revisionStage?: number;
+  /** YouTube creator packaging — lives alongside the screenplay so it travels
+   *  with the story. Used only by the YouTube Studio page. */
+  youtube?: YouTubePack;
+}
+
+/** Everything a YouTuber needs to package a video — separate from the
+ *  industry film-making fields. Edited in the YouTube Studio page. */
+export interface YouTubePack {
+  format?: 'short' | 'long';       // vertical Short vs long-form video
+  idea?: string;                   // the topic/prompt the video is built from
+  title?: string;                  // chosen title
+  altTitles?: string;              // alternative title options (free text)
+  thumbnailText?: string;          // 3-5 word overlay text
+  thumbnail?: string | null;       // thumbnail image (hosted URL)
+  hook?: string;                   // first 3 seconds
+  script?: string;                 // the spoken script (not screenplay format)
+  description?: string;            // SEO description
+  tags?: string;                   // comma-separated tags
+  hashtags?: string;               // hashtags
+  chapters?: string;               // timestamped chapters
+  cta?: string;                    // call to action
 }
 
 /**
@@ -466,6 +487,8 @@ export type AppTab =
   | 'writer' | 'outline' | 'world' | 'research'
   // Director workspaces
   | 'director' | 'plot' | 'storyboard' | 'calendar' | 'locations'
+  // YouTube creator workspace (separate from industry film-making)
+  | 'youtube'
   // General
   | 'workspace';
 
