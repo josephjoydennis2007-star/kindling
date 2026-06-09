@@ -7,9 +7,15 @@ import {
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { YouTubePack } from '@/types';
-import { aiOnce } from '@/lib/aiClient';
+import { aiOnce, extractJSON } from '@/lib/aiClient';
 import { sendPromptToRunway } from '@/lib/sendToRunway';
 import { viewMedia } from '@/lib/mediaViewer';
+
+const SHOT_TYPES = ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'];
+const normShot = (v: any): any => {
+  const u = String(v || '').trim().toUpperCase();
+  return SHOT_TYPES.includes(u) ? u : '';
+};
 
 /**
  * YouTube Studio — a dedicated creator workspace, separate from the industry
@@ -29,6 +35,9 @@ export default function YouTubeStudio() {
   const createStory = useAppStore((s) => s.createStory);
   const loadStory = useAppStore((s) => s.loadStory);
   const updateScreenplayField = useAppStore((s) => s.updateScreenplayField);
+  const addScene = useAppStore((s) => s.addScene);
+  const addShot = useAppStore((s) => s.addShot);
+  const updateShot = useAppStore((s) => s.updateShot);
   const setTab = useAppStore((s) => s.setTab);
 
   const activeStory = stories.find((s) => s.id === activeStoryId);
@@ -111,6 +120,32 @@ export default function YouTubeStudio() {
     setTimeout(genHook, 50);
     setTimeout(genScript, 120);
     setTimeout(genDesc, 220);
+  };
+
+  // Turn the script/idea into an ordered CLIP list and drop it straight into
+  // this video's storyboard — each clip becomes a shot with a description the
+  // storyboard's "Image" button turns into a Runway prompt.
+  const buildClips = async () => {
+    const src = (form.script || '').trim() || (form.idea || '').trim();
+    if (!src) { toast.error('Write a script or type an idea first'); return; }
+    setBusy('clips');
+    const r = await aiOnce(settings as any,
+      'You break a video script into ordered visual SHOTS for a storyboard. Output ONLY JSON, no prose.',
+      `From this ${isShort ? 'YouTube Short' : 'YouTube video'} script/idea, return JSON:\n{"clips":[{"description":"the visual beat — what we SEE in this shot, one vivid sentence good for image generation","shotType":"WIDE|MEDIUM|CLOSE-UP|EXTREME CLOSE-UP|OVER-THE-SHOULDER|POV|ESTABLISHING|INSERT|AERIAL","onScreen":"optional on-screen text"}]}\nGive ${isShort ? '6-10' : '10-16'} clips in order.\n\n"${src.slice(0, 4000)}"`,
+      { maxTokens: 2200, temperature: 0.6 });
+    if (!r.ok) { setBusy(null); toast.error('AI failed', { description: r.error || 'Try again, or use Claude.' }); return; }
+    const parsed = extractJSON<{ clips: any[] }>(r.text);
+    const clips = Array.isArray(parsed?.clips) ? parsed!.clips : [];
+    if (!clips.length) { setBusy(null); toast.error('No clips returned — try again.'); return; }
+    const sceneId = addScene(activeStory?.title || 'Clips', '');
+    clips.forEach((c: any) => {
+      const id = addShot(sceneId);
+      const desc = [String(c.description || '').trim(), c.onScreen ? `[TEXT: ${c.onScreen}]` : ''].filter(Boolean).join(' ');
+      updateShot(id, { description: desc, shotType: normShot(c.shotType) });
+    });
+    setBusy(null);
+    toast.success(`Built ${clips.length} clips into the storyboard`, { description: 'Generate each frame in Runway, then Export Reel.' });
+    setTab('storyboard');
   };
 
   const uploadThumb = async (file: File) => {
@@ -287,7 +322,12 @@ export default function YouTubeStudio() {
         <div>
           <div className={lbl}>
             <span className={lblTxt}>Clips ({clips.length})</span>
-            <button onClick={() => setTab('storyboard')} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]"><Clapperboard className="w-3 h-3" /> Open Storyboard</button>
+            <div className="flex items-center gap-1.5">
+              <button onClick={buildClips} disabled={!!busy} title="Turn the script into a storyboard of clips" className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110 disabled:opacity-50">
+                {busy === 'clips' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} Build clips from script
+              </button>
+              <button onClick={() => setTab('storyboard')} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]"><Clapperboard className="w-3 h-3" /> Open Storyboard</button>
+            </div>
           </div>
           {clips.length === 0 ? (
             <p className="text-[11px] text-[var(--text-muted)]">No clips yet. Open the Storyboard to add frames + videos, generate them in Runway, then Export Reel for CapCut.</p>

@@ -874,6 +874,21 @@ const TOOLS = [
         world: WORLD_ITEMS,
         locations: LOCATION_ITEMS,
         notes: NOTE_ITEMS,
+        youtube: {
+          type: 'object',
+          description: "For YouTube content: set type:'youtube' and fill this to populate the app's YouTube Studio page in the same call. Put the visual clips in `scenes` (one scene with shots — each shot.description is a visual beat) so they appear in the storyboard.",
+          properties: {
+            format: { type: 'string', enum: ['short', 'long'], description: "'short' = vertical Short; 'long' = long-form." },
+            idea: { type: 'string' },
+            title: { type: 'string' },
+            altTitles: { type: 'string', description: 'Alternative titles, one per line.' },
+            thumbnailText: { type: 'string', description: '3-5 word thumbnail text.' },
+            hook: { type: 'string', description: 'First-3-seconds hook.' },
+            script: { type: 'string', description: 'Spoken script (VO + [VISUAL:]/[TEXT:] cues), NOT screenplay format.' },
+            description: { type: 'string' }, tags: { type: 'string' }, hashtags: { type: 'string' },
+            chapters: { type: 'string' }, cta: { type: 'string' },
+          },
+        },
       },
       required: ['title'],
     },
@@ -1055,6 +1070,14 @@ async function callTool(env, name, args) {
   if (name === 'build_story') {
     const storyId = genId('story');
     const data = buildStoryData(args || {});
+    // YouTube packaging in the same call → populates the app's YouTube Studio.
+    if (args.youtube && typeof args.youtube === 'object') {
+      const yt = {};
+      for (const f of ['format', 'idea', 'title', 'altTitles', 'thumbnailText', 'hook', 'script', 'description', 'tags', 'hashtags', 'chapters', 'cta']) {
+        if (typeof args.youtube[f] === 'string' && args.youtube[f] !== '') yt[f] = args.youtube[f];
+      }
+      if (Object.keys(yt).length) data.screenplay.youtube = yt;
+    }
     // Resolve an optional project so the story is filed under it (and the app
     // links it on recovery). Accept id or name.
     let proj = null;

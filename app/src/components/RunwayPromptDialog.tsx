@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { X, Copy, Check, ExternalLink, Film, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { RUNWAY_PROMPT_EVENT, type RunwayPromptDetail } from '@/lib/sendToRunway';
+import { useAppStore } from '@/store/useAppStore';
 
 /**
  * A persistent, copyable prompt panel that appears when the user sends a shot
@@ -15,6 +16,24 @@ import { RUNWAY_PROMPT_EVENT, type RunwayPromptDetail } from '@/lib/sendToRunway
 export default function RunwayPromptDialog() {
   const [data, setData] = useState<RunwayPromptDetail | null>(null);
   const [copied, setCopied] = useState(false);
+  const [result, setResult] = useState('');
+
+  // Attach a Runway result back onto the shot this prompt was sent from — one
+  // paste, lands on the right place automatically (no hunting in the storyboard).
+  const attachResult = () => {
+    const url = result.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) { toast.error('Paste a hosted URL (http/https) from Runway'); return; }
+    const shotId = data?.shotId;
+    if (!shotId) { toast.error('No shot linked', { description: 'Generate from a shot’s Image/Video button to auto-attach.' }); return; }
+    const st = useAppStore.getState();
+    if (!(st.shots as any)[shotId]) { toast.error('That shot no longer exists'); return; }
+    if (data?.target === 'video') st.updateShot(shotId, { video: url } as any);
+    else st.updateShot(shotId, { storyboard: url } as any);
+    toast.success(data?.target === 'video' ? 'Video attached to the shot' : 'Image attached to the shot');
+    setResult('');
+    setData(null);
+  };
 
   useEffect(() => {
     const onEvt = (e: Event) => {
@@ -119,6 +138,24 @@ export default function RunwayPromptDialog() {
                 Open Runway
               </a>
             </div>
+            {/* Paste the Runway result → auto-attaches to the shot it came from */}
+            {data.shotId && (
+              <div className="mt-3 pt-3 border-t border-[var(--border)]">
+                <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Got your {data.target === 'video' ? 'video' : 'image'}? Paste it back</div>
+                <div className="flex gap-2">
+                  <input
+                    value={result}
+                    onChange={(e) => setResult(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') attachResult(); }}
+                    placeholder="Paste the Runway result URL…"
+                    className="flex-1 bg-[var(--bg)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                  />
+                  <button onClick={attachResult} className="px-3 py-1.5 rounded-md text-[11px] font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110 whitespace-nowrap">Attach</button>
+                </div>
+                <p className="text-[9px] text-[var(--text-muted)] mt-1">Lands on this shot automatically — {data.target === 'video' ? 'as its video' : 'as its frame'}.</p>
+              </div>
+            )}
+
             <p className="text-[10px] text-[var(--text-muted)] mt-2.5 leading-relaxed">
               {data.target === 'video' && data.imageUrls && data.imageUrls.length > 0
                 ? <>Paste the prompt (Ctrl/Cmd+V), then drag the reference frame(s) above into Runway's image box (first = start, last = end). Click Generate, then drag the result back onto the shot.</>
