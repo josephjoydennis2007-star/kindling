@@ -450,6 +450,8 @@ function StoryboardGrid({ scenes, shots, onPickShot }: {
                         <img
                           src={shot.storyboard}
                           alt={shot.description || `Shot ${i + 1}`}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover"
                         />
                       ) : (

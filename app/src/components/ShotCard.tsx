@@ -69,6 +69,8 @@ function FrameSlot({
           <img
             src={value}
             alt={label}
+            loading="lazy"
+            decoding="async"
             onClick={() => viewMedia(value!, 'image', label)}
             className="max-h-28 rounded-lg border border-[var(--border)] object-cover cursor-zoom-in"
             title="Click to view full size"

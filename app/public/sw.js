@@ -17,7 +17,7 @@
  * deletes any cache that does not match the current name.
  */
 
-const CACHE_NAME = 'kindling-shell-v30';
+const CACHE_NAME = 'kindling-shell-v32';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -41,6 +41,13 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // pass-through
+
+  // version.json is the update beacon — ALWAYS go to network, never cache, so
+  // the app can reliably detect a new deploy and prompt to reload.
+  if (url.pathname.endsWith('/version.json')) {
+    event.respondWith(fetch(req, { cache: 'no-store' }).catch(() => new Response('{}', { headers: { 'content-type': 'application/json' } })));
+    return;
+  }
 
   // Network-first for HTML navigations: the app shell must always reflect
   // the latest deploy. We only fall back to cache if the network truly fails.

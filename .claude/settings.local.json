@@ -92,7 +92,8 @@
       "Bash(grep -rln \"offload\\\\|blobStore\\\\|putBlob\\\\|idb://\\\\|asset:\\\\/\\\\/\\\\|externalizeImages\\\\|stripImages\" --include=*.ts --include=*.tsx)",
       "Bash(cat firebase.json)",
       "Bash(ls -la storage.rules)",
-      "Bash(sed -n '1,60p' app/src/components/RunwayPromptDialog.tsx)"
+      "Bash(sed -n '1,60p' app/src/components/RunwayPromptDialog.tsx)",
+      "Bash(curl -s https://kindling-1d29d.web.app/index.html)"
     ]
   }
 }

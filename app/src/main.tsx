@@ -6,7 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary.tsx'
 
 // Stamp a build marker on window + console so we can see at a glance whether
 // the fresh bundle actually loaded. Bump on every deploy with intent.
-const KINDLING_BUILD = 'v75-2026.06.09-shot-video-runway-refs-fix'
+const KINDLING_BUILD = 'v77-2026.06.09-lazy-images-no-freeze'
 ;(window as any).__KINDLING_BUILD__ = KINDLING_BUILD;
 // eslint-disable-next-line no-console
 console.log(`%c⚙ Kindling ${KINDLING_BUILD}`, 'color:#a855f7;font-weight:bold;font-size:14px');
@@ -76,4 +76,51 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
       window.location.reload();
     });
   });
+}
+
+// ─── Force-update + version watcher ────────────────────────────────────────
+//
+// Belt-and-braces against "I deployed but the user still sees the old app".
+// `forceUpdate()` nukes every cache + service worker and hard-reloads — the
+// reliable escape hatch. The watcher compares the build this page is running
+// (KINDLING_BUILD) against the deployed /version.json and, if they differ,
+// shows a clear, clickable "Update ready — Reload" toast instead of silently
+// hoping the SW reload fires.
+async function forceUpdate() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch { /* ignore */ }
+  try {
+    if (window.caches) {
+      const names = await caches.keys();
+      await Promise.all(names.map((n) => caches.delete(n)));
+    }
+  } catch { /* ignore */ }
+  // Cache-busting reload.
+  location.replace(location.pathname + '?u=' + Date.now());
+}
+(window as any).__kindlingForceUpdate = forceUpdate;
+
+if (import.meta.env.PROD) {
+  const checkVersion = async () => {
+    try {
+      const r = await fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (j?.build && j.build !== KINDLING_BUILD) {
+        const { toast } = await import('sonner');
+        toast.message('A new version of Kindling is ready', {
+          description: 'Your browser is showing an older copy. Click to load the latest.',
+          duration: Infinity,
+          action: { label: 'Reload now', onClick: () => forceUpdate() },
+        });
+      }
+    } catch { /* offline / not deployed yet — ignore */ }
+  };
+  // Check shortly after load, then hourly.
+  setTimeout(checkVersion, 4000);
+  setInterval(checkVersion, 60 * 60 * 1000);
 }

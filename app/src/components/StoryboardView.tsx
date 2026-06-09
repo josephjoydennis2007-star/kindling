@@ -187,7 +187,7 @@ export default function StoryboardView() {
                         poster={shot.storyboard || undefined}
                         muted
                         playsInline
-                        preload="metadata"
+                        preload="none"
                         onClick={() => viewMedia(shot.video!, 'video', `Shot ${index} · ${sceneName}`)}
                         className="w-full h-full object-cover cursor-pointer"
                         title="Click to play full size"
@@ -205,14 +205,14 @@ export default function StoryboardView() {
                         {shot.storyboard && (
                           <button onClick={(e) => { e.stopPropagation(); viewMedia(shot.storyboard!, 'image', `Shot ${index} · first frame`); }} title="First frame — click to view"
                             className="relative w-12 h-8 rounded overflow-hidden border-2 border-white/80 shadow cursor-zoom-in hover:scale-105 transition-transform">
-                            <img src={shot.storyboard} alt="first frame" className="w-full h-full object-cover" />
+                            <img src={shot.storyboard} alt="first frame" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                             <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[6px] uppercase tracking-wider text-center font-bold leading-tight">1st</span>
                           </button>
                         )}
                         {shot.lastFrame && (
                           <button onClick={(e) => { e.stopPropagation(); viewMedia(shot.lastFrame!, 'image', `Shot ${index} · last frame`); }} title="Last frame — click to view"
                             className="relative w-12 h-8 rounded overflow-hidden border-2 border-white/80 shadow cursor-zoom-in hover:scale-105 transition-transform">
-                            <img src={shot.lastFrame} alt="last frame" className="w-full h-full object-cover" />
+                            <img src={shot.lastFrame} alt="last frame" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                             <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[6px] uppercase tracking-wider text-center font-bold leading-tight">last</span>
                           </button>
                         )}
@@ -228,6 +228,8 @@ export default function StoryboardView() {
                       <img
                         src={shot.storyboard}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         onClick={() => viewMedia(shot.storyboard!, 'image', `Shot ${index} · ${sceneName}`)}
                         className="w-full h-full object-cover cursor-zoom-in"
                         title="Click to view full size"
@@ -250,7 +252,7 @@ export default function StoryboardView() {
                       {shot.lastFrame ? (
                         <button onClick={() => viewMedia(shot.lastFrame!, 'image', `Shot ${index} · last frame`)} title="Last frame — click to view full size"
                           className="absolute bottom-2 right-2 w-16 h-11 rounded-md overflow-hidden border-2 border-white/80 shadow-lg cursor-zoom-in z-10 hover:scale-105 transition-transform">
-                          <img src={shot.lastFrame} alt="last frame" className="w-full h-full object-cover" />
+                          <img src={shot.lastFrame} alt="last frame" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                           <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[7px] uppercase tracking-wider text-center font-bold leading-tight">last</span>
                         </button>
                       ) : shot.needsLastFrame ? (
@@ -318,7 +320,7 @@ export default function StoryboardView() {
                                 {b.frame ? (
                                   <button onClick={() => viewMedia(b.frame!, 'image', `B-roll · ${b.description || sceneName}`)} title="Click to view full size"
                                     className="relative w-14 h-10 flex-shrink-0 rounded overflow-hidden border border-[var(--info)]/50 hover:border-[var(--info)] cursor-zoom-in group/brf">
-                                    <img src={b.frame} alt="b-roll" className="w-full h-full object-cover" />
+                                    <img src={b.frame} alt="b-roll" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                     <span className="absolute inset-0 bg-black/0 group-hover/brf:bg-black/30 flex items-center justify-center transition-colors">
                                       <Maximize2 className="w-3 h-3 text-white opacity-0 group-hover/brf:opacity-100" />
                                     </span>

@@ -45,7 +45,7 @@ export default function CharacterBar({ characters, onCharacterClick, onOpenAllCh
               style={{ background: char.image ? 'transparent' : char.color }}
             >
               {char.image ? (
-                <img src={char.image} alt={char.name} />
+                <img src={char.image} alt={char.name} loading="lazy" decoding="async" />
               ) : (
                 char.name.charAt(0)
               )}

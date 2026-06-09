@@ -322,7 +322,7 @@ export default function LocationsView() {
                 <div className="grid grid-cols-3 gap-2">
                   {active.photos.map((src, i) => (
                     <div key={i} className="relative group bg-[var(--card)] border border-[var(--rule)] rounded-md overflow-hidden">
-                      <img src={src} alt={`Scout ${i + 1}`} className="w-full aspect-video object-cover" />
+                      <img src={src} alt={`Scout ${i + 1}`} loading="lazy" decoding="async" className="w-full aspect-video object-cover" />
                       <button
                         onClick={() => removePhoto(i)}
                         className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
