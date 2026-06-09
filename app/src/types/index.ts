@@ -145,6 +145,9 @@ export interface BRoll {
   /** Optional frame image (data URL or remote URL) for this b-roll — shown +
    *  click-to-view in the shot it belongs to, just like a shot's storyboard. */
   frame?: string | null;
+  /** Optional video (hosted URL) for this b-roll — plays in the storyboard and
+   *  flows into the Export Reel alongside the shot videos. */
+  video?: string | null;
 }
 
 export interface Act {

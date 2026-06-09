@@ -51,20 +51,26 @@ export default function StoryboardView() {
   const [showReel, setShowReel] = useState(false);
   const videoClips = useMemo(() => {
     const safe = (s: string) => (s || 'shot').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase();
-    return sequence
-      .filter((x) => x.shot.video)
-      .map((x, i) => {
-        const n = String(i + 1).padStart(2, '0');
-        const ext = (x.shot.video!.match(/\.(mp4|webm|mov|m4v)(\?|#|$)/i)?.[1] || 'mp4').toLowerCase();
-        return {
-          n: i + 1,
-          filename: `${n}_${safe(x.sceneName)}_${safe(x.shot.shotType || 'shot')}.${ext}`,
-          label: `${x.sceneName} · ${x.shot.shotType || 'shot'}`,
-          url: x.shot.video!,
-          duration: x.shot.durationSec || 0,
-        };
-      });
-  }, [sequence]);
+    const ext = (u: string) => (u.match(/\.(mp4|webm|mov|m4v)(\?|#|$)/i)?.[1] || 'mp4').toLowerCase();
+    // Build in story order: each shot's video, then its b-roll videos.
+    const raw: { label: string; url: string; duration: number; base: string }[] = [];
+    for (const x of sequence) {
+      if (x.shot.video) {
+        raw.push({ label: `${x.sceneName} · ${x.shot.shotType || 'shot'}`, url: x.shot.video, duration: x.shot.durationSec || 0, base: `${safe(x.sceneName)}_${safe(x.shot.shotType || 'shot')}` });
+      }
+      for (const bid of x.shot.bRollIds || []) {
+        const b = bRolls[bid];
+        if (b?.video) raw.push({ label: `${x.sceneName} · b-roll: ${b.description || 'cutaway'}`, url: b.video, duration: 0, base: `${safe(x.sceneName)}_broll_${safe(b.description || 'cutaway')}` });
+      }
+    }
+    return raw.map((r, i) => ({
+      n: i + 1,
+      filename: `${String(i + 1).padStart(2, '0')}_${r.base}.${ext(r.url)}`,
+      label: r.label,
+      url: r.url,
+      duration: r.duration,
+    }));
+  }, [sequence, bRolls]);
 
   const downloadClip = async (url: string, filename: string) => {
     try {
@@ -174,6 +180,19 @@ export default function StoryboardView() {
     }
     updateShot(shotId, { video: trimmed || null });
     toast.success(trimmed ? 'Video added to shot' : 'Video removed');
+  };
+
+  // Same, for a B-ROLL's video (e.g. a Runway result for the cutaway).
+  const addBRollVideoUrl = (bRollId: string, existing?: string | null) => {
+    const url = window.prompt('Paste the b-roll video link (a hosted URL, e.g. your Runway result):', existing || '');
+    if (url === null) return;
+    const trimmed = url.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      toast.error('That doesn’t look like a link', { description: 'Paste a URL starting with http(s)://' });
+      return;
+    }
+    updateBRoll(bRollId, { video: trimmed || null });
+    toast.success(trimmed ? 'Video added to b-roll' : 'Video removed');
   };
 
   const clearFrame = (shotId: string) => {
@@ -389,8 +408,14 @@ export default function StoryboardView() {
                           <div className="space-y-2">
                             {brs.map((b) => (
                               <div key={b.id} className="flex gap-2 bg-[var(--bg)] border border-[var(--rule)] rounded-md p-1.5">
-                                {/* Frame: thumbnail (click to view) or upload */}
-                                {b.frame ? (
+                                {/* Thumbnail: video (play) > frame (view) > upload */}
+                                {b.video ? (
+                                  <button onClick={() => viewMedia(b.video!, 'video', `B-roll · ${b.description || sceneName}`)} title="Play b-roll video"
+                                    className="relative w-14 h-10 flex-shrink-0 rounded overflow-hidden border border-[var(--accent)]/60 hover:border-[var(--accent)] cursor-pointer bg-black">
+                                    {b.frame && <img src={b.frame} alt="b-roll" loading="lazy" decoding="async" className="w-full h-full object-cover opacity-70" />}
+                                    <span className="absolute inset-0 flex items-center justify-center"><Play className="w-3.5 h-3.5 text-white" fill="currentColor" /></span>
+                                  </button>
+                                ) : b.frame ? (
                                   <button onClick={() => viewMedia(b.frame!, 'image', `B-roll · ${b.description || sceneName}`)} title="Click to view full size"
                                     className="relative w-14 h-10 flex-shrink-0 rounded overflow-hidden border border-[var(--info)]/50 hover:border-[var(--info)] cursor-zoom-in group/brf">
                                     <img src={b.frame} alt="b-roll" loading="lazy" decoding="async" className="w-full h-full object-cover" />
@@ -428,6 +453,13 @@ export default function StoryboardView() {
                                       className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                       <Film className="w-2 h-2" /> Video
+                                    </button>
+                                    <button
+                                      onClick={() => addBRollVideoUrl(b.id, b.video)}
+                                      className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold border transition-colors ${b.video ? 'bg-[var(--accent)]/15 border-[var(--accent)]/50 text-[var(--accent)]' : 'bg-[var(--card)] border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]'}`}
+                                      title={b.video ? 'Edit / replace the b-roll video link' : 'Paste a b-roll video link (e.g. Runway result)'}
+                                    >
+                                      <Link2 className="w-2 h-2" /> {b.video ? 'Video ✓' : 'Add video'}
                                     </button>
                                     {b.frame && (
                                       <button onClick={() => triggerBRollUpload(b.id)} className="px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold text-[var(--text-muted)] hover:text-[var(--accent)]" title="Replace frame">Replace</button>
