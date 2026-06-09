@@ -15,6 +15,15 @@ import {
   Layers,
   Sparkles,
   Image as ImageIcon,
+  Youtube,
+  Wand2,
+  FolderKanban,
+  HardDrive,
+  ListTree,
+  Globe2,
+  MapPin,
+  Calendar as CalendarIcon,
+  Briefcase,
   type LucideIcon,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
@@ -67,10 +76,20 @@ export default function CommandPalette({ open, onClose, onSave, onExport, onSett
   // Build the full item index
   const items = useMemo<PaletteItem[]>(() => {
     const list: PaletteItem[] = [
+      { id: 'tab-youtube',   label: 'Open YouTube Studio',  hint: 'shorts & content', icon: Youtube, run: () => setTab('youtube'), rank: 0 },
       { id: 'tab-dashboard', label: 'Open Home dashboard',  icon: Sparkles,     run: () => setTab('dashboard'), rank: 1 },
       { id: 'tab-writer',    label: 'Open Writer',          icon: PenLine,      run: () => setTab('writer'),    rank: 1 },
       { id: 'tab-director',  label: 'Open Director',        icon: Clapperboard, run: () => setTab('director'),  rank: 1 },
       { id: 'tab-plot',      label: 'Open Plot board',      icon: LayoutGrid,   run: () => setTab('plot'),      rank: 1 },
+      { id: 'tab-storyboard',label: 'Open Storyboard',      icon: ImageIcon,    run: () => setTab('storyboard'),rank: 1 },
+      { id: 'tab-outline',   label: 'Open Outline',         icon: ListTree,     run: () => setTab('outline'),   rank: 1 },
+      { id: 'tab-world',     label: 'Open World',           icon: Globe2,       run: () => setTab('world'),     rank: 1 },
+      { id: 'tab-locations', label: 'Open Locations',       icon: MapPin,       run: () => setTab('locations'), rank: 1 },
+      { id: 'tab-calendar',  label: 'Open Schedule',        icon: CalendarIcon, run: () => setTab('calendar'),  rank: 1 },
+      { id: 'tab-workspace', label: 'Open Workspace',       icon: Briefcase,    run: () => setTab('workspace'), rank: 1 },
+      { id: 'open-quicktools', label: 'Quick Tools (YouTube)', hint: 'AI content tools', icon: Wand2, run: () => document.dispatchEvent(new CustomEvent('app:openQuickTools')), rank: 1 },
+      { id: 'open-projects', label: 'Open Projects',        icon: FolderKanban, run: () => document.dispatchEvent(new CustomEvent('app:openProjects')), rank: 2 },
+      { id: 'open-storage',  label: 'Storage & memory',     icon: HardDrive,    run: () => document.dispatchEvent(new CustomEvent('app:openStorage')), rank: 2 },
       { id: 'panel-notes',   label: 'Toggle Notes',         icon: StickyNote,   run: () => togglePanel('notes' as any), rank: 2 },
       { id: 'panel-chars',   label: 'Toggle Characters',    icon: Users,        run: () => togglePanel('characters' as any), rank: 2 },
       { id: 'panel-ai',      label: 'Toggle AI Helper',     icon: Bot,          run: () => togglePanel('ai' as any), rank: 2 },

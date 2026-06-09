@@ -965,6 +965,30 @@ const TOOLS = [
       required: ['storyId', 'scene', 'shot'],
     },
   },
+  {
+    name: 'set_youtube',
+    description:
+      "Fill in the YouTube Studio page for a story — the creator packaging (separate from the screenplay/film side). Use this when the user wants YouTube content: write the title, hook, spoken script (NOT screenplay format), description, tags, hashtags, chapters, thumbnail text, and call-to-action. Set format to 'short' for a vertical Short (hook in line 1, ~110 words, loopable) or 'long' for a long-form video. Only the fields you pass are changed. It appears on the app's YouTube tab.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        storyId: { type: 'string', description: 'The story id (from build_story / list_stories / get_story).' },
+        format: { type: 'string', enum: ['short', 'long'], description: "'short' = vertical YouTube Short; 'long' = long-form video." },
+        idea: { type: 'string', description: 'The topic/idea the video is built from.' },
+        title: { type: 'string', description: 'The chosen, clickable video title.' },
+        altTitles: { type: 'string', description: 'A few alternative title options (one per line).' },
+        thumbnailText: { type: 'string', description: '3-5 word punchy thumbnail overlay text.' },
+        hook: { type: 'string', description: 'The first-3-seconds spoken hook.' },
+        script: { type: 'string', description: 'The spoken script — conversational VO with [VISUAL: ...]/[TEXT: ...] cues, NOT screenplay format.' },
+        description: { type: 'string', description: 'SEO video description.' },
+        tags: { type: 'string', description: 'Comma-separated tags.' },
+        hashtags: { type: 'string', description: 'Hashtags (e.g. #shorts #...).' },
+        chapters: { type: 'string', description: 'Timestamped chapters.' },
+        cta: { type: 'string', description: 'Call to action.' },
+      },
+      required: ['storyId'],
+    },
+  },
 ];
 
 // Resolve a scene by 1-based number or exact (case-insensitive) name.
@@ -1128,8 +1152,11 @@ async function callTool(env, name, args) {
       worldItems: (sp.world || []).map((w) => `${w.name} (${w.kind})`),
       locations: (sp.locations || []).map((l) => `${l.name} (${l.intExt || 'int'}/${l.timeOfDay || 'day'})`),
       noteCount: (data.notes || []).length,
+      youtube: (sp.youtube && typeof sp.youtube === 'object')
+        ? { format: sp.youtube.format || '', hasTitle: !!sp.youtube.title, hasHook: !!sp.youtube.hook, hasScript: !!sp.youtube.script, hasDescription: !!sp.youtube.description, title: sp.youtube.title || '' }
+        : null,
     };
-    return { content: [{ type: 'text', text: `"${title}" current state:\n${JSON.stringify(summary, null, 2)}\n\nWrite/extend: add_to_story (screenplay, scenes, shots, acts/beats, characters, world, locations, notes). Direct existing scenes/shots: set_scene (status/date/budget/breakdown), set_shot (direction note/type/camera/lens), set_shot_frame (attach images). Don't repeat what already exists.` }] };
+    return { content: [{ type: 'text', text: `"${title}" current state:\n${JSON.stringify(summary, null, 2)}\n\nWrite/extend: add_to_story (screenplay, scenes, shots, acts/beats, characters, world, locations, notes). Direct existing scenes/shots: set_scene, set_shot, set_shot_frame. YouTube content (titles/hook/script/description/tags/thumbnail text) → set_youtube. Don't repeat what already exists.` }] };
   }
 
   if (name === 'add_to_story') {
@@ -1268,6 +1295,23 @@ async function callTool(env, name, args) {
     data.exportedAt = Date.now();
     await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data), projectId || undefined);
     return { content: [{ type: 'text', text: `✅ Updated shot #${args.shot} in scene "${scene.name}": ${changed.join(', ')}.\nOpen it: ${appUrl}` }] };
+  }
+
+  if (name === 'set_youtube') {
+    if (!args.storyId) throw new Error('set_youtube needs a storyId.');
+    const { title, data, projectId } = await readStoryData(env, auth, args.storyId);
+    data.screenplay = data.screenplay && typeof data.screenplay === 'object' ? data.screenplay : {};
+    const yt = (data.screenplay.youtube && typeof data.screenplay.youtube === 'object') ? data.screenplay.youtube : {};
+    const FIELDS = ['format', 'idea', 'title', 'altTitles', 'thumbnailText', 'hook', 'script', 'description', 'tags', 'hashtags', 'chapters', 'cta'];
+    const changed = [];
+    for (const f of FIELDS) {
+      if (typeof args[f] === 'string' && args[f] !== '') { yt[f] = args[f]; changed.push(f); }
+    }
+    if (!changed.length) throw new Error('set_youtube: pass at least one field (idea/title/hook/script/description/tags/...).');
+    data.screenplay.youtube = yt;
+    data.exportedAt = Date.now();
+    await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data), projectId || undefined);
+    return { content: [{ type: 'text', text: `✅ Updated the YouTube Studio page for "${title}": ${changed.join(', ')}.\nOpen the app → YouTube tab to see it.\nOpen it: ${appUrl}` }] };
   }
 
   throw new Error(`Unknown tool: ${name}`);

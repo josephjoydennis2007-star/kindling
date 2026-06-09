@@ -261,6 +261,13 @@ function App() {
     })();
   }, [authChecked, user]);
 
+  // Open the search / command palette from a visible button (not just Ctrl/Cmd+K).
+  useEffect(() => {
+    const open = () => setShowPalette(true);
+    document.addEventListener('app:openPalette', open);
+    return () => document.removeEventListener('app:openPalette', open);
+  }, []);
+
   // Load story data when activeStoryId changes.
   //
   // CRITICAL: always reset every per-story field BEFORE merging in the

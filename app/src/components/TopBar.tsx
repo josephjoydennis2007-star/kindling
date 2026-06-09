@@ -162,6 +162,17 @@ export default function TopBar({
 
       {/* Actions */}
       <div className="flex items-center gap-1">
+        {/* Search everything (opens the command palette). Also Ctrl/Cmd+K. */}
+        <button
+          onClick={() => document.dispatchEvent(new CustomEvent('app:openPalette'))}
+          title="Search anything (Ctrl/Cmd+K) — pages, scenes, characters, tools"
+          aria-label="Search"
+          className="flex items-center gap-1.5 h-7 pl-2 pr-2.5 mr-1 rounded-md bg-[var(--card)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--accent)] transition-colors"
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span className="hidden md:inline text-[11px]">Search</span>
+          <span className="hidden md:inline text-[9px] px-1 py-0.5 rounded bg-[var(--hover)] text-[var(--text-muted)] font-mono">⌘K</span>
+        </button>
         {/* Inline Comment button — opens the floating comment popup
             anchored to the current text selection (if any). Available on
             Writer / Director / Plot tabs where commenting makes sense.
