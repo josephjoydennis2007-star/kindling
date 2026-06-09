@@ -924,6 +924,17 @@ const TOOLS = [
         world: WORLD_ITEMS,
         locations: LOCATION_ITEMS,
         notes: NOTE_ITEMS,
+        youtube: {
+          type: 'object',
+          description: "For a YouTube video: set/update its YouTube Studio packaging (only the fields you pass are changed).",
+          properties: {
+            format: { type: 'string', enum: ['short', 'long'] },
+            idea: { type: 'string' }, title: { type: 'string' }, altTitles: { type: 'string' },
+            thumbnailText: { type: 'string' }, hook: { type: 'string' }, script: { type: 'string' },
+            description: { type: 'string' }, tags: { type: 'string' }, hashtags: { type: 'string' },
+            chapters: { type: 'string' }, cta: { type: 'string' },
+          },
+        },
       },
       required: ['storyId'],
     },
@@ -986,30 +997,11 @@ const TOOLS = [
       required: ['storyId', 'scene', 'shot'],
     },
   },
-  {
-    name: 'set_youtube',
-    description:
-      "Fill in the YouTube Studio page for a story — the creator packaging (separate from the screenplay/film side). Use this when the user wants YouTube content: write the title, hook, spoken script (NOT screenplay format), description, tags, hashtags, chapters, thumbnail text, and call-to-action. Set format to 'short' for a vertical Short (hook in line 1, ~110 words, loopable) or 'long' for a long-form video. Only the fields you pass are changed. It appears on the app's YouTube tab.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        storyId: { type: 'string', description: 'The story id (from build_story / list_stories / get_story).' },
-        format: { type: 'string', enum: ['short', 'long'], description: "'short' = vertical YouTube Short; 'long' = long-form video." },
-        idea: { type: 'string', description: 'The topic/idea the video is built from.' },
-        title: { type: 'string', description: 'The chosen, clickable video title.' },
-        altTitles: { type: 'string', description: 'A few alternative title options (one per line).' },
-        thumbnailText: { type: 'string', description: '3-5 word punchy thumbnail overlay text.' },
-        hook: { type: 'string', description: 'The first-3-seconds spoken hook.' },
-        script: { type: 'string', description: 'The spoken script — conversational VO with [VISUAL: ...]/[TEXT: ...] cues, NOT screenplay format.' },
-        description: { type: 'string', description: 'SEO video description.' },
-        tags: { type: 'string', description: 'Comma-separated tags.' },
-        hashtags: { type: 'string', description: 'Hashtags (e.g. #shorts #...).' },
-        chapters: { type: 'string', description: 'Timestamped chapters.' },
-        cta: { type: 'string', description: 'Call to action.' },
-      },
-      required: ['storyId'],
-    },
-  },
+  // NOTE: YouTube packaging is set via build_story (`youtube` block, on create)
+  // and add_to_story (`youtube` block, on update). The standalone set_youtube
+  // tool is intentionally NOT advertised here to keep the tool list small enough
+  // for strict clients (ChatGPT) to import every tool — its handler still works
+  // if an older client calls it.
 ];
 
 // Resolve a scene by 1-based number or exact (case-insensitive) name.
@@ -1110,7 +1102,7 @@ async function callTool(env, name, args) {
     return {
       content: [{
         type: 'text',
-        text: `✅ Built "${args.title}" in Kindling${proj ? ` (in project "${proj.name}")` : ''} (${counts}).\n${data.screenplay.type === 'youtube' ? 'It’s a YouTube video — open the app’s YouTube tab to see its packaging + the storyboard for its clips.\n' : ''}${progressNote(data.screenplay.type, data.scenes.length, data.screenplay.elements.length)}\nStory id: ${storyId}  ← pass this to add_to_story / set_youtube to keep building THIS video.\nOpen it: ${appUrl}`,
+        text: `✅ Built "${args.title}" in Kindling${proj ? ` (in project "${proj.name}")` : ''} (${counts}).\n${data.screenplay.type === 'youtube' ? 'It’s a YouTube video — open the app’s YouTube tab to see its packaging + the storyboard for its clips.\n' : ''}${progressNote(data.screenplay.type, data.scenes.length, data.screenplay.elements.length)}\nStory id: ${storyId}  ← pass this to add_to_story (including its \`youtube\` block) to keep building THIS video.\nOpen it: ${appUrl}`,
       }],
     };
   }
@@ -1189,7 +1181,7 @@ async function callTool(env, name, args) {
         ? { format: sp.youtube.format || '', hasTitle: !!sp.youtube.title, hasHook: !!sp.youtube.hook, hasScript: !!sp.youtube.script, hasDescription: !!sp.youtube.description, title: sp.youtube.title || '' }
         : null,
     };
-    return { content: [{ type: 'text', text: `"${title}" current state:\n${JSON.stringify(summary, null, 2)}\n\nWrite/extend: add_to_story (screenplay, scenes, shots, acts/beats, characters, world, locations, notes). Direct existing scenes/shots: set_scene, set_shot, set_shot_frame. YouTube content (titles/hook/script/description/tags/thumbnail text) → set_youtube. Don't repeat what already exists.` }] };
+    return { content: [{ type: 'text', text: `"${title}" current state:\n${JSON.stringify(summary, null, 2)}\n\nWrite/extend: add_to_story (screenplay, scenes, shots, acts/beats, characters, world, locations, notes). Direct existing scenes/shots: set_scene, set_shot, set_shot_frame. YouTube content (titles/hook/script/description/tags/thumbnail text) → add_to_story with a \`youtube\` block. Don't repeat what already exists.` }] };
   }
 
   if (name === 'add_to_story') {
@@ -1205,6 +1197,15 @@ async function callTool(env, name, args) {
       notes: (data.notes || []).length,
     };
     const merged = appendToStoryData(data, args || {});
+    // YouTube packaging update (merge only the fields passed).
+    if (args.youtube && typeof args.youtube === 'object') {
+      merged.screenplay = merged.screenplay && typeof merged.screenplay === 'object' ? merged.screenplay : {};
+      const yt = (merged.screenplay.youtube && typeof merged.screenplay.youtube === 'object') ? merged.screenplay.youtube : {};
+      for (const f of ['format', 'idea', 'title', 'altTitles', 'thumbnailText', 'hook', 'script', 'description', 'tags', 'hashtags', 'chapters', 'cta']) {
+        if (typeof args.youtube[f] === 'string' && args.youtube[f] !== '') yt[f] = args.youtube[f];
+      }
+      merged.screenplay.youtube = yt;
+    }
     const newTitle = (typeof args.title === 'string' && args.title) ? args.title : title;
     // Preserve the project link across appends (writeStoryDoc rewrites the doc).
     await writeStoryDoc(env, auth, args.storyId, newTitle, JSON.stringify(merged), projectId || undefined);
