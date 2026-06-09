@@ -41,11 +41,12 @@ const PROTOCOL_VERSION = '2024-11-05';
 // ─── small helpers ────────────────────────────────────────────────────────
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version',
+  'Access-Control-Expose-Headers': 'Mcp-Session-Id',
 };
-const json = (obj, status = 200) =>
-  new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...cors } });
+const json = (obj, status = 200, extraHeaders = {}) =>
+  new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...cors, ...extraHeaders } });
 
 function rpcResult(id, result) { return { jsonrpc: '2.0', id, result }; }
 function rpcError(id, code, message) { return { jsonrpc: '2.0', id, error: { code, message } }; }
@@ -1383,29 +1384,40 @@ async function handleRpc(env, msg) {
 
 export default {
   async fetch(request, env) {
-    if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
+    // Streamable-HTTP session id. OpenAI/ChatGPT's MCP client expects the
+    // server to hand back an `Mcp-Session-Id` and will reuse it on later calls;
+    // without it, discovery works but live tool calls can intermittently fail
+    // ("resource not found"). We're stateless, so we just echo the client's
+    // session id or mint a stable-ish one, and return it on every response.
+    const sid = request.headers.get('Mcp-Session-Id') || `kindling-${Date.now().toString(36)}`;
+    const sh = { 'Mcp-Session-Id': sid };
+
+    if (request.method === 'OPTIONS') return new Response(null, { headers: { ...cors, ...sh } });
 
     // A friendly GET page so you can confirm the Worker is live.
     if (request.method === 'GET') {
       return new Response(
         'Kindling Connector is running. Add this URL as a custom connector in Claude (Settings → Connectors → Add custom connector).',
-        { headers: { 'Content-Type': 'text/plain', ...cors } },
+        { headers: { 'Content-Type': 'text/plain', ...cors, ...sh } },
       );
     }
 
-    if (request.method !== 'POST') return json(rpcError(null, -32600, 'Use POST'), 405);
+    // Session teardown (Streamable HTTP) — just acknowledge.
+    if (request.method === 'DELETE') return new Response(null, { status: 200, headers: { ...cors, ...sh } });
+
+    if (request.method !== 'POST') return json(rpcError(null, -32600, 'Use POST'), 405, sh);
 
     let body;
-    try { body = await request.json(); } catch { return json(rpcError(null, -32700, 'Parse error'), 400); }
+    try { body = await request.json(); } catch { return json(rpcError(null, -32700, 'Parse error'), 400, sh); }
 
     // Support a single JSON-RPC message or a batch array.
     if (Array.isArray(body)) {
       const out = [];
       for (const m of body) { const r = await handleRpc(env, m); if (r) out.push(r); }
-      return json(out);
+      return json(out, 200, sh);
     }
     const res = await handleRpc(env, body);
-    if (res === null) return new Response(null, { status: 202, headers: cors });
-    return json(res);
+    if (res === null) return new Response(null, { status: 202, headers: { ...cors, ...sh } });
+    return json(res, 200, sh);
   },
 };
