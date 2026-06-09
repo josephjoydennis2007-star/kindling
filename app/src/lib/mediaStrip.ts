@@ -45,6 +45,10 @@ export function estimateMediaBytes(state: Partial<AppState> | null | undefined):
   if (Array.isArray(chars)) {
     for (const c of chars) if (isInlineData(c?.image)) bytes += c.image.length;
   }
+  const bRolls: any = (state as any).bRolls;
+  if (bRolls && typeof bRolls === 'object') {
+    for (const k of Object.keys(bRolls)) if (isInlineData(bRolls[k]?.frame)) bytes += bRolls[k].frame.length;
+  }
   return bytes;
 }
 
@@ -101,6 +105,17 @@ export function stripHeavyMedia(state: Partial<AppState>): StripResult {
     next.characters = (state as any).characters.map((c: any) =>
       isInlineData(c?.image) ? { ...c, image: drop(c.image) } : c,
     );
+  }
+
+  if ((state as any).bRolls && typeof (state as any).bRolls === 'object') {
+    const src: any = (state as any).bRolls;
+    const out: any = {};
+    for (const k of Object.keys(src)) {
+      const b = { ...src[k] };
+      if (isInlineData(b.frame)) b.frame = drop(b.frame);
+      out[k] = b;
+    }
+    next.bRolls = out;
   }
 
   return { slim: next, removedCount, bytesFreed };

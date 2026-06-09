@@ -138,6 +138,9 @@ export interface BRoll {
   id: string;
   shotId: string;
   description: string;
+  /** Optional frame image (data URL or remote URL) for this b-roll — shown +
+   *  click-to-view in the shot it belongs to, just like a shot's storyboard. */
+  frame?: string | null;
 }
 
 export interface Act {

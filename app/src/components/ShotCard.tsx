@@ -271,6 +271,13 @@ export default function ShotCard({
                 key={br.id}
                 className="flex items-start gap-2 mb-2 bg-[var(--card)] p-2.5 rounded-lg border border-[var(--border)]"
               >
+                {/* B-roll frame image — upload + click-to-view, same as a shot frame. */}
+                <FrameSlot
+                  label="B-roll frame"
+                  value={br.frame}
+                  onSet={(v) => onUpdateBRoll(br.id, { frame: v })}
+                  onClear={() => onUpdateBRoll(br.id, { frame: null })}
+                />
                 <div className="flex-1">
                   <textarea
                     autoFocus={br.id === justAddedBRoll}

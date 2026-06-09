@@ -18,6 +18,7 @@ import { viewMedia } from '@/lib/mediaViewer';
 export default function StoryboardView() {
   const scenes = useAppStore((s) => s.scenes);
   const shots = useAppStore((s) => s.shots);
+  const bRolls = useAppStore((s) => s.bRolls);
   const updateShot = useAppStore((s) => s.updateShot);
   const [sceneFilter, setSceneFilter] = useState<string | 'all'>('all');
   const [columns, setColumns] = useState<3 | 4 | 5>(4);
@@ -145,9 +146,14 @@ export default function StoryboardView() {
                     </button>
                   )}
                   {shot.storyboard && (
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/45 flex items-center justify-center gap-2">
-                      <button onClick={() => triggerUpload(shot.id)} className="px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]">Replace</button>
-                      <button onClick={() => clearFrame(shot.id)} className="px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white">Remove</button>
+                    // pointer-events-none so this hover layer NEVER intercepts a
+                    // click meant for the image underneath (that was the
+                    // "I can't click the storyboard to view it" bug). Its buttons
+                    // re-enable pointer events for themselves.
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/45 flex items-end justify-center gap-2 p-2 pointer-events-none">
+                      <button onClick={() => viewMedia(shot.storyboard!, 'image', `Shot ${index} · ${sceneName}`)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-white/90 text-black">View</button>
+                      <button onClick={() => triggerUpload(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]">Replace</button>
+                      <button onClick={() => clearFrame(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white">Remove</button>
                     </div>
                   )}
                   {/* sequence number */}
@@ -160,11 +166,12 @@ export default function StoryboardView() {
                       {shot.shotType}
                     </div>
                   )}
-                  {/* last frame (first→last transition) */}
+                  {/* last frame (first→last transition) — click the thumb to view it full size */}
                   {shot.lastFrame ? (
-                    <button onClick={() => viewMedia(shot.lastFrame!, 'image', `Shot ${index} · last frame`)} title="Last frame — click to view"
-                      className="absolute bottom-2 right-2 w-12 h-8 rounded-md overflow-hidden border-2 border-white/70 shadow-lg cursor-zoom-in">
+                    <button onClick={() => viewMedia(shot.lastFrame!, 'image', `Shot ${index} · last frame`)} title="Last frame — click to view full size"
+                      className="absolute bottom-2 right-2 w-16 h-11 rounded-md overflow-hidden border-2 border-white/80 shadow-lg cursor-zoom-in z-10 hover:scale-105 transition-transform">
                       <img src={shot.lastFrame} alt="last frame" className="w-full h-full object-cover" />
+                      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[7px] uppercase tracking-wider text-center font-bold leading-tight">last</span>
                     </button>
                   ) : shot.needsLastFrame ? (
                     <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)]/90 text-white" title={shot.lastFrameDescription || 'Needs a last frame'}>
@@ -186,6 +193,29 @@ export default function StoryboardView() {
                     placeholder="Direction — what happens in this frame…"
                     className="w-full min-h-[42px] resize-y bg-transparent text-[11px] leading-snug text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none border border-transparent focus:border-[var(--accent)]/40 rounded-md px-1.5 py-1 transition-colors"
                   />
+                  {/* B-roll frames belonging to this shot — click to view full size */}
+                  {(() => {
+                    const brs = (shot.bRollIds || []).map((id) => bRolls[id]).filter(Boolean);
+                    const withFrames = brs.filter((b) => b.frame);
+                    if (!brs.length) return null;
+                    return (
+                      <div className="mt-1.5">
+                        <div className="text-[8.5px] uppercase tracking-widest text-[var(--info)] font-bold mb-1 flex items-center gap-1"><Film className="w-2.5 h-2.5" /> B-roll{withFrames.length ? ` · ${withFrames.length} frame${withFrames.length === 1 ? '' : 's'}` : ''}</div>
+                        {withFrames.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {withFrames.map((b) => (
+                              <button key={b.id} onClick={() => viewMedia(b.frame!, 'image', `B-roll · ${b.description || sceneName}`)} title={b.description || 'B-roll frame — click to view'}
+                                className="w-14 h-9 rounded-md overflow-hidden border border-[var(--info)]/50 hover:border-[var(--info)] cursor-zoom-in hover:scale-105 transition-transform">
+                                <img src={b.frame!} alt="b-roll frame" className="w-full h-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[9px] text-[var(--text-muted)]">No b-roll frames yet — add them in the Director shot card.</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {/* Generate buttons */}
                   <div className="mt-auto pt-2 flex gap-1">
                     <button

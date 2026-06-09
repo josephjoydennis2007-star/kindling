@@ -910,14 +910,15 @@ const TOOLS = [
   {
     name: 'set_shot_frame',
     description:
-      "Attach a generated FRAME IMAGE to a specific shot's storyboard — the bridge from an image generator (e.g. a Runway connector's generate_image) back into Kindling. Workflow: generate the image elsewhere, get its URL, then call this with the story + which scene/shot + which frame. Use frame='first' for the opening frame (the shot's storyboard) and frame='last' for the end frame of a first→last transition (which the app uses to drive image-to-video). Identify the shot by scene (1-based number OR exact scene name) and shot (1-based index within that scene). Call get_story first to see scene/shot indices and which frames already exist. Pass a hosted image URL when possible (not base64) — the story document has a size limit.",
+      "Attach a generated FRAME IMAGE to a specific shot's storyboard — the bridge from an image generator (e.g. a Runway connector's generate_image) back into Kindling. Workflow: generate the image elsewhere, get its URL, then call this with the story + which scene/shot + which frame. Use frame='first' for the opening frame (the shot's storyboard) and frame='last' for the end frame of a first→last transition (which the app uses to drive image-to-video). To attach a frame to one of the shot's B-ROLLS instead, pass `bRoll` (1-based index of the b-roll within the shot) — the image then shows under that shot's b-roll in the Storyboard. Identify the shot by scene (1-based number OR exact scene name) and shot (1-based index within that scene). Call get_story first to see scene/shot indices and which frames already exist. Pass a hosted image URL when possible (not base64) — the story document has a size limit.",
     inputSchema: {
       type: 'object',
       properties: {
         storyId: { type: 'string', description: 'The story id (from build_story / list_stories / get_story).' },
         scene: { type: ['string', 'number'], description: '1-based scene number (e.g. 1 for the first scene) OR the exact scene name.' },
         shot: { type: 'number', description: '1-based index of the shot within that scene (1 = first shot).' },
-        frame: { type: 'string', enum: ['first', 'last'], description: "Which frame to set. 'first' = the opening storyboard frame; 'last' = the end frame of a first→last transition (also marks the shot as needsLastFrame).", },
+        frame: { type: 'string', enum: ['first', 'last'], description: "Which frame to set on the SHOT. 'first' = the opening storyboard frame; 'last' = the end frame of a first→last transition (also marks the shot as needsLastFrame). Ignored when `bRoll` is given.", },
+        bRoll: { type: 'number', description: 'Optional — 1-based index of a b-roll within the shot. When set, the image is attached to that b-roll\'s frame instead of the shot\'s storyboard.' },
         imageUrl: { type: 'string', description: 'URL of the generated image to attach (e.g. a Runway output URL). A data: URL also works but counts against the document size limit.' },
       },
       required: ['storyId', 'scene', 'shot', 'imageUrl'],
@@ -1079,6 +1080,11 @@ async function callTool(env, name, args) {
         breakdown: Object.keys(bdSummary).length ? bdSummary : null,
         shots: (s.shotIds || []).map((id, shi) => {
           const sh = allShots[id] || {};
+          const allBRolls = data.bRolls && typeof data.bRolls === 'object' ? data.bRolls : {};
+          const brolls = (sh.bRollIds || []).map((bid, bi) => {
+            const br = allBRolls[bid] || {};
+            return { bRoll: bi + 1, description: br.description || '', hasFrame: !!br.frame };
+          });
           return {
             shot: shi + 1,
             shotType: sh.shotType || '',
@@ -1089,6 +1095,7 @@ async function callTool(env, name, args) {
             hasLastFrame: !!sh.lastFrame,
             needsLastFrame: !!sh.needsLastFrame,
             lastFrameDescription: sh.lastFrameDescription || '',
+            ...(brolls.length ? { bRolls: brolls } : {}),
           };
         }),
       };
@@ -1184,6 +1191,25 @@ async function callTool(env, name, args) {
     const shotId = (sceneObj.shotIds || [])[shotIdx];
     const shot = shotId ? shotsMap[shotId] : null;
     if (!shot) throw new Error(`Scene "${sceneObj.name}" has no shot #${args.shot}. It has ${(sceneObj.shotIds || []).length} shot(s). Call get_story to check.`);
+
+    // Optionally target a B-ROLL frame within this shot instead of the shot's
+    // own storyboard. `bRoll` is the 1-based index within the shot's b-roll list.
+    if (args.bRoll != null && String(args.bRoll).trim() !== '') {
+      const brIdx = Number(args.bRoll) - 1;
+      const brId = (shot.bRollIds || [])[brIdx];
+      const brMap = data.bRolls && typeof data.bRolls === 'object' ? data.bRolls : (data.bRolls = {});
+      const br = brId ? brMap[brId] : null;
+      if (!br) throw new Error(`Shot #${args.shot} in "${sceneObj.name}" has no b-roll #${args.bRoll}. It has ${(shot.bRollIds || []).length} b-roll(s). Call get_story to check.`);
+      br.frame = String(args.imageUrl);
+      data.exportedAt = Date.now();
+      await writeStoryDoc(env, auth, args.storyId, title, JSON.stringify(data), projectId || undefined);
+      return {
+        content: [{
+          type: 'text',
+          text: `✅ Set the frame on b-roll #${args.bRoll} of shot #${args.shot} in scene "${sceneObj.name}". It appears under that shot in Kindling's Storyboard + Director (click to view full size).\nOpen it: ${appUrl}`,
+        }],
+      };
+    }
 
     const frame = String(args.frame || 'first').toLowerCase() === 'last' ? 'last' : 'first';
     if (frame === 'last') {
