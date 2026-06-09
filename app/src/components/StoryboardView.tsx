@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2, Plus, X, ImagePlus } from 'lucide-react';
+import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2, Plus, X, ImagePlus, Play, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { Shot } from '@/types';
@@ -99,6 +99,20 @@ export default function StoryboardView() {
     return `Cinematic b-roll cutaway: ${d}. Photoreal, 16:9, shallow depth of field, atmospheric lighting, film grain.`;
   };
 
+  // Attach / replace a shot's VIDEO by pasting a hosted link (e.g. a Runway
+  // result). The video then shows in the storyboard in place of the frame.
+  const addVideoUrl = (shotId: string, existing?: string | null) => {
+    const url = window.prompt('Paste the video link (a hosted URL, e.g. your Runway result):', existing || '');
+    if (url === null) return;
+    const trimmed = url.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      toast.error('That doesn’t look like a link', { description: 'Paste a URL starting with http(s):// — a hosted video link.' });
+      return;
+    }
+    updateShot(shotId, { video: trimmed || null });
+    toast.success(trimmed ? 'Video added to shot' : 'Video removed');
+  };
+
   const clearFrame = (shotId: string) => {
     if (!confirm('Remove this storyboard frame?')) return;
     updateShot(shotId, { storyboard: '' });
@@ -162,9 +176,54 @@ export default function StoryboardView() {
           >
             {sequence.map(({ sceneName, shot, index }) => (
               <figure key={shot.id} className="group relative flex flex-col bg-[var(--card)] border border-[var(--rule)] rounded-xl overflow-hidden transition-all hover:border-[var(--accent)]/50 hover:shadow-[0_12px_34px_-14px_rgba(0,0,0,0.55)]">
-                {/* ── Frame ── */}
+                {/* ── Frame / Video ── */}
                 <div className="aspect-video bg-[var(--bg)] relative">
-                  {shot.storyboard ? (
+                  {shot.video ? (
+                    /* VIDEO MODE — the video fills the frame; the first/last
+                       frame images become small thumbnails over it. */
+                    <>
+                      <video
+                        src={shot.video}
+                        poster={shot.storyboard || undefined}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        onClick={() => viewMedia(shot.video!, 'video', `Shot ${index} · ${sceneName}`)}
+                        className="w-full h-full object-cover cursor-pointer"
+                        title="Click to play full size"
+                      />
+                      {/* Play badge */}
+                      <button
+                        onClick={() => viewMedia(shot.video!, 'video', `Shot ${index} · ${sceneName}`)}
+                        title="Play video"
+                        className="absolute inset-0 flex items-center justify-center"
+                      >
+                        <span className="p-2.5 rounded-full bg-black/55 text-white group-hover:bg-black/75 transition-colors"><Play className="w-5 h-5" fill="currentColor" /></span>
+                      </button>
+                      {/* First / last frame thumbnails over the video — click to view image */}
+                      <div className="absolute top-2 right-2 z-20 flex gap-1">
+                        {shot.storyboard && (
+                          <button onClick={(e) => { e.stopPropagation(); viewMedia(shot.storyboard!, 'image', `Shot ${index} · first frame`); }} title="First frame — click to view"
+                            className="relative w-12 h-8 rounded overflow-hidden border-2 border-white/80 shadow cursor-zoom-in hover:scale-105 transition-transform">
+                            <img src={shot.storyboard} alt="first frame" className="w-full h-full object-cover" />
+                            <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[6px] uppercase tracking-wider text-center font-bold leading-tight">1st</span>
+                          </button>
+                        )}
+                        {shot.lastFrame && (
+                          <button onClick={(e) => { e.stopPropagation(); viewMedia(shot.lastFrame!, 'image', `Shot ${index} · last frame`); }} title="Last frame — click to view"
+                            className="relative w-12 h-8 rounded overflow-hidden border-2 border-white/80 shadow cursor-zoom-in hover:scale-105 transition-transform">
+                            <img src={shot.lastFrame} alt="last frame" className="w-full h-full object-cover" />
+                            <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[6px] uppercase tracking-wider text-center font-bold leading-tight">last</span>
+                          </button>
+                        )}
+                      </div>
+                      {/* Change / remove video on hover */}
+                      <div className="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-2 p-2 pointer-events-none bg-gradient-to-t from-black/70 to-transparent">
+                        <button onClick={() => addVideoUrl(shot.id, shot.video)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]">Change video</button>
+                        <button onClick={() => updateShot(shot.id, { video: null })} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white">Remove video</button>
+                      </div>
+                    </>
+                  ) : shot.storyboard ? (
                     <>
                       <img
                         src={shot.storyboard}
@@ -181,6 +240,24 @@ export default function StoryboardView() {
                       >
                         <Maximize2 className="w-3.5 h-3.5" />
                       </button>
+                      {/* Hover layer: Replace/Remove (centered). pointer-events-none
+                          so it never blocks the image click underneath. */}
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/45 flex items-center justify-center gap-2 pointer-events-none">
+                        <button onClick={() => triggerUpload(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]">Replace</button>
+                        <button onClick={() => clearFrame(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white">Remove</button>
+                      </div>
+                      {/* last frame thumbnail (first→last transition) */}
+                      {shot.lastFrame ? (
+                        <button onClick={() => viewMedia(shot.lastFrame!, 'image', `Shot ${index} · last frame`)} title="Last frame — click to view full size"
+                          className="absolute bottom-2 right-2 w-16 h-11 rounded-md overflow-hidden border-2 border-white/80 shadow-lg cursor-zoom-in z-10 hover:scale-105 transition-transform">
+                          <img src={shot.lastFrame} alt="last frame" className="w-full h-full object-cover" />
+                          <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[7px] uppercase tracking-wider text-center font-bold leading-tight">last</span>
+                        </button>
+                      ) : shot.needsLastFrame ? (
+                        <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)]/90 text-white" title={shot.lastFrameDescription || 'Needs a last frame'}>
+                          + last
+                        </span>
+                      ) : null}
                     </>
                   ) : (
                     <button
@@ -191,38 +268,16 @@ export default function StoryboardView() {
                       <span className="text-[10px] uppercase tracking-widest font-bold">Upload / generate</span>
                     </button>
                   )}
-                  {shot.storyboard && (
-                    // pointer-events-none so this hover layer NEVER intercepts a
-                    // click meant for the image underneath (that was the
-                    // "I can't click the storyboard to view it" bug). Its buttons
-                    // re-enable pointer events for themselves.
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/45 flex items-center justify-center gap-2 pointer-events-none">
-                      <button onClick={() => triggerUpload(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]">Replace</button>
-                      <button onClick={() => clearFrame(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white">Remove</button>
-                    </div>
-                  )}
-                  {/* sequence number */}
-                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/70 text-white tabular-nums backdrop-blur-sm">
+                  {/* sequence number (always) */}
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/70 text-white tabular-nums backdrop-blur-sm z-20">
                     {String(index).padStart(2, '0')}
                   </div>
-                  {/* shot-type chip */}
+                  {/* shot-type chip (always) */}
                   {shot.shotType && (
-                    <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)] text-[var(--accent-ink)] shadow">
+                    <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)] text-[var(--accent-ink)] shadow z-20">
                       {shot.shotType}
                     </div>
                   )}
-                  {/* last frame (first→last transition) — click the thumb to view it full size */}
-                  {shot.lastFrame ? (
-                    <button onClick={() => viewMedia(shot.lastFrame!, 'image', `Shot ${index} · last frame`)} title="Last frame — click to view full size"
-                      className="absolute bottom-2 right-2 w-16 h-11 rounded-md overflow-hidden border-2 border-white/80 shadow-lg cursor-zoom-in z-10 hover:scale-105 transition-transform">
-                      <img src={shot.lastFrame} alt="last frame" className="w-full h-full object-cover" />
-                      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[7px] uppercase tracking-wider text-center font-bold leading-tight">last</span>
-                    </button>
-                  ) : shot.needsLastFrame ? (
-                    <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold bg-[var(--accent)]/90 text-white" title={shot.lastFrameDescription || 'Needs a last frame'}>
-                      + last
-                    </span>
-                  ) : null}
                 </div>
 
                 {/* ── Caption ── */}
@@ -328,6 +383,13 @@ export default function StoryboardView() {
                       className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--bg)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Film className="w-2.5 h-2.5" /> Video
+                    </button>
+                    <button
+                      onClick={() => addVideoUrl(shot.id, shot.video)}
+                      title="Paste a finished video link (e.g. your Runway result) to show it on this shot"
+                      className="flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--bg)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+                    >
+                      <Link2 className="w-2.5 h-2.5" /> {shot.video ? 'Edit link' : 'Add video'}
                     </button>
                   </div>
                 </figcaption>

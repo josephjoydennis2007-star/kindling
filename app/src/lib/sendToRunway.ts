@@ -106,10 +106,11 @@ export async function sendPromptToRunway(opts: {
   imageUrls?: string[];
 }): Promise<void> {
   const target = opts.target || 'image';
-  // Only hand Runway HOSTED image URLs — base64 data URLs are too big to paste
-  // and Runway can't fetch them. (Uploading frames to the cloud makes them
-  // hosted URLs, which is exactly what Runway needs.)
-  const imageUrls = (opts.imageUrls || []).filter((u) => /^https?:\/\//i.test(u || ''));
+  // Show ALL reference images in the panel (hosted URLs AND base64) so they
+  // always appear for you to drag/open — previously base64 frames were filtered
+  // out, which is why "nothing showed up". The extension prefers hosted URLs but
+  // can handle either.
+  const imageUrls = (opts.imageUrls || []).filter(Boolean) as string[];
   const payload: SendToRunwayPayload = {
     source: 'kindling',
     kind: 'send-prompt',
@@ -175,19 +176,14 @@ export function attachReturnedAsset(payload: RunwayReturnPayload): void {
   if (shotId) {
     const target = (state.shots as any)[shotId];
     if (target) {
-      // Images go directly on the shot's storyboard slot. Videos go
-      // into Assets because we don't have a per-shot video slot yet.
+      // Images go on the shot's storyboard slot; videos now go on the shot's
+      // own video slot (shown in the Storyboard in place of the frame).
       if (assetKind === 'video') {
-        state.addAsset({
-          name: `Runway video — ${target.description?.slice(0, 40) || 'shot'}`,
-          kind: 'reference',
-          data: url,
-          size: 0,
-        });
+        state.updateShot(shotId, { video: url });
       } else {
         state.updateShot(shotId, { storyboard: url });
       }
-      toast.success(assetKind === 'video' ? 'Runway video saved to Assets' : 'Runway image attached to shot');
+      toast.success(assetKind === 'video' ? 'Runway video attached to shot' : 'Runway image attached to shot');
       return;
     }
   }

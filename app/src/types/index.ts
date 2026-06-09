@@ -130,6 +130,10 @@ export interface Shot {
    *  end-state prompt for image generation (the shot's `description` is the
    *  first-frame prompt). */
   lastFrameDescription?: string;
+  /** The generated VIDEO for this shot (a hosted URL — e.g. a Runway result).
+   *  When set, the storyboard shows the video in place of the frame image, with
+   *  the first/last frames as small thumbnails over it. */
+  video?: string | null;
   durationSec?: number;       // shot duration in seconds
   lens?: string;              // lens metadata, e.g. "35mm", "85mm anamorphic"
 }
