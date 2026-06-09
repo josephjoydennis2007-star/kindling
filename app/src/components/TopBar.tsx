@@ -446,6 +446,14 @@ export default function TopBar({
                 style={{ transformOrigin: 'top right' }}
                 className="glass-surface absolute top-full right-0 mt-1.5 w-[264px] rounded-xl max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain z-[320]"
               >
+                <Group title="Create">
+                  <Item
+                    icon={Wand2}
+                    label="Quick Tools (YouTube)"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openQuickTools')); }}
+                  />
+                </Group>
+
                 <Group title="AI tools" disabled={!activeStoryId}>
                   <Item
                     icon={MessageSquareQuote}

@@ -25,6 +25,7 @@ const ProductionView = lazy(() => import('@/components/ProductionView'));
 const ContinuityGuard = lazy(() => import('@/components/ContinuityGuard'));
 const ProjectsView = lazy(() => import('@/components/ProjectsView'));
 const StorageManager = lazy(() => import('@/components/StorageManager'));
+const QuickToolsPanel = lazy(() => import('@/components/QuickToolsPanel'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -1771,6 +1772,7 @@ function App() {
       <ContinuityGuard />
       <ProjectsView onOpenStory={() => { setShowStorySelector(false); setTab('writer'); }} />
       <StorageManager autoCrashedId={safeModeStoryId} />
+      <QuickToolsPanel />
       {/* Floating inline comment popup. Opens via:
             - TopBar Comment button → app:openInlineComment event
             - Cmd/Ctrl+Shift+M keyboard shortcut (see keyboard handler)
