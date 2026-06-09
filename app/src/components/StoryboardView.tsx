@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film } from 'lucide-react';
+import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { Shot } from '@/types';
@@ -47,20 +47,25 @@ export default function StoryboardView() {
     fileRef.current?.click();
   };
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || !targetShotId) return;
+    const shotId = targetShotId;
+    if (!file || !shotId) return;
     if (!file.type.startsWith('image/')) {
       toast.error('Only image files');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateShot(targetShotId, { storyboard: reader.result as string });
-      toast.success('Frame uploaded');
-    };
-    reader.readAsDataURL(file);
+    // Upload to cloud Storage; store only the URL (keeps the story light).
+    const tid = toast.loading('Uploading frame to cloud…');
+    try {
+      const { uploadFileToCloud, currentStoryId } = await import('@/lib/mediaUpload');
+      const url = await uploadFileToCloud(file, currentStoryId());
+      updateShot(shotId, { storyboard: url });
+      toast.success('Frame saved to cloud', { id: tid });
+    } catch {
+      toast.error('Upload failed', { id: tid });
+    }
   };
 
   const clearFrame = (shotId: string) => {
@@ -129,13 +134,23 @@ export default function StoryboardView() {
                 {/* ── Frame ── */}
                 <div className="aspect-video bg-[var(--bg)] relative">
                   {shot.storyboard ? (
-                    <img
-                      src={shot.storyboard}
-                      alt=""
-                      onClick={() => viewMedia(shot.storyboard!, 'image', `Shot ${index} · ${sceneName}`)}
-                      className="w-full h-full object-cover cursor-zoom-in"
-                      title="Click to view full size"
-                    />
+                    <>
+                      <img
+                        src={shot.storyboard}
+                        alt=""
+                        onClick={() => viewMedia(shot.storyboard!, 'image', `Shot ${index} · ${sceneName}`)}
+                        className="w-full h-full object-cover cursor-zoom-in"
+                        title="Click to view full size"
+                      />
+                      {/* Small expand icon — click to view full size (sits above the image, top-right). */}
+                      <button
+                        onClick={() => viewMedia(shot.storyboard!, 'image', `Shot ${index} · ${sceneName}`)}
+                        title="View full size"
+                        className="absolute top-2 right-2 z-20 p-1.5 rounded-md bg-black/55 text-white opacity-0 group-hover:opacity-100 hover:bg-black/80 transition-all"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
                   ) : (
                     <button
                       onClick={() => triggerUpload(shot.id)}
@@ -150,8 +165,7 @@ export default function StoryboardView() {
                     // click meant for the image underneath (that was the
                     // "I can't click the storyboard to view it" bug). Its buttons
                     // re-enable pointer events for themselves.
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/45 flex items-end justify-center gap-2 p-2 pointer-events-none">
-                      <button onClick={() => viewMedia(shot.storyboard!, 'image', `Shot ${index} · ${sceneName}`)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-white/90 text-black">View</button>
+                    <div className="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-2 p-2 pointer-events-none bg-gradient-to-t from-black/60 to-transparent">
                       <button onClick={() => triggerUpload(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]">Replace</button>
                       <button onClick={() => clearFrame(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white">Remove</button>
                     </div>
@@ -226,7 +240,7 @@ export default function StoryboardView() {
                       <ExternalLink className="w-2.5 h-2.5" /> Image
                     </button>
                     <button
-                      onClick={() => sendPromptToRunway({ prompt: buildRunwayPrompt(shot, sceneName), shotId: shot.id, shotLabel: `${sceneName} · ${shot.shotType || 'shot'}`, target: 'video' })}
+                      onClick={() => sendPromptToRunway({ prompt: buildRunwayPrompt(shot, sceneName), shotId: shot.id, shotLabel: `${sceneName} · ${shot.shotType || 'shot'}`, target: 'video', imageUrls: [shot.storyboard, shot.lastFrame].filter(Boolean) as string[] })}
                       disabled={!shot.storyboard}
                       title={shot.storyboard ? 'Animate this frame in Runway' : 'Add a frame first'}
                       className="flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--bg)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

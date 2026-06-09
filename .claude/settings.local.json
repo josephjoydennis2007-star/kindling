@@ -89,7 +89,10 @@
       "Bash(printf '\\\\nexport { buildStoryData, normalizeBreakdown, resolveScene };\\\\n')",
       "Bash(node -e 'let s=\"\";process.stdin.on\\(\"data\",d=>s+=d\\).on\\(\"end\",\\(\\)=>{const j=JSON.parse\\(s\\);console.log\\(\"tools:\",j.result.tools.map\\(t=>t.name\\).join\\(\", \"\\)\\);const sc=j.result.tools.find\\(t=>t.name===\"build_story\"\\).inputSchema.properties.scenes.items.properties;console.log\\(\"scene has breakdown:\", \"breakdown\" in sc\\);}\\);')",
       "Bash(node --check worker.js)",
-      "Bash(grep -rln \"offload\\\\|blobStore\\\\|putBlob\\\\|idb://\\\\|asset:\\\\/\\\\/\\\\|externalizeImages\\\\|stripImages\" --include=*.ts --include=*.tsx)"
+      "Bash(grep -rln \"offload\\\\|blobStore\\\\|putBlob\\\\|idb://\\\\|asset:\\\\/\\\\/\\\\|externalizeImages\\\\|stripImages\" --include=*.ts --include=*.tsx)",
+      "Bash(cat firebase.json)",
+      "Bash(ls -la storage.rules)",
+      "Bash(sed -n '1,60p' app/src/components/RunwayPromptDialog.tsx)"
     ]
   }
 }

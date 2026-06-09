@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, HardDrive, Trash2, ImageOff, AlertTriangle, RefreshCw, Gauge } from 'lucide-react';
+import { X, HardDrive, Trash2, ImageOff, AlertTriangle, RefreshCw, Gauge, CloudUpload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import {
@@ -105,6 +105,28 @@ export default function StorageManager({ autoCrashedId }: { autoCrashedId?: stri
     toast.success('Removed images from all stories', { description: `Freed ${humanBytes(freed)}.` });
   }, [refreshUsage]);
 
+  const moveAllToCloud = useCallback(async () => {
+    const { canUploadToCloud } = await import('@/lib/mediaUpload');
+    if (!canUploadToCloud()) {
+      toast.error('Sign in first', { description: 'Cloud upload needs you signed in with Firebase Storage enabled.' });
+      return;
+    }
+    if (!window.confirm('Move all embedded images from this device into your cloud Storage? Stories keep their images (now as cloud links) and your device/RAM use drops a lot. This can take a while for large stories.')) return;
+    setBusy('cloud');
+    let moved = 0, freed = 0;
+    const { migrateStoryImagesToCloud } = await import('@/lib/mediaUpload');
+    for (const s of useAppStore.getState().stories) {
+      try { const r = await migrateStoryImagesToCloud(s.id); moved += r.moved; freed += r.bytesMoved; } catch { /* skip */ }
+    }
+    setBusy(null);
+    setSizes({});
+    refreshUsage();
+    toast.success(`Moved ${moved} image${moved === 1 ? '' : 's'} to the cloud`, {
+      description: moved ? `Freed ~${humanBytes(freed)} from this device. Reload to see the lighter stories.` : 'No embedded images to move.',
+      duration: 8000,
+    });
+  }, [refreshUsage]);
+
   const clearEverything = useCallback(async () => {
     if (!window.confirm('Clear ALL local story data on this device? This cannot be undone. Stories synced to the cloud (Firebase/GitHub) can be recovered by signing in again.')) return;
     setBusy('nuke');
@@ -174,8 +196,12 @@ export default function StorageManager({ autoCrashedId }: { autoCrashedId?: stri
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] disabled:opacity-40">
                   {busy === 'measure' ? '…measuring' : <><Gauge className="w-3.5 h-3.5" /> Measure story sizes</>}
                 </button>
-                <button onClick={removeAllImages} disabled={!!busy}
+                <button onClick={moveAllToCloud} disabled={!!busy}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110 disabled:opacity-40">
+                  {busy === 'cloud' ? '…moving' : <><CloudUpload className="w-3.5 h-3.5" /> Move images to cloud (recommended)</>}
+                </button>
+                <button onClick={removeAllImages} disabled={!!busy}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--danger)] hover:border-[var(--danger)] disabled:opacity-40">
                   {busy === 'all' ? '…working' : <><ImageOff className="w-3.5 h-3.5" /> Remove images from all stories</>}
                 </button>
               </div>

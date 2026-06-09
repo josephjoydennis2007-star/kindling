@@ -32,17 +32,25 @@ export default function AssetsPanel({ onClose }: { onClose: () => void }) {
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
-    Array.from(files).forEach((file) => {
-      const kind: AssetKind = file.type.startsWith('image/') ? 'image'
-        : file.type.startsWith('audio/') ? 'audio'
-        : 'reference';
-      const reader = new FileReader();
-      reader.onload = () => {
-        addAsset({ name: file.name, kind, data: reader.result as string, size: file.size });
-      };
-      reader.readAsDataURL(file);
-    });
-    toast.success(`Added ${files.length} asset${files.length !== 1 ? 's' : ''}`);
+    const list = Array.from(files);
+    const tid = toast.loading(`Uploading ${list.length} asset${list.length !== 1 ? 's' : ''} to cloud…`);
+    (async () => {
+      const { uploadFileToCloud, currentStoryId } = await import('@/lib/mediaUpload');
+      let ok = 0;
+      for (const file of list) {
+        const kind: AssetKind = file.type.startsWith('image/') ? 'image'
+          : file.type.startsWith('audio/') ? 'audio'
+          : 'reference';
+        try {
+          // Store the bytes in cloud Storage; keep only the URL in the story so
+          // assets don't bloat RAM / the local DB / the cloud document.
+          const url = await uploadFileToCloud(file, currentStoryId());
+          addAsset({ name: file.name, kind, data: url, size: file.size });
+          ok += 1;
+        } catch { /* skip this file */ }
+      }
+      toast.success(`Added ${ok} asset${ok !== 1 ? 's' : ''}`, { id: tid });
+    })();
   };
 
   return (

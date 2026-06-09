@@ -40,6 +40,9 @@ export interface RunwayPromptDetail {
   target: 'image' | 'video';
   shotId?: string;
   shotLabel?: string;
+  /** Reference image URLs to hand to Runway (first frame, last frame, b-roll
+   *  frame). For a video these are the start/end frames Runway animates. */
+  imageUrls?: string[];
 }
 
 /** A message we post on the window for the extension's content
@@ -52,6 +55,8 @@ export interface SendToRunwayPayload {
   prompt: string;
   /** image vs video — Runway's interface differs slightly */
   target: 'image' | 'video';
+  /** Reference image URLs the extension can auto-attach to Runway's uploader. */
+  imageUrls?: string[];
 }
 
 /** A return message from the extension after the user has clicked
@@ -98,8 +103,13 @@ export async function sendPromptToRunway(opts: {
   shotId?: string;
   shotLabel?: string;
   target?: 'image' | 'video';
+  imageUrls?: string[];
 }): Promise<void> {
   const target = opts.target || 'image';
+  // Only hand Runway HOSTED image URLs — base64 data URLs are too big to paste
+  // and Runway can't fetch them. (Uploading frames to the cloud makes them
+  // hosted URLs, which is exactly what Runway needs.)
+  const imageUrls = (opts.imageUrls || []).filter((u) => /^https?:\/\//i.test(u || ''));
   const payload: SendToRunwayPayload = {
     source: 'kindling',
     kind: 'send-prompt',
@@ -107,6 +117,7 @@ export async function sendPromptToRunway(opts: {
     shotLabel: opts.shotLabel,
     prompt: opts.prompt,
     target,
+    imageUrls,
   };
 
   // ALWAYS copy the prompt to the clipboard first — this is the reliable
@@ -129,16 +140,21 @@ export async function sendPromptToRunway(opts: {
     target,
     shotId: opts.shotId,
     shotLabel: opts.shotLabel,
+    imageUrls,
   };
   document.dispatchEvent(new CustomEvent<RunwayPromptDetail>(RUNWAY_PROMPT_EVENT, { detail }));
 
-  // If the bridge extension is present, ALSO try to auto-fill (best-effort).
+  // If the bridge extension is present, ALSO try to auto-fill (best-effort) —
+  // including the reference images so it can attach them to Runway's uploader.
   if (extensionPresent) {
     window.postMessage(payload, '*');
   }
 
+  const refNote = imageUrls.length
+    ? ` ${imageUrls.length} reference image${imageUrls.length === 1 ? '' : 's'} ready in the panel.`
+    : '';
   toast.success(copied ? 'Prompt copied — paste it into Runway' : 'Prompt ready — copy it from the panel', {
-    description: 'A panel with the full prompt is open (bottom-right). Open Runway, paste, and Generate.',
+    description: `A panel is open (bottom-right). Open Runway, paste, and Generate.${refNote}`,
     duration: 6000,
   });
 }

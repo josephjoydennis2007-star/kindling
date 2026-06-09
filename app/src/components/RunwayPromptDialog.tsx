@@ -70,6 +70,37 @@ export default function RunwayPromptDialog() {
               onFocus={(e) => e.currentTarget.select()}
               className="w-full h-28 resize-none bg-[var(--bg)] border border-[var(--border)] rounded-lg p-2.5 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
             />
+
+            {/* Reference frames for the video — drag into Runway, or open/copy. */}
+            {data.imageUrls && data.imageUrls.length > 0 && (
+              <div className="mt-3">
+                <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                  {data.imageUrls.length === 1 ? 'Reference frame' : 'Reference frames (1st → last)'} — drag into Runway, or open to save
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {data.imageUrls.map((u, i) => (
+                    <div key={u + i} className="relative group/ref">
+                      <img
+                        src={u}
+                        alt={`reference ${i + 1}`}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData('text/uri-list', u); e.dataTransfer.setData('text/plain', u); }}
+                        onClick={() => window.open(u, '_blank', 'noopener')}
+                        className="w-20 h-14 object-cover rounded-md border border-[var(--border)] cursor-grab active:cursor-grabbing hover:border-[var(--accent)]"
+                        title="Drag into Runway's image box, or click to open"
+                      />
+                      <button
+                        onClick={async () => { try { await navigator.clipboard.writeText(u); toast.success('Image URL copied'); } catch { toast.error('Copy failed'); } }}
+                        className="absolute bottom-0.5 right-0.5 p-1 rounded bg-black/70 text-white opacity-0 group-hover/ref:opacity-100 transition-opacity"
+                        title="Copy image URL"
+                      >
+                        <Copy className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex gap-2 mt-3">
               <button
                 onClick={copy}
@@ -89,7 +120,9 @@ export default function RunwayPromptDialog() {
               </a>
             </div>
             <p className="text-[10px] text-[var(--text-muted)] mt-2.5 leading-relaxed">
-              Paste into Runway's prompt box (Ctrl/Cmd+V — it's already on your clipboard), click Generate, then drag the result image back onto the shot, or attach it via Claude with <span className="text-[var(--text-secondary)] font-medium">set_shot_frame</span>.
+              {data.target === 'video' && data.imageUrls && data.imageUrls.length > 0
+                ? <>Paste the prompt (Ctrl/Cmd+V), then drag the reference frame(s) above into Runway's image box (first = start, last = end). Click Generate, then drag the result back onto the shot.</>
+                : <>Paste into Runway's prompt box (Ctrl/Cmd+V — it's already on your clipboard), click Generate, then drag the result image back onto the shot, or attach it via Claude with <span className="text-[var(--text-secondary)] font-medium">set_shot_frame</span>.</>}
             </p>
           </div>
         </motion.div>

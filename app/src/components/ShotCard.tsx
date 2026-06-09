@@ -11,6 +11,10 @@ import {
 } from 'lucide-react';
 import type { Shot, BRoll, Character, ShotType } from '@/types';
 import { viewMedia } from '@/lib/mediaViewer';
+import { uploadFileToCloud, currentStoryId } from '@/lib/mediaUpload';
+import { sendPromptToRunway } from '@/lib/sendToRunway';
+import { ExternalLink } from 'lucide-react';
+import { toast } from 'sonner';
 
 const SHOT_TYPES: ShotType[] = [
   'WIDE',
@@ -85,18 +89,33 @@ function FrameSlot({
             type="file"
             accept="image/*"
             className="hidden"
-            onChange={(e) => {
+            onChange={async (e) => {
               const file = e.target.files?.[0];
+              e.target.value = '';
               if (!file) return;
-              const reader = new FileReader();
-              reader.onload = () => onSet(reader.result as string);
-              reader.readAsDataURL(file);
+              // Upload to cloud Storage and store only the URL — keeps the story
+              // light (no base64 in RAM/disk). Falls back to a data URL if the
+              // cloud isn't reachable.
+              const tid = toast.loading('Uploading image to cloud…');
+              try {
+                const url = await uploadFileToCloud(file, currentStoryId());
+                onSet(url);
+                toast.success('Image saved to cloud', { id: tid });
+              } catch {
+                toast.error('Upload failed', { id: tid });
+              }
             }}
           />
         </label>
       )}
     </div>
   );
+}
+
+/** A concise Runway prompt for a b-roll cutaway. */
+function brollRunwayPrompt(description: string): string {
+  const d = (description || '').trim() || 'atmospheric cutaway detail';
+  return `Cinematic b-roll cutaway: ${d}. Photoreal, 16:9, shallow depth of field, atmospheric lighting, film grain.`;
 }
 
 interface ShotCardProps {
@@ -286,6 +305,24 @@ export default function ShotCard({
                     placeholder="B-roll description: cutaways, inserts, stock footage..."
                     className="w-full min-h-[40px] bg-transparent border-none text-xs text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] outline-none resize-y"
                   />
+                  {/* Send this b-roll to Runway — image or video, with its frame as reference. */}
+                  <div className="flex gap-1.5 mt-1">
+                    <button
+                      onClick={() => sendPromptToRunway({ prompt: brollRunwayPrompt(br.description), shotLabel: `B-roll · ${(br.description || '').slice(0, 30) || 'cutaway'}`, target: 'image' })}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--panel)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+                      title="Generate this b-roll frame in Runway"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" /> Image
+                    </button>
+                    <button
+                      onClick={() => sendPromptToRunway({ prompt: brollRunwayPrompt(br.description), shotLabel: `B-roll · ${(br.description || '').slice(0, 30) || 'cutaway'}`, target: 'video', imageUrls: br.frame ? [br.frame] : [] })}
+                      disabled={!br.frame}
+                      title={br.frame ? 'Animate this b-roll frame in Runway' : 'Add a b-roll frame first'}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] uppercase tracking-wider font-bold bg-[var(--panel)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Film className="w-2.5 h-2.5" /> Video
+                    </button>
+                  </div>
                 </div>
                 <button
                   onClick={() => onDeleteBRoll(br.id)}
