@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2, Plus, X, ImagePlus, Play, Link2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2, Plus, X, ImagePlus, Play, Link2, Scissors, Download, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { Shot } from '@/types';
@@ -46,6 +46,69 @@ export default function StoryboardView() {
     }
     return out;
   }, [scenes, shots, sceneFilter]);
+
+  // ── Export reel: every shot's video in story order, ready for CapCut/any editor ──
+  const [showReel, setShowReel] = useState(false);
+  const videoClips = useMemo(() => {
+    const safe = (s: string) => (s || 'shot').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase();
+    return sequence
+      .filter((x) => x.shot.video)
+      .map((x, i) => {
+        const n = String(i + 1).padStart(2, '0');
+        const ext = (x.shot.video!.match(/\.(mp4|webm|mov|m4v)(\?|#|$)/i)?.[1] || 'mp4').toLowerCase();
+        return {
+          n: i + 1,
+          filename: `${n}_${safe(x.sceneName)}_${safe(x.shot.shotType || 'shot')}.${ext}`,
+          label: `${x.sceneName} · ${x.shot.shotType || 'shot'}`,
+          url: x.shot.video!,
+          duration: x.shot.durationSec || 0,
+        };
+      });
+  }, [sequence]);
+
+  const downloadClip = async (url: string, filename: string) => {
+    try {
+      const r = await fetch(url, { mode: 'cors' });
+      if (!r.ok) throw new Error('fetch failed');
+      const blob = await r.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = obj; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(obj), 4000);
+      return true;
+    } catch {
+      // Cross-origin host blocked the fetch — open it so the user can save it.
+      window.open(url, '_blank', 'noopener');
+      return false;
+    }
+  };
+
+  const downloadAllInOrder = async () => {
+    if (!videoClips.length) return;
+    toast.loading(`Downloading ${videoClips.length} clips in order…`, { id: 'reel' });
+    let ok = 0;
+    for (const c of videoClips) {
+      // eslint-disable-next-line no-await-in-loop
+      const done = await downloadClip(c.url, c.filename);
+      if (done) ok += 1;
+      // small gap so the browser doesn't drop concurrent downloads
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((res) => setTimeout(res, 400));
+    }
+    toast.success(`Saved ${ok}/${videoClips.length} clips (numbered in order)`, {
+      id: 'reel',
+      description: 'Import them into CapCut — they sort 01, 02, 03… onto the timeline.',
+      duration: 8000,
+    });
+  };
+
+  const copyAllLinks = async () => {
+    try {
+      await navigator.clipboard.writeText(videoClips.map((c) => `${c.n}. ${c.label} — ${c.url}`).join('\n'));
+      toast.success('Copied all video links in order');
+    } catch { toast.error('Copy failed'); }
+  };
 
   const triggerUpload = (shotId: string) => {
     setTargetShotId(shotId);
@@ -131,6 +194,16 @@ export default function StoryboardView() {
           <span className="text-xs text-[var(--text-muted)]">·</span>
           <span className="text-xs text-[var(--text-muted)]">{sequence.length} frame{sequence.length === 1 ? '' : 's'}</span>
         </div>
+
+        {/* Export reel — all shot videos in order, ready to import into CapCut/any editor */}
+        <button
+          onClick={() => setShowReel(true)}
+          disabled={videoClips.length === 0}
+          title={videoClips.length ? 'Export all videos in order for editing' : 'Add videos to shots first (paste a link or generate in Runway)'}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Scissors className="w-3.5 h-3.5" /> Export reel{videoClips.length ? ` (${videoClips.length})` : ''}
+        </button>
 
         <div className="flex items-center gap-2">
           <Filter className="w-3.5 h-3.5 text-[var(--text-muted)]" />
@@ -400,6 +473,58 @@ export default function StoryboardView() {
           </div>
         )}
       </div>
+
+      {/* ── Export reel modal ── */}
+      <AnimatePresence>
+        {showReel && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[250] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowReel(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.97, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg max-h-[88vh] bg-[var(--panel)] border border-[var(--border)] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="px-5 py-3 border-b border-[var(--border)] flex items-center gap-2">
+                <Scissors className="w-4 h-4 text-[var(--accent)]" />
+                <span className="text-sm font-bold text-[var(--text)]">Export reel — {videoClips.length} clip{videoClips.length === 1 ? '' : 's'} in order</span>
+                <div className="flex-1" />
+                <button onClick={() => setShowReel(false)} className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--hover)]"><X className="w-4 h-4" /></button>
+              </div>
+
+              <div className="px-5 py-3 border-b border-[var(--border)]">
+                <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                  CapCut has no public link to push a timeline into it directly. So this gives you an <b>import-ready package</b>: download the clips (named <code>01_…, 02_…</code>) and import them into CapCut/DaVinci/Premiere — they drop onto the timeline <b>already in order</b>.
+                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button onClick={downloadAllInOrder} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110">
+                    <Download className="w-3.5 h-3.5" /> Download all in order
+                  </button>
+                  <button onClick={copyAllLinks} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]">
+                    <Copy className="w-3.5 h-3.5" /> Copy all links
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                {videoClips.map((c) => (
+                  <div key={c.n} className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)]">
+                    <span className="text-[11px] font-bold text-[var(--accent)] tabular-nums w-6">{String(c.n).padStart(2, '0')}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] text-[var(--text)] truncate">{c.label}</div>
+                      <div className="text-[9px] text-[var(--text-muted)] truncate">{c.duration ? `${c.duration}s · ` : ''}{c.filename}</div>
+                    </div>
+                    <button onClick={() => viewMedia(c.url, 'video', c.label)} title="Preview" className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover)]"><Play className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => downloadClip(c.url, c.filename)} title="Download this clip" className="p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--hover)]"><Download className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <input
         ref={fileRef}
