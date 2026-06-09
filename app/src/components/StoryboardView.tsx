@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2 } from 'lucide-react';
+import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2, Plus, X, ImagePlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { Shot } from '@/types';
@@ -20,10 +20,15 @@ export default function StoryboardView() {
   const shots = useAppStore((s) => s.shots);
   const bRolls = useAppStore((s) => s.bRolls);
   const updateShot = useAppStore((s) => s.updateShot);
+  const addBRoll = useAppStore((s) => s.addBRoll);
+  const updateBRoll = useAppStore((s) => s.updateBRoll);
+  const deleteBRoll = useAppStore((s) => s.deleteBRoll);
   const [sceneFilter, setSceneFilter] = useState<string | 'all'>('all');
   const [columns, setColumns] = useState<3 | 4 | 5>(4);
   const fileRef = useRef<HTMLInputElement>(null);
   const [targetShotId, setTargetShotId] = useState<string | null>(null);
+  const brollFileRef = useRef<HTMLInputElement>(null);
+  const [targetBRollId, setTargetBRollId] = useState<string | null>(null);
 
   // Flatten shots into a sequence ordered by their scene order.
   // shots is a Record<id, Shot> in the store; resolve via scene.shotIds.
@@ -66,6 +71,32 @@ export default function StoryboardView() {
     } catch {
       toast.error('Upload failed', { id: tid });
     }
+  };
+
+  // ── B-roll, right from the storyboard (no need to open the Director) ──
+  const triggerBRollUpload = (bRollId: string) => {
+    setTargetBRollId(bRollId);
+    brollFileRef.current?.click();
+  };
+  const handleBRollFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const brId = targetBRollId;
+    if (!file || !brId) return;
+    if (!file.type.startsWith('image/')) { toast.error('Only image files'); return; }
+    const tid = toast.loading('Uploading b-roll frame to cloud…');
+    try {
+      const { uploadFileToCloud, currentStoryId } = await import('@/lib/mediaUpload');
+      const url = await uploadFileToCloud(file, currentStoryId());
+      updateBRoll(brId, { frame: url });
+      toast.success('B-roll frame saved to cloud', { id: tid });
+    } catch {
+      toast.error('Upload failed', { id: tid });
+    }
+  };
+  const brollPrompt = (description: string) => {
+    const d = (description || '').trim() || 'atmospheric cutaway detail';
+    return `Cinematic b-roll cutaway: ${d}. Photoreal, 16:9, shallow depth of field, atmospheric lighting, film grain.`;
   };
 
   const clearFrame = (shotId: string) => {
@@ -165,7 +196,7 @@ export default function StoryboardView() {
                     // click meant for the image underneath (that was the
                     // "I can't click the storyboard to view it" bug). Its buttons
                     // re-enable pointer events for themselves.
-                    <div className="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center gap-2 p-2 pointer-events-none bg-gradient-to-t from-black/60 to-transparent">
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/45 flex items-center justify-center gap-2 pointer-events-none">
                       <button onClick={() => triggerUpload(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]">Replace</button>
                       <button onClick={() => clearFrame(shot.id)} className="pointer-events-auto px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--danger)]/80 text-white">Remove</button>
                     </div>
@@ -207,25 +238,76 @@ export default function StoryboardView() {
                     placeholder="Direction — what happens in this frame…"
                     className="w-full min-h-[42px] resize-y bg-transparent text-[11px] leading-snug text-[var(--text)] placeholder:text-[var(--text-muted)] outline-none border border-transparent focus:border-[var(--accent)]/40 rounded-md px-1.5 py-1 transition-colors"
                   />
-                  {/* B-roll frames belonging to this shot — click to view full size */}
+                  {/* ── B-roll, fully editable right here in the storyboard ── */}
                   {(() => {
                     const brs = (shot.bRollIds || []).map((id) => bRolls[id]).filter(Boolean);
-                    const withFrames = brs.filter((b) => b.frame);
-                    if (!brs.length) return null;
                     return (
-                      <div className="mt-1.5">
-                        <div className="text-[8.5px] uppercase tracking-widest text-[var(--info)] font-bold mb-1 flex items-center gap-1"><Film className="w-2.5 h-2.5" /> B-roll{withFrames.length ? ` · ${withFrames.length} frame${withFrames.length === 1 ? '' : 's'}` : ''}</div>
-                        {withFrames.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {withFrames.map((b) => (
-                              <button key={b.id} onClick={() => viewMedia(b.frame!, 'image', `B-roll · ${b.description || sceneName}`)} title={b.description || 'B-roll frame — click to view'}
-                                className="w-14 h-9 rounded-md overflow-hidden border border-[var(--info)]/50 hover:border-[var(--info)] cursor-zoom-in hover:scale-105 transition-transform">
-                                <img src={b.frame!} alt="b-roll frame" className="w-full h-full object-cover" />
-                              </button>
+                      <div className="mt-2 pt-2 border-t border-[var(--rule)]/60">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="text-[8.5px] uppercase tracking-widest text-[var(--info)] font-bold flex items-center gap-1"><Film className="w-2.5 h-2.5" /> B-roll{brs.length ? ` · ${brs.length}` : ''}</div>
+                          <button
+                            onClick={() => { const id = addBRoll(shot.id); if (id) toast.success('B-roll added'); }}
+                            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold text-[var(--info)] hover:bg-[var(--info)]/10 transition-colors"
+                            title="Add a b-roll / cutaway to this shot"
+                          >
+                            <Plus className="w-2.5 h-2.5" /> Add
+                          </button>
+                        </div>
+                        {brs.length === 0 ? (
+                          <span className="text-[9px] text-[var(--text-muted)]">No b-roll yet — click “Add” to create a cutaway, then generate its image/video here.</span>
+                        ) : (
+                          <div className="space-y-2">
+                            {brs.map((b) => (
+                              <div key={b.id} className="flex gap-2 bg-[var(--bg)] border border-[var(--rule)] rounded-md p-1.5">
+                                {/* Frame: thumbnail (click to view) or upload */}
+                                {b.frame ? (
+                                  <button onClick={() => viewMedia(b.frame!, 'image', `B-roll · ${b.description || sceneName}`)} title="Click to view full size"
+                                    className="relative w-14 h-10 flex-shrink-0 rounded overflow-hidden border border-[var(--info)]/50 hover:border-[var(--info)] cursor-zoom-in group/brf">
+                                    <img src={b.frame} alt="b-roll" className="w-full h-full object-cover" />
+                                    <span className="absolute inset-0 bg-black/0 group-hover/brf:bg-black/30 flex items-center justify-center transition-colors">
+                                      <Maximize2 className="w-3 h-3 text-white opacity-0 group-hover/brf:opacity-100" />
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <button onClick={() => triggerBRollUpload(b.id)} title="Upload a b-roll frame"
+                                    className="w-14 h-10 flex-shrink-0 rounded border border-dashed border-[var(--border)] hover:border-[var(--info)] hover:text-[var(--info)] text-[var(--text-muted)] flex flex-col items-center justify-center transition-colors">
+                                    <ImagePlus className="w-3 h-3" />
+                                    <span className="text-[7px] uppercase tracking-wider font-bold">Frame</span>
+                                  </button>
+                                )}
+                                {/* Description + generate buttons */}
+                                <div className="flex-1 min-w-0">
+                                  <input
+                                    defaultValue={b.description || ''}
+                                    onBlur={(e) => updateBRoll(b.id, { description: e.target.value })}
+                                    placeholder="B-roll: cutaway / insert…"
+                                    className="w-full bg-transparent text-[10px] text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] outline-none border-b border-transparent focus:border-[var(--info)]/50 pb-0.5"
+                                  />
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <button
+                                      onClick={() => sendPromptToRunway({ prompt: brollPrompt(b.description), shotLabel: `B-roll · ${(b.description || '').slice(0, 24) || 'cutaway'}`, target: 'image' })}
+                                      className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+                                      title="Generate this b-roll frame in Runway"
+                                    >
+                                      <ExternalLink className="w-2 h-2" /> Image
+                                    </button>
+                                    <button
+                                      onClick={() => sendPromptToRunway({ prompt: brollPrompt(b.description), shotLabel: `B-roll · ${(b.description || '').slice(0, 24) || 'cutaway'}`, target: 'video', imageUrls: b.frame ? [b.frame] : [] })}
+                                      disabled={!b.frame}
+                                      title={b.frame ? 'Animate this b-roll frame in Runway' : 'Add a frame first'}
+                                      className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold bg-[var(--card)] border border-[var(--rule)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                      <Film className="w-2 h-2" /> Video
+                                    </button>
+                                    {b.frame && (
+                                      <button onClick={() => triggerBRollUpload(b.id)} className="px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider font-bold text-[var(--text-muted)] hover:text-[var(--accent)]" title="Replace frame">Replace</button>
+                                    )}
+                                    <button onClick={() => deleteBRoll(b.id)} className="ml-auto p-0.5 text-[var(--text-muted)] hover:text-[var(--danger)]" title="Delete b-roll"><X className="w-2.5 h-2.5" /></button>
+                                  </div>
+                                </div>
+                              </div>
                             ))}
                           </div>
-                        ) : (
-                          <span className="text-[9px] text-[var(--text-muted)]">No b-roll frames yet — add them in the Director shot card.</span>
                         )}
                       </div>
                     );
@@ -261,6 +343,13 @@ export default function StoryboardView() {
         accept="image/*"
         className="hidden"
         onChange={handleFile}
+      />
+      <input
+        ref={brollFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleBRollFile}
       />
     </motion.div>
   );
