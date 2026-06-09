@@ -24,8 +24,25 @@ export default function YouTubeStudio() {
   const shots = useAppStore((s) => s.shots);
   const settings = useAppStore((s) => s.settings);
   const activeStoryId = useAppStore((s) => s.activeStoryId);
+  const stories = useAppStore((s) => s.stories);
+  const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const createStory = useAppStore((s) => s.createStory);
+  const loadStory = useAppStore((s) => s.loadStory);
   const updateScreenplayField = useAppStore((s) => s.updateScreenplayField);
   const setTab = useAppStore((s) => s.setTab);
+
+  const activeStory = stories.find((s) => s.id === activeStoryId);
+  const isYouTubeStory = activeStory?.type === 'youtube';
+  const youtubeStories = stories.filter((s) => s.type === 'youtube');
+
+  const newYouTubeVideo = () => {
+    const title = window.prompt('Name this YouTube video:', 'New YouTube video');
+    if (title === null) return;
+    // A YouTube video is its OWN story (type youtube), filed in the active
+    // project if one is open. createStory makes it the active story.
+    createStory(title || 'New YouTube video', 'youtube', activeProjectId || undefined);
+    toast.success('New YouTube video created');
+  };
 
   const [form, setForm] = useState<YouTubePack>(() => screenplay.youtube || { format: 'short' });
   const [busy, setBusy] = useState<string | null>(null);
@@ -131,6 +148,52 @@ export default function YouTubeStudio() {
   const lbl = 'flex items-center justify-between mb-1';
   const lblTxt = 'text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold';
 
+  // ── Launcher ── A YouTube video is its OWN story. If the open story isn't a
+  // YouTube one (or nothing is open), show the launcher instead of editing a
+  // film story by mistake.
+  if (!isYouTubeStory) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-full overflow-y-auto">
+        <div className="px-6 py-4 border-b border-[var(--rule)] flex items-center gap-3">
+          <Youtube className="w-5 h-5 text-[#ff0000]" />
+          <h1 className="text-sm font-display font-bold text-[var(--text)]">YouTube Studio</h1>
+        </div>
+        <div className="max-w-2xl mx-auto p-6">
+          <div className="p-5 rounded-2xl bg-[var(--accent-soft)] border border-[var(--accent)]/40 text-center">
+            <Youtube className="w-10 h-10 text-[#ff0000] mx-auto mb-2" />
+            <h2 className="text-base font-bold text-[var(--text)]">Each YouTube video is its own story</h2>
+            <p className="text-[12px] text-[var(--text-secondary)] mt-1.5 max-w-md mx-auto">
+              It has its own script, storyboard, clips and packaging — completely separate from your film projects. Create one to start{activeProjectId ? ' (it’ll be filed in your open project)' : ''}.
+            </p>
+            <button onClick={newYouTubeVideo} className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110">
+              <Rocket className="w-4 h-4" /> New YouTube video
+            </button>
+          </div>
+
+          {youtubeStories.length > 0 && (
+            <div className="mt-6">
+              <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-2">Your YouTube videos</div>
+              <div className="space-y-1.5">
+                {youtubeStories.map((s) => (
+                  <button key={s.id} onClick={() => loadStory(s.id)}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)] text-left transition-colors">
+                    <Youtube className="w-4 h-4 text-[#ff0000] flex-shrink-0" />
+                    <span className="text-[13px] font-semibold text-[var(--text)] truncate flex-1">{s.title}</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">open →</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-[10px] text-[var(--text-muted)] mt-5 text-center">
+            Tip: you can also tell Claude/ChatGPT “make a new YouTube short about …” and it’ll build it as its own story.
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-full overflow-y-auto">
       {/* Header */}
@@ -145,7 +208,9 @@ export default function YouTubeStudio() {
             </button>
           ))}
         </div>
+        <span className="text-[11px] text-[var(--text-muted)] truncate hidden sm:inline">· {activeStory?.title}</span>
         <div className="flex-1" />
+        <button onClick={newYouTubeVideo} title="Create another YouTube video (its own story)" className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]"><Rocket className="w-3.5 h-3.5" /> New video</button>
         <button onClick={() => document.dispatchEvent(new CustomEvent('app:openQuickTools'))} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]"><Wand2 className="w-3.5 h-3.5" /> Quick Tools</button>
         <button onClick={copyAll} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]"><Copy className="w-3.5 h-3.5" /> Copy all</button>
       </div>

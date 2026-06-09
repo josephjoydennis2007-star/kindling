@@ -191,9 +191,9 @@ export default function IconRail({
 
         <div className="w-8 h-px bg-[var(--rule)] my-1 flex-shrink-0" aria-hidden />
 
-        {/* Dashboard — always visible */}
+        {/* Dashboard + YouTube — always visible, above the film sections */}
         <ul className="flex flex-col gap-0.5 flex-shrink-0">
-          {GENERAL_VIEWS.filter((v) => v.id === 'dashboard').map((v) => renderItem(v, false))}
+          {GENERAL_VIEWS.filter((v) => v.id === 'dashboard' || v.id === 'youtube').map((v) => renderItem(v, false))}
         </ul>
 
         {/* Writer section */}
