@@ -858,13 +858,13 @@ const TOOLS = [
   {
     name: 'build_story',
     description:
-      "Create a COMPLETE new story in Kindling from a full spec and save it to the user's account. Write to INDUSTRY STANDARD: scene headings as INT./EXT. LOCATION - DAY/NIGHT; action in present tense, lean and visual; dialogue with real subtext; acts→beats that follow a clear structure (setup/inciting/midpoint/crisis/climax/payoff); shots with proper grammar (establishing → wide → coverage → inserts). Fill in as much as you can — every part maps to a real workspace in the app: title/logline/synopsis/theme/genre, the character roster, acts+beats (Plot board), director scenes with shots + b-rolls (Director), the screenplay scene-blocks (Writer), worldbuilding entries (World), shoot locations (Locations), writer sections, and notes. IMPORTANT — write to LENGTH for the chosen `type`: a movie/feature must reach feature length (aim ~48 scenes / ~1100 script lines), not a short sketch. You won't fit a whole feature in one call, so build the opening batch here, then call add_to_story repeatedly until the returned progress note says it's at full length. Returns the story id + a length-progress note. To keep writing into THIS story afterward, pass that id to add_to_story.",
+      "Create a new story in Kindling and save it to the user's account. Set `type` ('movie','youtube',etc.). Fill what you can: title/logline/synopsis, characters, acts+beats, scenes with shots, screenplay lines, world, locations, notes. For YouTube content set type 'youtube' and pass the `youtube` block (title/hook/script/etc.) plus scenes (clips as shots). Write to length for the type; you won't fit a feature in one call, so call add_to_story until the returned progress note says it's full. Returns the story id.",
     inputSchema: {
       type: 'object',
       properties: {
         title: { type: 'string' },
-        projectId: { type: 'string', description: 'Optional — file this story under a Project (from list_projects / create_project). When set, FIRST call get_project and write the story to fit its master prompt, instructions & knowledge.' },
-        projectName: { type: 'string', description: 'Optional alternative to projectId — the project name (case-insensitive) to file this story under.' },
+        projectId: { type: 'string', description: 'Optional — file under a Project (from list_projects). Call get_project first and fit its brief.' },
+        projectName: { type: 'string', description: 'Optional — project name to file under (instead of projectId).' },
         logline: { type: 'string' },
         synopsis: { type: 'string' },
         theme: { type: 'string' },
@@ -907,7 +907,7 @@ const TOOLS = [
   {
     name: 'add_to_story',
     description:
-      "Append MORE material to an EXISTING story (identified by storyId) — the way to build a full feature across several calls. Pass only the NEW content; it continues numbering, ordering and colors automatically and never overwrites what's there. You can append ANY part the app supports: screenplay scene-blocks, director scenes with shots + b-rolls, characters (merged by name), acts/beats, worldbuilding entries, locations, writer sections, and notes. Keep calling this repeatedly (e.g. scenes 1–15, then 16–30, then 31–48…) until the returned length-progress note reports the story has reached full length for its type — a feature film should NOT stop at a handful of scenes.",
+      "Append MORE material to an existing story (by storyId) to build it up across calls. Pass only NEW content (scenes, shots+b-rolls, characters, acts/beats, world, locations, screenplay lines, notes); it continues numbering and never overwrites. Repeat until the returned progress note says the story is at full length.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -931,12 +931,12 @@ const TOOLS = [
   {
     name: 'set_shot_frame',
     description:
-      "Attach a generated FRAME IMAGE to a specific shot's storyboard — the bridge from an image generator (e.g. a Runway connector's generate_image) back into Kindling. Workflow: generate the image elsewhere, get its URL, then call this with the story + which scene/shot + which frame. Use frame='first' for the opening frame (the shot's storyboard) and frame='last' for the end frame of a first→last transition (which the app uses to drive image-to-video). To attach a frame to one of the shot's B-ROLLS instead, pass `bRoll` (1-based index of the b-roll within the shot) — the image then shows under that shot's b-roll in the Storyboard. Identify the shot by scene (1-based number OR exact scene name) and shot (1-based index within that scene). Call get_story first to see scene/shot indices and which frames already exist. Pass a hosted image URL when possible (not base64) — the story document has a size limit.",
+      "Attach a generated image (a hosted URL) to a shot's storyboard. frame='first' = the opening frame; frame='last' = the end frame of a first→last transition. To attach to one of the shot's b-rolls instead, pass `bRoll` (1-based index). Identify by scene (number-as-text or name) + shot (1-based). Call get_story first for indices. Prefer a hosted URL over base64.",
     inputSchema: {
       type: 'object',
       properties: {
         storyId: { type: 'string', description: 'The story id (from build_story / list_stories / get_story).' },
-        scene: { type: ['string', 'number'], description: '1-based scene number (e.g. 1 for the first scene) OR the exact scene name.' },
+        scene: { type: 'string', description: '1-based scene number as text (e.g. "1") OR the exact scene name.' },
         shot: { type: 'number', description: '1-based index of the shot within that scene (1 = first shot).' },
         frame: { type: 'string', enum: ['first', 'last'], description: "Which frame to set on the SHOT. 'first' = the opening storyboard frame; 'last' = the end frame of a first→last transition (also marks the shot as needsLastFrame). Ignored when `bRoll` is given.", },
         bRoll: { type: 'number', description: 'Optional — 1-based index of a b-roll within the shot. When set, the image is attached to that b-roll\'s frame instead of the shot\'s storyboard.' },
@@ -953,7 +953,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         storyId: { type: 'string' },
-        scene: { type: ['string', 'number'], description: '1-based scene number OR exact scene name.' },
+        scene: { type: 'string', description: '1-based scene number as text (e.g. "1") OR exact scene name.' },
         name: { type: 'string', description: 'Optional new scene name.' },
         description: { type: 'string', description: 'Optional new scene description / action summary.' },
         status: { type: 'string', enum: ['todo', 'in-progress', 'shot', 'final'] },
@@ -972,7 +972,7 @@ const TOOLS = [
       type: 'object',
       properties: {
         storyId: { type: 'string' },
-        scene: { type: ['string', 'number'] },
+        scene: { type: 'string', description: '1-based scene number as text (e.g. "1") OR exact scene name.' },
         shot: { type: 'number', description: '1-based index within the scene.' },
         description: { type: 'string', description: "The shot's direction note shown under its storyboard frame." },
         shotType: { type: 'string', enum: ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'] },
