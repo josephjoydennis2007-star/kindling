@@ -6,7 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary.tsx'
 
 // Stamp a build marker on window + console so we can see at a glance whether
 // the fresh bundle actually loaded. Bump on every deploy with intent.
-const KINDLING_BUILD = 'v86-2026.06.09-clips-from-script-autoattach'
+const KINDLING_BUILD = 'v87-2026.06.09-connector-youtube-type-fix'
 ;(window as any).__KINDLING_BUILD__ = KINDLING_BUILD;
 // eslint-disable-next-line no-console
 console.log(`%c⚙ Kindling ${KINDLING_BUILD}`, 'color:#a855f7;font-weight:bold;font-size:14px');

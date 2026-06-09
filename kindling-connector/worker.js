@@ -113,6 +113,12 @@ async function writeStoryDoc(env, auth, storyId, title, dataString, projectId) {
     updatedAt: { timestampValue: now },
   };
   if (projectId) fields.projectId = fsVal(String(projectId));
+  // Mirror the story's type (e.g. 'youtube') as a top-level field so listings
+  // and the app know what it is without parsing the whole data blob.
+  try {
+    const t = JSON.parse(dataString)?.screenplay?.type;
+    if (t) fields.type = fsVal(String(t));
+  } catch { /* non-fatal */ }
   const url = `${fsBase(env)}/stories/${storyId}`;
   const r = await fetch(url, {
     method: 'PATCH',
@@ -149,7 +155,7 @@ async function listStoryDocs(env, auth) {
     if (!row.document) continue;
     const id = row.document.name.split('/').pop();
     const f = row.document.fields || {};
-    out.push({ id, title: f.title?.stringValue || 'Untitled', projectId: f.projectId?.stringValue || '' });
+    out.push({ id, title: f.title?.stringValue || 'Untitled', projectId: f.projectId?.stringValue || '', type: f.type?.stringValue || '' });
   }
   return out;
 }
@@ -1026,7 +1032,7 @@ async function callTool(env, name, args) {
   if (name === 'list_stories') {
     const list = await listStoryDocs(env, auth);
     const text = list.length
-      ? 'Your Kindling stories:\n' + list.map((s) => `- ${s.title} (id: ${s.id})`).join('\n')
+      ? 'Your Kindling stories:\n' + list.map((s) => `- ${s.title} (id: ${s.id}${s.type ? `, type: ${s.type}` : ''})`).join('\n')
       : 'No stories yet.';
     return { content: [{ type: 'text', text }] };
   }
@@ -1048,7 +1054,7 @@ async function callTool(env, name, args) {
     const p = await resolveProject(env, auth, args.projectId || args.name);
     if (!p) throw new Error(`No project matched "${args.projectId || args.name || ''}". Call list_projects to see ids + names.`);
     const stories = (await listStoryDocs(env, auth)).filter((s) => s.projectId === p.id);
-    const existing = stories.length ? `\n\nExisting stories in this project (don't repeat them):\n${stories.map((s) => `- ${s.title} (id: ${s.id})`).join('\n')}` : '\n\nNo stories in this project yet.';
+    const existing = stories.length ? `\n\nExisting stories in this project (don't repeat them):\n${stories.map((s) => `- ${s.title} (id: ${s.id}${s.type ? `, type: ${s.type}` : ''})`).join('\n')}` : '\n\nNo stories in this project yet.';
     return { content: [{ type: 'text', text: `${projectBriefText(p)}${existing}\n\nTo create a NEW on-brand story here: call build_story with projectId: "${p.id}", writing the story to FIT the master prompt, instructions and knowledge above.` }] };
   }
 
@@ -1077,6 +1083,10 @@ async function callTool(env, name, args) {
         if (typeof args.youtube[f] === 'string' && args.youtube[f] !== '') yt[f] = args.youtube[f];
       }
       if (Object.keys(yt).length) data.screenplay.youtube = yt;
+      // Force the story type to 'youtube' so the app files it in the YouTube
+      // Studio (a YouTube video is its own story type). Without this it would
+      // default to 'movie' and never appear in the YouTube workspace.
+      data.screenplay.type = 'youtube';
     }
     // Resolve an optional project so the story is filed under it (and the app
     // links it on recovery). Accept id or name.
@@ -1100,7 +1110,7 @@ async function callTool(env, name, args) {
     return {
       content: [{
         type: 'text',
-        text: `✅ Built "${args.title}" in Kindling${proj ? ` (in project "${proj.name}")` : ''} (${counts}).\n${progressNote(data.screenplay.type, data.scenes.length, data.screenplay.elements.length)}\nStory id: ${storyId}  ← pass this to add_to_story to keep writing into THIS story.\nOpen it: ${appUrl}`,
+        text: `✅ Built "${args.title}" in Kindling${proj ? ` (in project "${proj.name}")` : ''} (${counts}).\n${data.screenplay.type === 'youtube' ? 'It’s a YouTube video — open the app’s YouTube tab to see its packaging + the storyboard for its clips.\n' : ''}${progressNote(data.screenplay.type, data.scenes.length, data.screenplay.elements.length)}\nStory id: ${storyId}  ← pass this to add_to_story / set_youtube to keep building THIS video.\nOpen it: ${appUrl}`,
       }],
     };
   }

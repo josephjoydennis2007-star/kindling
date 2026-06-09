@@ -829,31 +829,37 @@ function App() {
           // (Re)hydrate the per-story snapshot into IndexedDB so opening the
           // story loads its actual current content. The cloud `data` field is
           // a JSON string produced by exportStory().
+          let parsed: any = null;
           try {
-            const parsed = (cs as any).data ? JSON.parse((cs as any).data) : null;
+            parsed = (cs as any).data ? JSON.parse((cs as any).data) : null;
             if (parsed) await saveState(cs.id, parsed);
           } catch {
             // Corrupt blob — leave it; user can still open the cloud
             // story and re-save to fix.
           }
+          // The story's REAL type (e.g. 'youtube') lives in the data so the app
+          // tags it correctly — a YouTube video built by Claude/ChatGPT must
+          // register as 'youtube' so it shows up in the YouTube Studio (it used
+          // to be hardcoded to 'movie', which hid connector-built shorts).
+          const cloudType = parsed?.screenplay?.type || (cs as any).type || 'movie';
 
           if (!existing) {
             fresh.push({
               id: cs.id,
               title: cs.title || 'Untitled Story',
-              type: 'movie',
+              type: cloudType,
               ...((cs as any).projectId ? { projectId: (cs as any).projectId } : {}),
               createdAt: (cs as any).createdAt || cs.updatedAt || Date.now(),
               updatedAt: cs.updatedAt || Date.now(),
             });
           } else {
             updatedCount += 1;
-            // Bump the local Story entry (title + updatedAt) so the drawer
+            // Bump the local Story entry (title + type + updatedAt) so the drawer
             // reflects the change and we don't re-hydrate it next refresh.
             useAppStore.setState((s: any) => ({
               stories: s.stories.map((st: any) =>
                 st.id === cs.id
-                  ? { ...st, title: cs.title || st.title, updatedAt: cloudUpdated || Date.now(), ...((cs as any).projectId ? { projectId: (cs as any).projectId } : {}) }
+                  ? { ...st, title: cs.title || st.title, type: cloudType || st.type, updatedAt: cloudUpdated || Date.now(), ...((cs as any).projectId ? { projectId: (cs as any).projectId } : {}) }
                   : st,
               ),
             }));
