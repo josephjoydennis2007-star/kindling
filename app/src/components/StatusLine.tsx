@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
-import { Save, Loader2, CloudOff, Cloud, HardDrive } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Save, Loader2, CloudOff, Cloud, HardDrive, Gauge } from 'lucide-react';
 import type { Screenplay, Scene } from '@/types';
+import { useAppStore } from '@/store/useAppStore';
+import { estimateMediaBytes } from '@/lib/mediaStrip';
 
 /**
  * StatusLine — thin (28px) status row at the very bottom of the app.
@@ -27,6 +29,26 @@ interface Props {
 export default function StatusLine({ screenplay, scenes, onSave, dirty }: Props) {
   const words = countWords(screenplay);
   const pages = Math.max(1, Math.ceil(screenplay.elements.length / 55));
+
+  // ── Story-weight meter ──
+  // How much of THIS story is heavy embedded base64 media (the thing that fills
+  // your tab's RAM and causes freezes). Remote/cloud image URLs cost ~nothing,
+  // so a story whose media lives in the cloud reads as light. Click → Storage.
+  const shots = useAppStore((s) => s.shots);
+  const characters = useAppStore((s) => s.characters);
+  const bRolls = useAppStore((s) => s.bRolls);
+  const mediaBytes = useMemo(
+    () => estimateMediaBytes({ screenplay, shots, characters, bRolls } as any),
+    [screenplay, shots, characters, bRolls],
+  );
+  const weight = (() => {
+    const mb = mediaBytes / (1024 * 1024);
+    if (mediaBytes < 1_000_000) return null; // negligible — hide the chip
+    if (mb < 15) return { cls: 'text-[var(--text-secondary)]', dot: 'var(--success)', note: 'Light — fine.' };
+    if (mb < 45) return { cls: 'text-[var(--warning)]', dot: 'var(--warning)', note: 'Getting heavy — move images to the cloud soon.' };
+    return { cls: 'text-[var(--danger)]', dot: 'var(--danger)', note: 'Heavy — risks freezing. Open Storage → Move images to cloud.' };
+  })();
+  const mbLabel = mediaBytes >= 1024 * 1024 ? `${(mediaBytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(mediaBytes / 1024)} KB`;
 
   // Save lifecycle: idle → saving → savedlocal (on device) → synced (cloud OK).
   // `cloud` tracks the last cloud outcome so the indicator is HONEST about
@@ -101,6 +123,18 @@ export default function StatusLine({ screenplay, scenes, onSave, dirty }: Props)
       <span className="tabular-nums">{scenes.length} scene{scenes.length !== 1 ? 's' : ''}</span>
 
       <span className="flex-1" />
+
+      {weight && (
+        <button
+          onClick={() => document.dispatchEvent(new CustomEvent('app:openStorage'))}
+          title={`This story holds ${mbLabel} of embedded images in memory. ${weight.note}`}
+          className={`flex items-center gap-1.5 mr-3 transition-colors hover:brightness-125 ${weight.cls}`}
+        >
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: weight.dot }} />
+          <Gauge className="w-3 h-3" />
+          <span className="tabular-nums">{mbLabel}</span>
+        </button>
+      )}
 
       <button
         onClick={onSave}
