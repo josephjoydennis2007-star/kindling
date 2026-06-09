@@ -908,15 +908,25 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                   </Section>
 
                   <CloudProvider
-                    name="GitHub Gist"
-                    badge="FREE — UNLIMITED"
-                    description={`Save your story as a private gist. Unlimited free, syncs across devices with a Personal Access Token.${(draft as any).githubGistId ? ` Gist: ${(draft as any).githubGistId.slice(0,8)}…` : ''}`}
+                    name="GitHub storage — auto-overflow when Firebase is full"
+                    badge="FREE — BIG STORIES"
+                    description={`Paste a token once and you're done. Firebase caps each story at 1 MB; the moment a story (usually image-heavy) gets too big, Kindling automatically saves it to your own private GitHub gist instead — no button to press. Each story gets its own gist.${(draft as any).githubGistToken ? ' ✓ Token set — overflow is active.' : ''}`}
                     setupUrl="https://github.com/settings/tokens/new?scopes=gist&description=Kindling"
                     tokenLabel="Personal Access Token (gist scope)"
                     tokenValue={(draft as any).githubGistToken || ''}
                     onTokenChange={(v) => setDraft({ ...draft, githubGistToken: v } as any)}
                     syncing={syncing === 'gist'}
-                    onSync={() => pushToProvider('gist')}
+                    syncLabel="Test connection"
+                    onSync={async () => {
+                      // "Test" — verify the token works and report the account.
+                      const t = (draft as any).githubGistToken || '';
+                      const { gistTestToken } = await import('@/lib/cloudSync');
+                      setSyncing('gist');
+                      const r = await gistTestToken(t);
+                      setSyncing(null);
+                      if (r.ok) toast.success(`GitHub connected as @${r.data?.login}`, { description: 'Big stories will auto-save here when Firebase is full.' });
+                      else toast.error('GitHub token check failed', { description: r.error });
+                    }}
                     onRestore={() => pullFromProvider('gist')}
                     lastSyncedAt={(draft as any).lastCloudSyncAt}
                   />
@@ -1146,6 +1156,7 @@ function CloudProvider({
   onSecondaryChange,
   syncing,
   onSync,
+  syncLabel,
   onRestore,
   lastSyncedAt,
 }: {
@@ -1161,6 +1172,7 @@ function CloudProvider({
   onSecondaryChange?: (v: string) => void;
   syncing?: boolean;
   onSync?: () => Promise<void> | void;
+  syncLabel?: string;
   onRestore?: () => Promise<void> | void;
   lastSyncedAt?: string;
 }) {
@@ -1213,7 +1225,7 @@ function CloudProvider({
                   disabled={!configured || syncing}
                   className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--accent)] text-[var(--bg)] text-xs font-semibold hover:brightness-110 disabled:opacity-40"
                 >
-                  {syncing ? '…syncing' : 'Sync now ↑'}
+                  {syncing ? '…working' : (syncLabel || 'Sync now ↑')}
                 </button>
               )}
               {onRestore && (

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { safeStorage } from '@/lib/safeStorage';
 import type {
   AppState,
   AppSettings,
@@ -1132,6 +1133,9 @@ export const useAppStore = create<AppState & AppActions>()(
     }),
     {
       name: 'kindling-storage',
+      // Crash-proof storage: never throws on a full disk, so a quota error can
+      // no longer freeze the UI mid-keystroke. Falls back to in-memory.
+      storage: createJSONStorage(() => safeStorage),
       partialize: (state) => ({
         stories: state.stories,
         activeStoryId: state.activeStoryId,

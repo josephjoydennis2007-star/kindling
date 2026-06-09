@@ -43,9 +43,16 @@ export function useIndexedDB() {
 
   const saveState = useCallback(async (storyId: string, state: Partial<AppState>) => {
     if (!db) {
-      // Fallback to localStorage
+      // IndexedDB unavailable (private mode / blocked). Fall back to
+      // localStorage — but ONLY for small snapshots. A full story with embedded
+      // images can be several MB; dumping that into localStorage overflows the
+      // ~5MB quota and then breaks the app's metadata persistence (the cause of
+      // the "app sticks" freeze). For oversized states we skip the local-disk
+      // write and rely on the cloud (Firebase/GitHub) copy instead.
       try {
-        localStorage.setItem(`swp_state_${storyId}`, JSON.stringify(state));
+        const blob = JSON.stringify(state);
+        if (blob.length > 1_500_000) return false; // too big for localStorage — don't poison the quota
+        localStorage.setItem(`swp_state_${storyId}`, blob);
         return true;
       } catch { return false; }
     }

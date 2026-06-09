@@ -222,6 +222,11 @@ export interface Story {
   updatedAt: number;
   /** The project this story belongs to (optional — loose stories have none). */
   projectId?: string;
+  /** Where this story's cloud copy lives. 'github' once it overflowed Firebase's
+   *  1MB doc limit and was saved to a private GitHub gist instead. */
+  storedOn?: 'firebase' | 'github';
+  /** The gist id holding this story when storedOn === 'github'. */
+  githubGistId?: string;
 }
 
 /** A piece of reference material attached to a Project — pasted text or the

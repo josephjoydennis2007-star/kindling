@@ -273,7 +273,31 @@ function App() {
       }
       return;
     }
-    loadState(activeStoryId).then((state) => {
+    loadState(activeStoryId).then(async (localState) => {
+      let state = localState;
+      // No local copy on this device? If the story lives on GitHub (it
+      // overflowed Firebase), pull it from the user's private gist and cache it
+      // locally so it opens with its real content (e.g. on a second device).
+      if (!state) {
+        const sMeta = useAppStore.getState().stories.find((x) => x.id === activeStoryId);
+        const ghToken = (useAppStore.getState().settings as any).githubGistToken as string | undefined;
+        if (sMeta?.storedOn === 'github' && sMeta.githubGistId && ghToken) {
+          try {
+            const { gistPullStory } = await import('@/lib/cloudSync');
+            const r = await gistPullStory(ghToken, sMeta.githubGistId, activeStoryId);
+            if (r.ok && r.data) {
+              const parsed = JSON.parse(r.data);
+              state = parsed;
+              try { await saveState(activeStoryId, parsed); } catch { /* cache best-effort */ }
+              // Replace the recovery placeholder title with the real one.
+              const realTitle = parsed?.screenplay?.title;
+              if (realTitle && sMeta.title !== realTitle) {
+                useAppStore.getState().updateStory(activeStoryId, { title: realTitle });
+              }
+            }
+          } catch { /* fall through to blank */ }
+        }
+      }
       // Blank-slate template — exactly the same shape as defaultState's
       // per-story slots so any field absent from the saved snapshot
       // (e.g. a story saved before `world`/`locations`/`outlinePoints`
@@ -344,7 +368,7 @@ function App() {
         document.dispatchEvent(new CustomEvent('writer:rebuild'));
       }, 0);
     });
-  }, [ready, activeStoryId, stories.length, loadState]);
+  }, [ready, activeStoryId, stories.length, loadState, saveState]);
 
   // ── Manual-save model ──────────────────────────────────────────────────
   //
@@ -540,54 +564,94 @@ function App() {
     // safely persisted, which was alarming + misleading. Failures show up
     // in the Studio tab's diagnostic banner instead.
     if (user) {
-      try {
-        const { pushStory, saveVersion } = await import('@/lib/cloudStories');
-        const story = state.stories.find((st) => st.id === activeStoryId);
-        const cloudData = state.exportStory();
-        // Remember exactly what we're sending so the live watcher recognizes
-        // the snapshot echo of our own write and doesn't re-import it.
-        lastCloudDataRef.current = cloudData;
-        // Warn once when approaching the cloud size limit, before it blocks.
-        const { isNearCloudLimit, byteSize, humanSize, SAFE_DATA_LIMIT } = await import('@/lib/storySize');
-        if (isNearCloudLimit(cloudData) && !nearLimitWarnedRef.current) {
-          nearLimitWarnedRef.current = true;
-          toast.warning('This story is getting large', {
-            description: `It's ${humanSize(byteSize(cloudData))} of a ${humanSize(SAFE_DATA_LIMIT)} cloud limit. Large embedded images are usually the cause — attach images by URL rather than uploading to keep syncing smoothly.`,
-            duration: 9000,
+      const story = state.stories.find((st) => st.id === activeStoryId);
+      const cloudData = state.exportStory();
+      // Remember exactly what we're sending so the live watcher recognizes
+      // the snapshot echo of our own write and doesn't re-import it.
+      lastCloudDataRef.current = cloudData;
+      const ghToken = (state.settings as any).githubGistToken as string | undefined;
+      const cloudTitle = story?.title || state.screenplay.title || 'Untitled';
+
+      // Helper: push THIS story to its own private gist (the GitHub overflow).
+      const saveToGitHub = async (existingId?: string) => {
+        const { gistPushStory } = await import('@/lib/cloudSync');
+        const r = await gistPushStory(ghToken!, activeStoryId, cloudData, existingId);
+        if (r.ok) {
+          useAppStore.getState().updateStory(activeStoryId, {
+            storedOn: 'github',
+            githubGistId: r.remoteId || existingId,
           });
+          document.dispatchEvent(new CustomEvent('writer:cloudsynced'));
+          return true;
         }
-        await pushStory({
-          storyId: activeStoryId,
-          title: story?.title || state.screenplay.title || 'Untitled',
-          data: cloudData,
-          projectId: story?.projectId,
-        });
-        // On an EXPLICIT save (not the 30s autosave) drop a restorable cloud
-        // snapshot. Deduped + pruned to the newest N inside saveVersion.
-        if (!triggeredByAutoSave) {
-          saveVersion(activeStoryId, {
-            data: cloudData,
-            title: story?.title || state.screenplay.title || 'Untitled',
-            label: 'Manual save',
-          }).catch(() => {/* versions are best-effort */});
-        }
-        // Confirm to the UI that the work is safely in the cloud (drives the
-        // "Synced" save indicator).
-        document.dispatchEvent(new CustomEvent('writer:cloudsynced'));
-      } catch (err: any) {
-        // eslint-disable-next-line no-console
-        console.warn('[Kindling] Cloud save failed (local copy was saved):', err?.code || err?.message || err);
-        // Tell the UI cloud sync didn't happen → indicator shows "Saved" (on
-        // device) rather than "Synced".
         document.dispatchEvent(new CustomEvent('writer:cloudfailed'));
-        // The story is too big for Firestore's 1MB limit — this used to fail
-        // silently and stop cloud sync. Now we tell the user clearly (local
-        // copy is still safe). Show it even on autosave since it's important.
-        if (err?.name === 'StorySizeError') {
-          toast.error('Story too large to sync to the cloud', {
-            description: err.message,
-            duration: 12000,
+        if (!triggeredByAutoSave) toast.error('GitHub sync failed', { description: r.error });
+        return false;
+      };
+
+      // A story that already overflowed to GitHub stays on GitHub — don't keep
+      // re-attempting the doomed Firestore write every save.
+      if (story?.storedOn === 'github' && ghToken) {
+        try {
+          await saveToGitHub(story.githubGistId);
+          if (!triggeredByAutoSave) toast.success('Synced to GitHub');
+        } catch (e: any) {
+          document.dispatchEvent(new CustomEvent('writer:cloudfailed'));
+          console.warn('[Kindling] GitHub sync failed (local copy saved):', e?.message || e);
+        }
+      } else {
+        try {
+          const { pushStory, saveVersion } = await import('@/lib/cloudStories');
+          // Warn once when approaching the cloud size limit, before it blocks.
+          const { isNearCloudLimit, byteSize, humanSize, SAFE_DATA_LIMIT } = await import('@/lib/storySize');
+          if (isNearCloudLimit(cloudData) && !nearLimitWarnedRef.current) {
+            nearLimitWarnedRef.current = true;
+            toast.warning('This story is getting large', {
+              description: ghToken
+                ? `It's ${humanSize(byteSize(cloudData))} of Firebase's ${humanSize(SAFE_DATA_LIMIT)} per-story limit. When it crosses that, Kindling will automatically save it to your GitHub instead — no action needed.`
+                : `It's ${humanSize(byteSize(cloudData))} of Firebase's ${humanSize(SAFE_DATA_LIMIT)} per-story limit. Add a GitHub token in Settings → Sync so big stories auto-save to GitHub, or attach images by URL instead of uploading.`,
+              duration: 9000,
+            });
+          }
+          await pushStory({
+            storyId: activeStoryId,
+            title: cloudTitle,
+            data: cloudData,
+            projectId: story?.projectId,
           });
+          // On an EXPLICIT save (not the 30s autosave) drop a restorable cloud
+          // snapshot. Deduped + pruned to the newest N inside saveVersion.
+          if (!triggeredByAutoSave) {
+            saveVersion(activeStoryId, { data: cloudData, title: cloudTitle, label: 'Manual save' })
+              .catch(() => {/* versions are best-effort */});
+          }
+          // Confirm to the UI that the work is safely in the cloud.
+          document.dispatchEvent(new CustomEvent('writer:cloudsynced'));
+        } catch (err: any) {
+          // eslint-disable-next-line no-console
+          console.warn('[Kindling] Firebase save failed (local copy was saved):', err?.code || err?.message || err);
+          document.dispatchEvent(new CustomEvent('writer:cloudfailed'));
+          // TOO BIG for Firestore's 1MB doc limit → automatically fall back to
+          // the user's GitHub (private gist), if a token is configured.
+          if (err?.name === 'StorySizeError' && ghToken) {
+            try {
+              const ok = await saveToGitHub(story?.githubGistId);
+              if (ok && !triggeredByAutoSave) {
+                toast.success('Too big for Firebase — saved to your GitHub instead', {
+                  description: 'This story will keep syncing to GitHub from now on.',
+                  duration: 8000,
+                });
+              }
+            } catch (e: any) {
+              if (!triggeredByAutoSave) toast.error('GitHub backup failed', { description: e?.message || String(e) });
+            }
+          } else if (err?.name === 'StorySizeError') {
+            // No GitHub configured — point them to the one-time setup.
+            toast.error('Story too large to sync to the cloud', {
+              description: 'Add a GitHub token in Settings → Sync to auto-save big stories to GitHub. Your work is still saved on this device.',
+              duration: 12000,
+            });
+          }
         }
       }
     }
@@ -782,6 +846,41 @@ function App() {
           }
         } catch (e: any) {
           console.warn('[Kindling] Cloud project pull failed:', e?.code || e?.message || e);
+        }
+
+        // Recover GitHub-backed stories (the ones too big for Firebase). Their
+        // pointer is stored locally, but on a fresh device we rediscover them by
+        // listing the account's kindling-story gists. Content is pulled lazily
+        // when the story is opened.
+        try {
+          const ghToken = (useAppStore.getState().settings as any).githubGistToken as string | undefined;
+          if (ghToken && !cancelled) {
+            const { gistListStories } = await import('@/lib/cloudSync');
+            const res = await gistListStories(ghToken);
+            if (res.ok && res.data && res.data.length) {
+              const known = new Set(useAppStore.getState().stories.map((s) => s.id));
+              const add = res.data
+                .filter((g) => !known.has(g.storyId))
+                .map((g) => ({
+                  id: g.storyId,
+                  title: 'GitHub story (open to load)',
+                  type: 'movie' as const,
+                  storedOn: 'github' as const,
+                  githubGistId: g.gistId,
+                  createdAt: g.updatedAt || Date.now(),
+                  updatedAt: g.updatedAt || Date.now(),
+                }));
+              if (add.length) {
+                useAppStore.setState((s: any) => ({ stories: [...s.stories, ...add] }));
+                toast.success(`Found ${add.length} large stor${add.length === 1 ? 'y' : 'ies'} on GitHub`, {
+                  description: 'Open one from the stories drawer to load it.',
+                  duration: 6000,
+                });
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn('[Kindling] GitHub story recovery failed:', e?.message || e);
         }
       } catch (err: any) {
         // Firestore unreachable or rules block reads. Silent — local
