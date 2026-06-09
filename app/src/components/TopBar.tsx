@@ -5,7 +5,7 @@ import {
   GitCompare, Search, Shuffle, Focus, Eye, BookOpen, Sparkles, ChevronRight,
   LogOut, UserCircle2, Share2, UserPlus, PanelRight, Lightbulb, StickyNote,
   Users, History as HistoryIcon, Users2, Bot, Image as ImageIcon, X, Stethoscope,
-  MessageCircle, Briefcase, ExternalLink, Copy, Clapperboard, ShieldCheck, FolderKanban,
+  MessageCircle, Briefcase, ExternalLink, Copy, Clapperboard, ShieldCheck, FolderKanban, HardDrive,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { openInlineCommentFromSelection } from './InlineCommentPopup';
@@ -577,6 +577,11 @@ export default function TopBar({
                     icon={Clapperboard}
                     label="Production (budget · schedule)…"
                     onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openProduction')); }}
+                  />
+                  <Item
+                    icon={HardDrive}
+                    label="Storage & memory…"
+                    onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('app:openStorage')); }}
                   />
                 </Group>
 

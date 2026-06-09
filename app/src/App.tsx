@@ -24,6 +24,7 @@ const BreakdownView = lazy(() => import('@/components/BreakdownView'));
 const ProductionView = lazy(() => import('@/components/ProductionView'));
 const ContinuityGuard = lazy(() => import('@/components/ContinuityGuard'));
 const ProjectsView = lazy(() => import('@/components/ProjectsView'));
+const StorageManager = lazy(() => import('@/components/StorageManager'));
 import CommentsPanel from '@/components/CommentsPanel';
 import InlineCommentPopup, { openInlineCommentFromSelection } from '@/components/InlineCommentPopup';
 import InlineCommentHighlights from '@/components/InlineCommentHighlights';
@@ -95,6 +96,12 @@ function App() {
 
   const { ready, saveState, loadState, deleteStory: idbDeleteStory } = useIndexedDB();
   const [initialized, setInitialized] = useState(false);
+  // Crash-loop safe mode: read (once, at first render) the id of the story we
+  // were loading when the tab last died. If it's still set, that story
+  // OOM-crashed us — we must NOT auto-load it again.
+  const [safeModeStoryId] = useState<string | null>(() => {
+    try { return localStorage.getItem('kindling-load-attempt') || null; } catch { return null; }
+  });
   const [showStorySelector, setShowStorySelector] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -273,6 +280,21 @@ function App() {
       }
       return;
     }
+    // SAFE MODE: this is the exact story that crashed the tab on the last boot.
+    // Skip auto-loading it (loading it would just crash again) and open the
+    // Storage Manager so the user can remove its images or delete it.
+    if (safeModeStoryId && safeModeStoryId === activeStoryId) {
+      try { localStorage.removeItem('kindling-load-attempt'); } catch { /* ignore */ }
+      setInitialized(true);
+      setTimeout(() => document.dispatchEvent(new CustomEvent('app:openStorage', { detail: { crashedStoryId: activeStoryId } })), 60);
+      return;
+    }
+    // Crash-loop breaker: record that we are ABOUT to load this story. If the
+    // load OOM-crashes the tab, this flag survives; on the next boot the
+    // safe-mode check (below) sees it and skips auto-loading the same story so
+    // the app can open and the user can clean it up. Cleared after a successful
+    // load just below.
+    try { localStorage.setItem('kindling-load-attempt', activeStoryId); } catch { /* ignore */ }
     loadState(activeStoryId).then(async (localState) => {
       let state = localState;
       // No local copy on this device? If the story lives on GitHub (it
@@ -334,6 +356,26 @@ function App() {
         focusCharacterId: null,
         rightPanel: null,
       };
+      // ANTI-OOM: if this snapshot carries a lot of inline base64 images, strip
+      // them BEFORE they ever reach React state. Holding + rendering hundreds of
+      // MB of base64 is what crashes the tab ("out of memory" in dispatchSetState).
+      // Remote image URLs are kept (they cost no memory); only base64 is removed,
+      // and the slimmed copy is written back so the story stops being a bomb.
+      if (state) {
+        try {
+          const { estimateMediaBytes, stripHeavyMedia, HEAVY_SNAPSHOT_BYTES } = await import('@/lib/mediaStrip');
+          if (estimateMediaBytes(state) > HEAVY_SNAPSHOT_BYTES) {
+            const { slim, removedCount, bytesFreed } = stripHeavyMedia(state);
+            state = slim;
+            try { await saveState(activeStoryId, slim); } catch { /* best-effort */ }
+            const { humanBytes } = await import('@/lib/idbAdmin');
+            toast.warning('Large images removed to keep the app stable', {
+              description: `This story had ${removedCount} embedded image${removedCount === 1 ? '' : 's'} (${humanBytes(bytesFreed)}) that were crashing the app. Your script, scenes and structure are intact. Attach images by URL instead of uploading to avoid this.`,
+              duration: 12000,
+            });
+          }
+        } catch { /* if the guard itself fails, fall through and try the raw load */ }
+      }
       // Merge order: blank first, then the saved snapshot on top. The
       // store-level merge keeps cross-story fields (stories, settings,
       // user, activeStoryId) untouched because they aren't in `blank`.
@@ -352,6 +394,10 @@ function App() {
       }
       useAppStore.setState(next);
       setInitialized(true);
+      // Survived the load → clear the crash-loop flag so we don't enter safe
+      // mode next boot. (Done after setState; if setState OOM-crashed, the flag
+      // stays set and safe mode kicks in on reload.)
+      try { localStorage.removeItem('kindling-load-attempt'); } catch { /* ignore */ }
       // The TipTap editor reads `screenplay.elements` ONCE at mount —
       // it does not re-render when the underlying store changes. So
       // after a story switch we have to explicitly tell the writer to
@@ -368,7 +414,7 @@ function App() {
         document.dispatchEvent(new CustomEvent('writer:rebuild'));
       }, 0);
     });
-  }, [ready, activeStoryId, stories.length, loadState, saveState]);
+  }, [ready, activeStoryId, stories.length, loadState, saveState, safeModeStoryId]);
 
   // ── Manual-save model ──────────────────────────────────────────────────
   //
@@ -1724,6 +1770,7 @@ function App() {
       <ProductionView />
       <ContinuityGuard />
       <ProjectsView onOpenStory={() => { setShowStorySelector(false); setTab('writer'); }} />
+      <StorageManager autoCrashedId={safeModeStoryId} />
       {/* Floating inline comment popup. Opens via:
             - TopBar Comment button → app:openInlineComment event
             - Cmd/Ctrl+Shift+M keyboard shortcut (see keyboard handler)
