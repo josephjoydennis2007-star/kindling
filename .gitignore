@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output
+app/dist/
+dist/
+
+# Firebase local artifacts
+.firebase/
+firebase-debug.log
+firestore-debug.log
+*-debug.log
+
+# Logs + OS junk
+*.log
+.DS_Store
+Thumbs.db
