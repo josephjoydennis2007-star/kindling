@@ -368,6 +368,11 @@ export interface AppSettings {
   // saved settings stay valid; each provider stores its own token here.
   githubGistToken?: string;
   githubGistId?: string;       // last pushed gist
+  // ── Free media hosting (images + video) so uploads don't bloat RAM/disk ──
+  cloudinaryCloudName?: string;     // Cloudinary cloud name (free, no card)
+  cloudinaryUploadPreset?: string;  // an UNSIGNED upload preset
+  githubMediaRepo?: string;         // "owner/repo" — a PUBLIC repo for media
+  githubMediaToken?: string;        // token w/ public_repo scope (falls back to gist token)
   dropboxToken?: string;
   googleDriveClientId?: string;
   webdavUrl?: string;

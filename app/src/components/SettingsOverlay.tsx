@@ -907,6 +907,66 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                     </p>
                   </Section>
 
+                  <Section title="✓ Media storage — images & video (free, no credit card)">
+                    <p className="text-[11px] text-[var(--text-secondary)] mb-3">
+                      Where uploaded images/videos are stored so they DON'T bloat your device/RAM. Firebase Storage now needs a paid plan — these are free. Cloudinary is recommended (25&nbsp;GB, images + video). A GitHub <b>public</b> repo also works. Runway-generated images are already hosted, so they never need uploading.
+                    </p>
+
+                    <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-1.5">Cloudinary (recommended)</div>
+                    <div className="space-y-2">
+                      <input
+                        value={(draft as any).cloudinaryCloudName || ''}
+                        onChange={(e) => setDraft({ ...draft, cloudinaryCloudName: e.target.value.trim() } as any)}
+                        placeholder="Cloud name (Cloudinary dashboard → top of page)"
+                        className="w-full bg-[var(--card)] border border-[var(--border)] rounded-md px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                      />
+                      <input
+                        value={(draft as any).cloudinaryUploadPreset || ''}
+                        onChange={(e) => setDraft({ ...draft, cloudinaryUploadPreset: e.target.value.trim() } as any)}
+                        placeholder="Unsigned upload preset name (Settings → Upload → Add upload preset → Signing mode: Unsigned)"
+                        className="w-full bg-[var(--card)] border border-[var(--border)] rounded-md px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                      />
+                      <a href="https://cloudinary.com/users/register_free" target="_blank" rel="noreferrer" className="inline-block text-[11px] text-[var(--accent)] hover:underline">Create a free Cloudinary account →</a>
+                    </div>
+
+                    <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold mb-1.5 mt-4">GitHub public repo (fallback)</div>
+                    <div className="space-y-2">
+                      <input
+                        value={(draft as any).githubMediaRepo || ''}
+                        onChange={(e) => setDraft({ ...draft, githubMediaRepo: e.target.value.trim() } as any)}
+                        placeholder="owner/repo (a PUBLIC repo, e.g. yourname/kindling-media)"
+                        className="w-full bg-[var(--card)] border border-[var(--border)] rounded-md px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                      />
+                      <input
+                        type="password"
+                        value={(draft as any).githubMediaToken || ''}
+                        onChange={(e) => setDraft({ ...draft, githubMediaToken: e.target.value.trim() } as any)}
+                        placeholder="GitHub token with 'public_repo' scope (blank = reuse your gist token)"
+                        className="w-full bg-[var(--card)] border border-[var(--border)] rounded-md px-3 py-2 text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                      />
+                      <a href="https://github.com/settings/tokens/new?scopes=public_repo&description=Kindling%20media" target="_blank" rel="noreferrer" className="inline-block text-[11px] text-[var(--accent)] hover:underline">Create a public_repo token →</a>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        // Persist current draft so the test reads the latest values.
+                        updateSettings(draft as any);
+                        const tid = toast.loading('Testing media upload…');
+                        try {
+                          const { testMediaProvider } = await import('@/lib/mediaUpload');
+                          const r = await testMediaProvider();
+                          if (r.ok) toast.success(`Media upload works via ${r.provider}`, { id: tid, description: 'Uploaded images/videos will be stored in the cloud.' });
+                          else toast.error(`Media test failed${r.provider ? ` (${r.provider})` : ''}`, { id: tid, description: r.error || 'Add Cloudinary or a GitHub media repo above.' });
+                        } catch (e: any) {
+                          toast.error('Media test failed', { id: tid, description: e?.message || String(e) });
+                        }
+                      }}
+                      className="mt-3 px-3 py-1.5 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-xs font-bold hover:brightness-110"
+                    >
+                      Test media upload
+                    </button>
+                  </Section>
+
                   <CloudProvider
                     name="GitHub storage — auto-overflow when Firebase is full"
                     badge="FREE — BIG STORIES"
