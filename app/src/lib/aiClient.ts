@@ -49,6 +49,9 @@ const DEFAULT_MODELS: Record<string, string> = {
   // (cents per million tokens). Prepay $5–10 → behaves like a budget that
   // simply stops at $0 (no auto-renew). deepseek-chat is V3.
   deepseek: 'deepseek-chat',
+  // NVIDIA API Catalog (build.nvidia.com) — one nvapi key, OpenAI-compatible,
+  // many hosted models, free credits to start. Default to a strong, fast model.
+  nvidia: 'meta/llama-3.1-70b-instruct',
   custom: '',
 };
 
@@ -289,6 +292,7 @@ export async function aiOnce(
       provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
       provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :
       provider === 'deepseek'   ? 'https://api.deepseek.com/v1/chat/completions' :
+      provider === 'nvidia'     ? 'https://integrate.api.nvidia.com/v1/chat/completions' :
       provider === 'ollama'     ? `${(settings.aiEndpoint || 'http://localhost:11434').replace(/\/$/, '')}/v1/chat/completions` :
       /* custom */                (settings.aiEndpoint || '');
 
@@ -530,6 +534,8 @@ export async function aiToolCall(
     provider === 'openai'     ? 'https://api.openai.com/v1/chat/completions' :
     provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
     provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :
+    provider === 'deepseek'   ? 'https://api.deepseek.com/v1/chat/completions' :
+    provider === 'nvidia'     ? 'https://integrate.api.nvidia.com/v1/chat/completions' :
     /* custom */                (settings.aiEndpoint || '');
   if (!url) return { ok: false, error: 'No tool-calling endpoint for this provider.' };
 

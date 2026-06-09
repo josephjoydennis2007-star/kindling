@@ -343,7 +343,7 @@ export interface AppSettings {
   //              quality, no credit card needed). Recommended default for
   //              anyone who hits a Pollinations 524 — see PROVIDER_HELP.
   // Other providers are paid or self-hosted.
-  aiProvider: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'deepseek' | 'ollama' | 'custom';
+  aiProvider: 'builtin' | 'gemini' | 'anthropic' | 'openai' | 'openrouter' | 'groq' | 'deepseek' | 'nvidia' | 'ollama' | 'custom';
   aiApiKey: string;
   aiModel: string;
   aiEndpoint: string;

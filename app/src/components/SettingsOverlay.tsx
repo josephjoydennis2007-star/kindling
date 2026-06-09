@@ -625,16 +625,34 @@ export default function SettingsOverlay({ open, onClose }: Props) {
               {tab === 'ai' && (
                 <div className="space-y-4">
                   <Section title="Provider">
-                    <div className="flex gap-1.5">
-                      {(['anthropic','openai','custom'] as const).map((p) => (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(['anthropic','openai','nvidia','groq','custom'] as const).map((p) => (
                         <button key={p} onClick={() => setDraft({ ...draft, aiProvider: p })}
-                          className={`flex-1 px-2 py-1.5 rounded-md text-[11px] border ${draft.aiProvider === p ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-secondary)]'}`}
-                        >{p}</button>
+                          className={`px-2.5 py-1.5 rounded-md text-[11px] border ${draft.aiProvider === p ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-secondary)]'}`}
+                        >{p === 'nvidia' ? 'NVIDIA (free)' : p}</button>
                       ))}
                     </div>
                   </Section>
                   <Section title="Model">
-                    {draft.aiProvider === 'gemini' ? (
+                    {draft.aiProvider === 'nvidia' ? (
+                      <>
+                        <select
+                          value={draft.aiModel || 'meta/llama-3.1-70b-instruct'}
+                          onChange={(e) => setDraft({ ...draft, aiModel: e.target.value })}
+                          className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]"
+                        >
+                          <option value="meta/llama-3.1-70b-instruct">Llama 3.1 70B (fast, great default)</option>
+                          <option value="meta/llama-3.1-405b-instruct">Llama 3.1 405B (most capable)</option>
+                          <option value="deepseek-ai/deepseek-r1">DeepSeek-R1 (reasoning)</option>
+                          <option value="qwen/qwen2.5-72b-instruct">Qwen 2.5 72B</option>
+                          <option value="nvidia/llama-3.1-nemotron-70b-instruct">Nemotron 70B (NVIDIA-tuned)</option>
+                          <option value="mistralai/mistral-large-2-instruct">Mistral Large 2</option>
+                        </select>
+                        <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-snug">
+                          One NVIDIA key unlocks all of these. Pick any — 70B is a great free default; 405B is the strongest.
+                        </p>
+                      </>
+                    ) : draft.aiProvider === 'gemini' ? (
                       <>
                         <select
                           value={draft.aiModel || 'gemini-2.0-flash'}
@@ -726,6 +744,31 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                           className="mt-1.5 block text-center text-[10px] text-[var(--accent)] underline"
                         >
                           Get a free Groq key (1-click Google sign-in)
+                        </a>
+                      </>
+                    )}
+                    {draft.aiProvider === 'nvidia' && (
+                      <>
+                        <button
+                          onClick={async () => {
+                            const key = (draft.aiApiKey || '').trim();
+                            if (!key) { toast.error('Paste your NVIDIA key first (starts with nvapi-)'); return; }
+                            updateSettings(draft as any);
+                            const tid = toast.loading('Testing NVIDIA key…');
+                            const { aiOnce } = await import('@/lib/aiClient');
+                            const r = await aiOnce({ aiProvider: 'nvidia', aiApiKey: key, aiModel: draft.aiModel || 'meta/llama-3.1-70b-instruct', aiEndpoint: '' } as any, 'Reply with the single word: ok', 'ping', { maxTokens: 5 });
+                            if (r.ok) toast.success('NVIDIA connected — free AI is live across the app', { id: tid });
+                            else toast.error('NVIDIA key check failed', { id: tid, description: r.error });
+                          }}
+                          className="mt-2 w-full px-3 py-2 rounded-md text-xs font-semibold bg-[var(--card)] border border-[var(--rule)] hover:border-[var(--accent)] transition-colors text-[var(--text)]"
+                        >
+                          Test NVIDIA key
+                        </button>
+                        <p className="mt-2 text-[10px] text-[var(--text-muted)] leading-snug">
+                          One key, many models (Llama, DeepSeek, Qwen, Nemotron…), free credits to start. Paste your <code>nvapi-…</code> key above. It powers every AI button in the app (Quick Tools, YouTube Studio, scripts, breakdowns).
+                        </p>
+                        <a href="https://build.nvidia.com" target="_blank" rel="noreferrer" className="mt-1.5 block text-center text-[10px] text-[var(--accent)] underline">
+                          Get a free NVIDIA key at build.nvidia.com
                         </a>
                       </>
                     )}
