@@ -1394,6 +1394,36 @@ export default {
 
     if (request.method === 'OPTIONS') return new Response(null, { headers: { ...cors, ...sh } });
 
+    // ── AI proxy ──────────────────────────────────────────────────────────
+    // NVIDIA's API (integrate.api.nvidia.com) is server-only — it sends no CORS
+    // headers, so a browser call fails with "Failed to fetch". The app POSTs the
+    // exact OpenAI-style request here; we forward it to NVIDIA verbatim (passing
+    // the user's Authorization header through, never storing it) and return the
+    // response WITH CORS — including streamed (SSE) bodies. Stateless passthrough.
+    {
+      const path = new URL(request.url).pathname;
+      if (path.endsWith('/ai-proxy')) {
+        if (request.method !== 'POST') return json(rpcError(null, -32600, 'Use POST'), 405, sh);
+        const target = 'https://integrate.api.nvidia.com/v1/chat/completions';
+        const bodyText = await request.text();
+        const auth = request.headers.get('authorization') || '';
+        let upstream;
+        try {
+          upstream = await fetch(target, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...(auth ? { authorization: auth } : {}) },
+            body: bodyText,
+          });
+        } catch (e) {
+          return json({ error: { message: `Proxy fetch failed: ${e.message || e}` } }, 502, sh);
+        }
+        return new Response(upstream.body, {
+          status: upstream.status,
+          headers: { ...cors, 'Content-Type': upstream.headers.get('content-type') || 'application/json' },
+        });
+      }
+    }
+
     // A friendly GET page so you can confirm the Worker is live.
     if (request.method === 'GET') {
       return new Response(

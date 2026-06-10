@@ -60,6 +60,11 @@ const DEFAULT_MODELS: Record<string, string> = {
 // out-of-the-box "AI co-worker" experience.
 const POLLINATIONS_TEXT_URL = 'https://text.pollinations.ai/openai';
 
+// NVIDIA's API blocks browser (CORS) calls, so NVIDIA requests are routed
+// through the Kindling Worker, which forwards them and adds CORS headers. The
+// user's key passes through per-request and is never stored.
+export const NVIDIA_PROXY = 'https://kindling-connector.josephjoydennis2007.workers.dev/ai-proxy';
+
 /**
  * Gemini free-tier model fallback chain. CRUCIALLY, each model has its
  * OWN separate daily quota bucket on the free tier. So when the user's
@@ -292,7 +297,7 @@ export async function aiOnce(
       provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
       provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :
       provider === 'deepseek'   ? 'https://api.deepseek.com/v1/chat/completions' :
-      provider === 'nvidia'     ? 'https://integrate.api.nvidia.com/v1/chat/completions' :
+      provider === 'nvidia'     ? NVIDIA_PROXY :
       provider === 'ollama'     ? `${(settings.aiEndpoint || 'http://localhost:11434').replace(/\/$/, '')}/v1/chat/completions` :
       /* custom */                (settings.aiEndpoint || '');
 
@@ -535,7 +540,7 @@ export async function aiToolCall(
     provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' :
     provider === 'groq'       ? 'https://api.groq.com/openai/v1/chat/completions' :
     provider === 'deepseek'   ? 'https://api.deepseek.com/v1/chat/completions' :
-    provider === 'nvidia'     ? 'https://integrate.api.nvidia.com/v1/chat/completions' :
+    provider === 'nvidia'     ? NVIDIA_PROXY :
     /* custom */                (settings.aiEndpoint || '');
   if (!url) return { ok: false, error: 'No tool-calling endpoint for this provider.' };
 

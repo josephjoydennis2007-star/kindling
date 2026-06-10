@@ -865,7 +865,7 @@ async function callAI(opts: {
   });
   if (opts.provider === 'groq') return openAIStyle('https://api.groq.com/openai/v1/chat/completions');
   if (opts.provider === 'deepseek') return openAIStyle('https://api.deepseek.com/v1/chat/completions');
-  if (opts.provider === 'nvidia') return openAIStyle('https://integrate.api.nvidia.com/v1/chat/completions');
+  if (opts.provider === 'nvidia') return openAIStyle('https://kindling-connector.josephjoydennis2007.workers.dev/ai-proxy');
   if (opts.provider === 'ollama') {
     const base = (opts.endpoint || 'http://localhost:11434').replace(/\/$/, '');
     // Mixed-content guard: an HTTPS page can't call http://localhost.
