@@ -641,12 +641,12 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                           onChange={(e) => setDraft({ ...draft, aiModel: e.target.value })}
                           className="w-full px-3 py-2 bg-[var(--card)] border border-[var(--border)] rounded-md text-xs outline-none focus:border-[var(--accent)]"
                         >
-                          <option value="meta/llama-3.1-70b-instruct">Llama 3.1 70B (fast, great default)</option>
+                          <option value="meta/llama-3.1-70b-instruct">Llama 3.1 70B (great default)</option>
+                          <option value="meta/llama-3.3-70b-instruct">Llama 3.3 70B (newer)</option>
                           <option value="meta/llama-3.1-405b-instruct">Llama 3.1 405B (most capable)</option>
+                          <option value="meta/llama-3.1-8b-instruct">Llama 3.1 8B (fastest)</option>
                           <option value="deepseek-ai/deepseek-r1">DeepSeek-R1 (reasoning)</option>
-                          <option value="qwen/qwen2.5-72b-instruct">Qwen 2.5 72B</option>
                           <option value="nvidia/llama-3.1-nemotron-70b-instruct">Nemotron 70B (NVIDIA-tuned)</option>
-                          <option value="mistralai/mistral-large-2-instruct">Mistral Large 2</option>
                         </select>
                         <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-snug">
                           One NVIDIA key unlocks all of these. Pick any — 70B is a great free default; 405B is the strongest.
@@ -758,7 +758,14 @@ export default function SettingsOverlay({ open, onClose }: Props) {
                             const { aiOnce } = await import('@/lib/aiClient');
                             const r = await aiOnce({ aiProvider: 'nvidia', aiApiKey: key, aiModel: draft.aiModel || 'meta/llama-3.1-70b-instruct', aiEndpoint: '' } as any, 'Reply with the single word: ok', 'ping', { maxTokens: 5 });
                             if (r.ok) toast.success('NVIDIA connected — free AI is live across the app', { id: tid });
-                            else toast.error('NVIDIA key check failed', { id: tid, description: r.error });
+                            else {
+                              const notFound = /not found|404/i.test(r.error || '');
+                              toast.error(notFound ? 'That model isn’t enabled on your NVIDIA account' : 'NVIDIA key check failed', {
+                                id: tid,
+                                description: notFound ? 'Pick “Llama 3.1 70B” in the Model dropdown above and test again — it’s available to every account.' : r.error,
+                                duration: 10000,
+                              });
+                            }
                           }}
                           className="mt-2 w-full px-3 py-2 rounded-md text-xs font-semibold bg-[var(--card)] border border-[var(--rule)] hover:border-[var(--accent)] transition-colors text-[var(--text)]"
                         >
