@@ -35,6 +35,9 @@ function isTab(v: string): v is AppTab {
 
 /** Build the canonical path for a given app state. */
 export function routeFor(storyId: string | null, tab: AppTab): string {
+  // Home is global — always `/`, even with a story open (the home page shows
+  // the open story in its Continue card; state keeps activeStoryId).
+  if (tab === 'dashboard') return '/';
   if (storyId) return `/s/${encodeURIComponent(storyId)}/${tab}`;
   if (tab === 'youtube') return '/youtube';
   return '/';

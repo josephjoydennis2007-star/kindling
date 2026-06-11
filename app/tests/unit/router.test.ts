@@ -12,6 +12,10 @@ describe('router (URL ↔ state mapping)', () => {
     expect(routeFor(null, 'dashboard')).toBe('/');
   });
 
+  it('home is global — dashboard maps to / even with a story open', () => {
+    expect(routeFor('abc123', 'dashboard')).toBe('/');
+  });
+
   it('parses story routes', () => {
     expect(parseRoute('/s/abc123/storyboard')).toEqual({ storyId: 'abc123', tab: 'storyboard' });
     expect(parseRoute('/s/abc123/director')).toEqual({ storyId: 'abc123', tab: 'director' });

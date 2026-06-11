@@ -39,7 +39,7 @@ const PlotBoardView = lazy(() => import('@/components/PlotBoardView'));
 import RightPanel from '@/components/RightPanel';
 import StorySelector from '@/components/StorySelector';
 const WorkspaceView = lazy(() => import('@/components/WorkspaceView'));
-const StoryDashboard = lazy(() => import('@/components/StoryDashboard'));
+const CreatorHome = lazy(() => import('@/components/CreatorHome'));
 const CalendarView = lazy(() => import('@/components/CalendarView'));
 const OutlineView = lazy(() => import('@/components/OutlineView'));
 const WorldView = lazy(() => import('@/components/WorldView'));
@@ -273,6 +273,13 @@ function App() {
   // is a tiny URL ↔ store sync; render logic is unchanged.
   useEffect(() => {
     import('@/lib/router').then((m) => m.installRouter());
+  }, []);
+
+  // Open the story browser from anywhere (Creator OS home "Browse" button).
+  useEffect(() => {
+    const open = () => setShowStorySelector(true);
+    document.addEventListener('app:openStories', open);
+    return () => document.removeEventListener('app:openStories', open);
   }, []);
 
   // Load story data when activeStoryId changes.
@@ -1654,7 +1661,7 @@ function App() {
 
             {activeTab === 'dashboard' && (
               <div key="dashboard" className="h-full">
-                <StoryDashboard />
+                <CreatorHome />
               </div>
             )}
 
