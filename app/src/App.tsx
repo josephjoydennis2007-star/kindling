@@ -268,6 +268,13 @@ function App() {
     return () => document.removeEventListener('app:openPalette', open);
   }, []);
 
+  // Real multi-page URLs: /s/:storyId/:tab, /youtube, / — browser back/forward,
+  // bookmarks, and opening two stories in two browser tabs all work. The router
+  // is a tiny URL ↔ store sync; render logic is unchanged.
+  useEffect(() => {
+    import('@/lib/router').then((m) => m.installRouter());
+  }, []);
+
   // Load story data when activeStoryId changes.
   //
   // CRITICAL: always reset every per-story field BEFORE merging in the
