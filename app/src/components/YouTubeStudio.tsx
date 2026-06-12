@@ -13,6 +13,7 @@ import { viewMedia } from '@/lib/mediaViewer';
 import { generateImage, thumbnailPrompt } from '@/lib/imageGen';
 import { speakPreview, stopPreview, isPreviewSpeaking, generateVoiceoverFile, GEMINI_VOICES, type GeminiVoice } from '@/lib/voiceover';
 import { scriptToSrt, downloadSrt } from '@/lib/captions';
+import { connectYouTube, isConnected, uploadVideo, type UploadProgress } from '@/lib/youtubePublish';
 
 const SHOT_TYPES = ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'];
 const normShot = (v: any): any => {
@@ -38,6 +39,7 @@ export default function YouTubeStudio() {
   const createStory = useAppStore((s) => s.createStory);
   const loadStory = useAppStore((s) => s.loadStory);
   const updateScreenplayField = useAppStore((s) => s.updateScreenplayField);
+  const updateSettings = useAppStore((s) => s.updateSettings);
   const addScene = useAppStore((s) => s.addScene);
   const addShot = useAppStore((s) => s.addShot);
   const updateShot = useAppStore((s) => s.updateShot);
@@ -154,6 +156,35 @@ export default function YouTubeStudio() {
     if (trimmed && !/^https?:\/\//i.test(trimmed)) { toast.error('That doesn’t look like a link'); return; }
     update({ musicUrl: trimmed || null });
     toast.success(trimmed ? 'Music linked' : 'Music removed');
+  };
+
+  // ── Publish to YouTube (user's own free OAuth client) ──
+  const [ytConnected, setYtConnected] = useState(isConnected());
+  const [ytClientDraft, setYtClientDraft] = useState('');
+  const [ytFile, setYtFile] = useState<File | null>(null);
+  const [ytPrivacy, setYtPrivacy] = useState<'private' | 'unlisted' | 'public'>('private');
+  const [ytProgress, setYtProgress] = useState<UploadProgress | null>(null);
+  const [ytVideoId, setYtVideoId] = useState<string | null>(null);
+  const clientId = ((settings as any).googleClientId || '').trim();
+
+  const doConnect = async () => {
+    const r = await connectYouTube(clientId);
+    if (r.ok) { setYtConnected(true); toast.success('YouTube connected'); }
+    else toast.error('Could not connect', { description: r.error, duration: 9000 });
+  };
+  const doPublish = async () => {
+    if (!ytFile) { toast.error('Pick the final video file first (your CapCut export)'); return; }
+    setBusy('publish');
+    setYtVideoId(null);
+    const r = await uploadVideo(ytFile, form, { privacy: ytPrivacy, onProgress: setYtProgress });
+    setBusy(null);
+    setYtProgress(null);
+    if (r.ok && r.videoId) {
+      setYtVideoId(r.videoId);
+      toast.success('Uploaded to YouTube', { description: `Privacy: ${ytPrivacy}. Title, description and tags were set from this page.`, duration: 9000 });
+    } else {
+      toast.error('Upload failed', { description: r.error, duration: 10000 });
+    }
   };
 
   // Generate the thumbnail IN-APP (free FLUX → Cloudinary) — no Runway round-trip.
@@ -467,6 +498,64 @@ export default function YouTubeStudio() {
                   {sh.video && <span className="absolute bottom-1 right-1 px-1 rounded bg-black/70 text-white text-[7px] font-bold">▶ VID</span>}
                 </button>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Publish to YouTube */}
+        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--border)]">
+          <div className={lbl}>
+            <span className={lblTxt + ' flex items-center gap-1.5'}><Youtube className="w-3.5 h-3.5 text-[#ff0000]" /> Publish to YouTube</span>
+            {ytConnected && <span className="text-[9px] font-bold text-[var(--success)]">● Connected</span>}
+          </div>
+
+          {!clientId ? (
+            <div className="text-[11px] text-[var(--text-secondary)] space-y-2">
+              <p>One-time free setup (≈3 minutes) so the app can post to <b>your</b> channel:</p>
+              <ol className="list-decimal ml-4 space-y-1 text-[10.5px]">
+                <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-[var(--accent)] underline">console.cloud.google.com → APIs &amp; Credentials</a> (free, no card).</li>
+                <li>Create project → enable <b>YouTube Data API v3</b> → Create credentials → <b>OAuth client ID</b> → type <b>Web application</b>.</li>
+                <li>Add <code className="text-[var(--accent)]">https://kindling-1d29d.web.app</code> to “Authorized JavaScript origins”, then copy the <b>Client ID</b> here:</li>
+              </ol>
+              <div className="flex gap-2">
+                <input value={ytClientDraft} onChange={(e) => setYtClientDraft(e.target.value.trim())}
+                  placeholder="xxxxxxxx.apps.googleusercontent.com"
+                  className="flex-1 bg-[var(--bg)] border border-[var(--border)] rounded-md px-2.5 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]" />
+                <button onClick={() => { if (!ytClientDraft.includes('.apps.googleusercontent.com')) { toast.error('That doesn’t look like a Client ID'); return; } updateSettings({ googleClientId: ytClientDraft } as any); toast.success('Saved — now click Connect'); }}
+                  className="px-3 py-1.5 rounded-md text-[11px] font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110">Save</button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {!ytConnected ? (
+                <button onClick={doConnect} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold bg-[#ff0000] text-white hover:brightness-110">
+                  <Youtube className="w-3.5 h-3.5" /> Connect YouTube
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[var(--bg)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] cursor-pointer">
+                    {ytFile ? `🎞 ${ytFile.name.slice(0, 28)}${ytFile.name.length > 28 ? '…' : ''}` : 'Choose final video file'}
+                    <input type="file" accept="video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setYtFile(f); }} />
+                  </label>
+                  <select value={ytPrivacy} onChange={(e) => setYtPrivacy(e.target.value as any)}
+                    className="bg-[var(--bg)] border border-[var(--border)] rounded-md px-2 py-1.5 text-[11px] text-[var(--text)] outline-none focus:border-[var(--accent)]">
+                    <option value="private">Private (review first)</option>
+                    <option value="unlisted">Unlisted</option>
+                    <option value="public">Public</option>
+                  </select>
+                  <button onClick={doPublish} disabled={!!busy || !ytFile}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[11px] font-bold bg-[#ff0000] text-white hover:brightness-110 disabled:opacity-50">
+                    {busy === 'publish' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Rocket className="w-3.5 h-3.5" />}
+                    {ytProgress?.phase === 'uploading' ? `Uploading ${ytProgress.percent ?? 0}%` : busy === 'publish' ? 'Finishing…' : 'Publish'}
+                  </button>
+                </div>
+              )}
+              {ytVideoId && (
+                <a href={`https://studio.youtube.com/video/${ytVideoId}/edit`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--accent)] hover:underline">
+                  <ExternalLink className="w-3 h-3" /> Open in YouTube Studio (video {ytVideoId})
+                </a>
+              )}
+              <p className="text-[10px] text-[var(--text-muted)]">Uses your title, description, tags and thumbnail from this page. Uploads default to <b>Private</b> so you can review before going live. Free API quota ≈ 6 uploads/day.</p>
             </div>
           )}
         </div>

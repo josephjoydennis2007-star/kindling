@@ -375,6 +375,8 @@ export interface AppSettings {
   // saved settings stay valid; each provider stores its own token here.
   githubGistToken?: string;
   githubGistId?: string;       // last pushed gist
+  /** Google OAuth Client ID (public, no secret) for YouTube publishing. */
+  googleClientId?: string;
   // ── Free media hosting (images + video) so uploads don't bloat RAM/disk ──
   cloudinaryCloudName?: string;     // Cloudinary cloud name (free, no card)
   cloudinaryUploadPreset?: string;  // an UNSIGNED upload preset
