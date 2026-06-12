@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Youtube, Sparkles, Wand2, Copy, ImagePlus, ExternalLink, Maximize2, Clapperboard,
-  Lightbulb, Loader2, Rocket, Mic2, Play, Square,
+  Lightbulb, Loader2, Rocket, Mic2, Play, Square, Download, Music,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
@@ -12,6 +12,7 @@ import { sendPromptToRunway } from '@/lib/sendToRunway';
 import { viewMedia } from '@/lib/mediaViewer';
 import { generateImage, thumbnailPrompt } from '@/lib/imageGen';
 import { speakPreview, stopPreview, isPreviewSpeaking, generateVoiceoverFile, GEMINI_VOICES, type GeminiVoice } from '@/lib/voiceover';
+import { scriptToSrt, downloadSrt } from '@/lib/captions';
 
 const SHOT_TYPES = ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'];
 const normShot = (v: any): any => {
@@ -135,6 +136,24 @@ export default function YouTubeStudio() {
     setBusy(null);
     if (r.ok && r.url) { update({ voiceoverUrl: r.url }); toast.success(`Voiceover saved${r.seconds ? ` (~${r.seconds}s)` : ''}`, { id: tid }); }
     else toast.error('Voiceover failed', { id: tid, description: r.error, duration: 9000 });
+  };
+
+  // ── Captions (.srt — free, in-browser) + music link ──
+  const makeSrt = () => {
+    const src = (form.script || '').trim();
+    if (!src) { toast.error('Write the script first'); return; }
+    const srt = scriptToSrt(src);
+    if (!srt) { toast.error('Nothing to caption'); return; }
+    downloadSrt(`${(activeStory?.title || 'captions').replace(/[^a-z0-9]+/gi, '-')}.srt`, srt);
+    toast.success('Captions downloaded (.srt)', { description: 'Import into CapCut: Text → Captions → Import, or attach when uploading to YouTube.' });
+  };
+  const addMusicUrl = () => {
+    const url = window.prompt('Paste the music track link (from Producer.ai / Mubert / anywhere):', form.musicUrl || '');
+    if (url === null) return;
+    const trimmed = url.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) { toast.error('That doesn’t look like a link'); return; }
+    update({ musicUrl: trimmed || null });
+    toast.success(trimmed ? 'Music linked' : 'Music removed');
   };
 
   // Generate the thumbnail IN-APP (free FLUX → Cloudinary) — no Runway round-trip.
@@ -383,6 +402,39 @@ export default function YouTubeStudio() {
           ) : (
             <p className="text-[10.5px] text-[var(--text-muted)]">Preview reads the script aloud instantly. “Generate file” makes a real narration audio file (saved to your cloud) you can drop into CapCut.</p>
           )}
+        </div>
+
+        {/* Captions + music */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <div className={lbl}>
+              <span className={lblTxt}>Captions</span>
+              <button onClick={makeSrt} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]">
+                <Download className="w-3 h-3" /> Download .srt
+              </button>
+            </div>
+            <p className="text-[10.5px] text-[var(--text-muted)]">Subtitles from your script, timed automatically. Free, made on your device — import into CapCut or YouTube.</p>
+          </div>
+          <div>
+            <div className={lbl}>
+              <span className={lblTxt}>Music</span>
+              <div className="flex items-center gap-1.5">
+                <a href="https://www.producer.ai" target="_blank" rel="noreferrer" className="px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]">Producer.ai</a>
+                <a href="https://mubert.com/render" target="_blank" rel="noreferrer" className="px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]">Mubert</a>
+                <button onClick={addMusicUrl} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110">
+                  <Music className="w-3 h-3" /> {form.musicUrl ? 'Edit link' : 'Add link'}
+                </button>
+              </div>
+            </div>
+            {form.musicUrl ? (
+              <div className="flex items-center gap-2">
+                <audio controls src={form.musicUrl} className="w-full h-9" preload="none" />
+                <button onClick={() => update({ musicUrl: null })} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--danger)] flex-shrink-0" title="Remove music">remove</button>
+              </div>
+            ) : (
+              <p className="text-[10.5px] text-[var(--text-muted)]">Generate a free track (royalty-free), then paste its link — it saves with the video.</p>
+            )}
+          </div>
         </div>
 
         {/* Description / tags */}
