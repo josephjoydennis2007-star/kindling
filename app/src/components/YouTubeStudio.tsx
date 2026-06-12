@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Youtube, Sparkles, Wand2, Copy, ImagePlus, ExternalLink, Maximize2, Clapperboard,
-  Lightbulb, Loader2, Rocket,
+  Lightbulb, Loader2, Rocket, Mic2, Play, Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
@@ -11,6 +11,7 @@ import { aiOnce, extractJSON } from '@/lib/aiClient';
 import { sendPromptToRunway } from '@/lib/sendToRunway';
 import { viewMedia } from '@/lib/mediaViewer';
 import { generateImage, thumbnailPrompt } from '@/lib/imageGen';
+import { speakPreview, stopPreview, isPreviewSpeaking, generateVoiceoverFile, GEMINI_VOICES, type GeminiVoice } from '@/lib/voiceover';
 
 const SHOT_TYPES = ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'];
 const normShot = (v: any): any => {
@@ -112,6 +113,29 @@ export default function YouTubeStudio() {
   }); };
 
   const genThumbPrompt = () => { if (needIdea()) return; gen('thumbprompt', 'You write vivid image-generation prompts for high-CTR YouTube thumbnails.', `Write ONE image-gen prompt for a thumbnail for: "${form.idea}". Bold subject, expression, rule-of-thirds with space for text, high contrast, color punch. One paragraph.`, (t) => { sendPromptToRunway({ prompt: t, target: 'image', shotLabel: 'YouTube thumbnail' }); toast.success('Thumbnail prompt sent to Runway panel'); }, 400); };
+
+  // ── Voiceover ──
+  const [previewing, setPreviewing] = useState(false);
+  const [voVoice, setVoVoice] = useState<GeminiVoice>('Kore');
+  const previewVO = () => {
+    if (isPreviewSpeaking()) { stopPreview(); setPreviewing(false); return; }
+    const src = (form.script || form.hook || '').trim();
+    if (!src) { toast.error('Write the script first'); return; }
+    const ok = speakPreview(src);
+    setPreviewing(ok);
+    if (!ok) toast.error('This browser has no speech voices.');
+  };
+  const makeVOFile = async () => {
+    const src = (form.script || form.hook || '').trim();
+    if (!src) { toast.error('Write the script first'); return; }
+    setBusy('vo');
+    const tid = toast.loading('Generating voiceover file… (free Gemini TTS)');
+    const { currentStoryId } = await import('@/lib/mediaUpload');
+    const r = await generateVoiceoverFile(src, { voice: voVoice, storyId: currentStoryId() });
+    setBusy(null);
+    if (r.ok && r.url) { update({ voiceoverUrl: r.url }); toast.success(`Voiceover saved${r.seconds ? ` (~${r.seconds}s)` : ''}`, { id: tid }); }
+    else toast.error('Voiceover failed', { id: tid, description: r.error, duration: 9000 });
+  };
 
   // Generate the thumbnail IN-APP (free FLUX → Cloudinary) — no Runway round-trip.
   const genThumbImage = async () => {
@@ -329,6 +353,36 @@ export default function YouTubeStudio() {
         <div>
           <div className={lbl}><span className={lblTxt}>{isShort ? 'Short script (VO + on-screen text)' : 'Script'}</span><GenBtn k="script" on={genScript} /></div>
           <textarea value={form.script || ''} onChange={(e) => update({ script: e.target.value })} rows={isShort ? 8 : 14} placeholder="Your spoken script with [VISUAL: …] cues…" className={field + ' resize-y font-mono text-[12px] leading-relaxed'} />
+        </div>
+
+        {/* Voiceover */}
+        <div>
+          <div className={lbl}>
+            <span className={lblTxt}>Voiceover</span>
+            <div className="flex items-center gap-1.5">
+              <select value={voVoice} onChange={(e) => setVoVoice(e.target.value as GeminiVoice)}
+                title="Voice (for the generated file)"
+                className="bg-[var(--card)] border border-[var(--border)] rounded-md px-1.5 py-1 text-[10px] text-[var(--text)] outline-none focus:border-[var(--accent)]">
+                {GEMINI_VOICES.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <button onClick={previewVO} title="Hear the script read aloud (free, instant — browser voice)"
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]">
+                {previewing && isPreviewSpeaking() ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />} Preview
+              </button>
+              <button onClick={makeVOFile} disabled={!!busy} title="Generate a real audio file (free Gemini TTS → your Cloudinary)"
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110 disabled:opacity-50">
+                {busy === 'vo' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mic2 className="w-3 h-3" />} Generate file
+              </button>
+            </div>
+          </div>
+          {form.voiceoverUrl ? (
+            <div className="flex items-center gap-2">
+              <audio controls src={form.voiceoverUrl} className="w-full h-9" preload="none" />
+              <button onClick={() => update({ voiceoverUrl: null })} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--danger)] flex-shrink-0" title="Remove voiceover">remove</button>
+            </div>
+          ) : (
+            <p className="text-[10.5px] text-[var(--text-muted)]">Preview reads the script aloud instantly. “Generate file” makes a real narration audio file (saved to your cloud) you can drop into CapCut.</p>
+          )}
         </div>
 
         {/* Description / tags */}

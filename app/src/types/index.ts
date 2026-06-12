@@ -459,6 +459,10 @@ export interface YouTubePack {
   hashtags?: string;               // hashtags
   chapters?: string;               // timestamped chapters
   cta?: string;                    // call to action
+  /** Hosted voiceover audio (WAV/MP3 URL — e.g. Gemini TTS → Cloudinary). */
+  voiceoverUrl?: string | null;
+  /** Hosted background-music URL (from the music corner / paste-back). */
+  musicUrl?: string | null;
 }
 
 /**
