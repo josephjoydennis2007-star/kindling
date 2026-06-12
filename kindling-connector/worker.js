@@ -1395,16 +1395,23 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { headers: { ...cors, ...sh } });
 
     // ── AI proxy ──────────────────────────────────────────────────────────
-    // NVIDIA's API (integrate.api.nvidia.com) is server-only — it sends no CORS
-    // headers, so a browser call fails with "Failed to fetch". The app POSTs the
-    // exact OpenAI-style request here; we forward it to NVIDIA verbatim (passing
-    // the user's Authorization header through, never storing it) and return the
-    // response WITH CORS — including streamed (SSE) bodies. Stateless passthrough.
+    // NVIDIA's APIs are server-only — no CORS headers, so browser calls fail
+    // with "Failed to fetch". The app POSTs the exact request here; we forward
+    // it to NVIDIA verbatim (passing the user's Authorization header through,
+    // never storing it) and return the response WITH CORS — including streamed
+    // (SSE) bodies. Stateless passthrough. `?target=` picks a WHITELISTED
+    // upstream (never an open proxy): chat (default) or image (FLUX.1-schnell).
     {
-      const path = new URL(request.url).pathname;
+      const reqUrl = new URL(request.url);
+      const path = reqUrl.pathname;
       if (path.endsWith('/ai-proxy')) {
         if (request.method !== 'POST') return json(rpcError(null, -32600, 'Use POST'), 405, sh);
-        const target = 'https://integrate.api.nvidia.com/v1/chat/completions';
+        const AI_PROXY_TARGETS = {
+          chat: 'https://integrate.api.nvidia.com/v1/chat/completions',
+          image: 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell',
+        };
+        const target = AI_PROXY_TARGETS[reqUrl.searchParams.get('target') || 'chat'];
+        if (!target) return json({ error: { message: 'Unknown proxy target' } }, 400, sh);
         const bodyText = await request.text();
         const auth = request.headers.get('authorization') || '';
         let upstream;

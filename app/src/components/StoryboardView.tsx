@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2, Plus, X, ImagePlus, Play, Link2, Scissors, Download, Copy } from 'lucide-react';
+import { Clapperboard, Upload, Image as ImageIcon, Filter, Grid3x3, ExternalLink, Film, Maximize2, Plus, X, ImagePlus, Play, Link2, Scissors, Download, Copy, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
 import type { Shot } from '@/types';
 import { sendPromptToRunway } from '@/lib/sendToRunway';
 import { viewMedia } from '@/lib/mediaViewer';
+import { generateImage, framePrompt } from '@/lib/imageGen';
 
 /**
  * StoryboardView — a full-page grid of every storyboard image across all
@@ -200,6 +201,27 @@ export default function StoryboardView() {
     updateShot(shotId, { storyboard: '' });
   };
 
+  // ── In-app frame generation (free FLUX → Cloudinary) ──
+  const [genBusyId, setGenBusyId] = useState<string | null>(null);
+  const generateFrame = async (shot: Shot, sceneName: string) => {
+    if (genBusyId) return;
+    setGenBusyId(shot.id);
+    const tid = toast.loading('Generating frame… (free FLUX, can take ~20s)');
+    const { currentStoryId } = await import('@/lib/mediaUpload');
+    const r = await generateImage(
+      framePrompt({ description: shot.description, shotType: shot.shotType, scene: sceneName }),
+      'wide',
+      { storyId: currentStoryId() },
+    );
+    setGenBusyId(null);
+    if (r.ok && r.url) {
+      updateShot(shot.id, { storyboard: r.url });
+      toast.success('Frame generated', { id: tid, description: r.engine });
+    } else {
+      toast.error('Generation failed', { id: tid, description: (r.error || '') + ' — try again, or use the Runway button.' });
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -354,13 +376,22 @@ export default function StoryboardView() {
                       ) : null}
                     </>
                   ) : (
-                    <button
-                      onClick={() => triggerUpload(shot.id)}
-                      className="w-full h-full flex flex-col items-center justify-center gap-1 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
-                    >
-                      <Upload className="w-5 h-5" />
-                      <span className="text-[10px] uppercase tracking-widest font-bold">Upload / generate</span>
-                    </button>
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                      <button
+                        onClick={() => generateFrame(shot, sceneName)}
+                        disabled={genBusyId === shot.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] uppercase tracking-widest font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110 disabled:opacity-60"
+                      >
+                        <Sparkles className={`w-3.5 h-3.5 ${genBusyId === shot.id ? 'animate-pulse' : ''}`} />
+                        {genBusyId === shot.id ? 'Generating…' : 'Generate'}
+                      </button>
+                      <button
+                        onClick={() => triggerUpload(shot.id)}
+                        className="flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors text-[9px] uppercase tracking-widest font-bold"
+                      >
+                        <Upload className="w-3 h-3" /> Upload
+                      </button>
+                    </div>
                   )}
                   {/* sequence number (always) */}
                   <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/70 text-white tabular-nums backdrop-blur-sm z-20">

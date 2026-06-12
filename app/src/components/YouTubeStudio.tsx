@@ -10,6 +10,7 @@ import type { YouTubePack } from '@/types';
 import { aiOnce, extractJSON } from '@/lib/aiClient';
 import { sendPromptToRunway } from '@/lib/sendToRunway';
 import { viewMedia } from '@/lib/mediaViewer';
+import { generateImage, thumbnailPrompt } from '@/lib/imageGen';
 
 const SHOT_TYPES = ['WIDE', 'MEDIUM', 'CLOSE-UP', 'EXTREME CLOSE-UP', 'OVER-THE-SHOULDER', 'POV', 'ESTABLISHING', 'INSERT', 'AERIAL'];
 const normShot = (v: any): any => {
@@ -111,6 +112,18 @@ export default function YouTubeStudio() {
   }); };
 
   const genThumbPrompt = () => { if (needIdea()) return; gen('thumbprompt', 'You write vivid image-generation prompts for high-CTR YouTube thumbnails.', `Write ONE image-gen prompt for a thumbnail for: "${form.idea}". Bold subject, expression, rule-of-thirds with space for text, high contrast, color punch. One paragraph.`, (t) => { sendPromptToRunway({ prompt: t, target: 'image', shotLabel: 'YouTube thumbnail' }); toast.success('Thumbnail prompt sent to Runway panel'); }, 400); };
+
+  // Generate the thumbnail IN-APP (free FLUX → Cloudinary) — no Runway round-trip.
+  const genThumbImage = async () => {
+    if (needIdea()) return;
+    setBusy('thumbimg');
+    const tid = toast.loading('Generating thumbnail… (free FLUX, can take ~20s)');
+    const { currentStoryId } = await import('@/lib/mediaUpload');
+    const r = await generateImage(thumbnailPrompt(form.idea!, form.thumbnailText), 'thumbnail', { storyId: currentStoryId() });
+    setBusy(null);
+    if (r.ok && r.url) { update({ thumbnail: r.url }); toast.success('Thumbnail generated', { id: tid, description: r.engine }); }
+    else toast.error('Generation failed', { id: tid, description: r.error });
+  };
 
   const genEverything = async () => {
     if (needIdea()) return;
@@ -278,7 +291,15 @@ export default function YouTubeStudio() {
           </div>
           {/* Thumbnail image */}
           <div>
-            <div className={lbl}><span className={lblTxt}>Thumbnail image</span><button onClick={genThumbPrompt} disabled={!!busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]"><ExternalLink className="w-3 h-3" /> Prompt → Runway</button></div>
+            <div className={lbl}>
+              <span className={lblTxt}>Thumbnail image</span>
+              <div className="flex items-center gap-1.5">
+                <button onClick={genThumbImage} disabled={!!busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--accent)] text-[var(--accent-ink)] hover:brightness-110 disabled:opacity-50">
+                  {busy === 'thumbimg' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} Generate
+                </button>
+                <button onClick={genThumbPrompt} disabled={!!busy} className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[var(--card)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]"><ExternalLink className="w-3 h-3" /> Runway</button>
+              </div>
+            </div>
             <div className="aspect-video rounded-lg border border-[var(--border)] overflow-hidden bg-[var(--card)] relative group">
               {form.thumbnail ? (
                 <>
